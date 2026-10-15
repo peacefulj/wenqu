@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文渠 · 科研工作台 — 从选题到投稿，把每一步的产出串起来</title>
+<meta name="description" content="面向学生与科研人员的一站式科研平台：项目工作流（选题→文献→阅读综合→设计写作→质检投稿）+ 免建项目的工具台。免费检索，AI 需自配 Key，数据只存你的浏览器。">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2456e6">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+</head>
+<body>
+
+<header class="site"><div class="container bar">
+  <a class="brand" href="index.html">文渠<small>科研一站平台</small></a>
+</div></header>
+
+<main class="container">
+  <div class="hero">
+    <div class="num">5 步</div>
+    <h1>从选题到投稿，把每一步的产出串起来</h1>
+    <p class="lead">① 选题与定位 → ② 文献获取与管理 → ③ 阅读与综合 → ④ 设计与写作 → ⑤ 质检与投稿。每个阶段有明确的目标与产出，AI 全程按你的范式、层级与个人风格辅助。</p>
+    <div class="trust">
+      <span>✔ 免费检索，只指向合法开放版本</span>
+      <span>✔ 数据只存你的浏览器，可一键备份</span>
+      <span>✔ 支持安装到桌面，离线可用</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <a class="card" href="studio.html" style="border-color:#b9c8f5;background:linear-gradient(180deg,#f6f9ff,#ffffff)">
+      <div class="ico">🧭</div>
+      <h3>我有一个研究项目</h3>
+      <p>新建项目 → 选范式与层级（本科毕设/硕博/期刊）→ 跟着五阶段推进，每阶段有目标与产出检查。</p>
+      <span class="more">进入项目工作流 →</span>
+    </a>
+    <a class="card" href="studio.html?tab=search">
+      <div class="ico">🧰</div>
+      <h3>我只想快速用个工具</h3>
+      <p>免建项目：找文献+免费PDF、AI 读论文、引用一键转 GB/T 7714、综述草稿、新论文雷达。</p>
+      <span class="more">打开工具台 →</span>
+    </a>
+  </div>
+
+  <section class="block" style="margin-top:18px">
+    <h2>高频场景直达<small>进入平台对应位置</small></h2>
+    <div class="scen"><span>🔍 找文献</span><a href="studio.html?tab=search">聚合检索+免费PDF标注</a><a href="studio.html?tab=radar">新论文雷达</a><a href="studio.html?tab=db">科研数据库导航</a></div>
+    <div class="scen"><span>📖 精读</span><a href="studio.html?tab=read">AI 读论文（摘要/审稿/带引用追问）</a></div>
+    <div class="scen"><span>🔗 整理</span><a href="studio.html?tab=cite">引用引擎（乱格式→GB/APA/BibTeX）</a></div>
+    <div class="scen"><span>📝 写作</span><a href="studio.html?tab=storm">综述工坊</a><a href="studio.html">项目工作流④（大纲/分节/导出）</a></div>
+    <p class="hint">毕业论文：建项目选「本科毕设」层级——开题报告、答辩材料、查重指引会自动出现。</p>
+  </section>
+
+  <div class="hook">
+    <div class="txt">
+      <b>文献到手了？让 AI 替你读。</b>
+      10 分钟读完一篇并出摘要，30 篇文献合成一篇综述骨架。
+      <small>学生认证送额度 · 萤算 AI</small>
+    </div>
+    <a class="btn" href="https://yingcompute.com/register?aff=wl-index">去萤算</a>
+  </div>
+</main>
+
+<footer class="site"><div class="container">
+  <div class="links"><a href="studio.html?tab=search">工具箱</a> · <a href="studio.html">科研工作台</a> · 发现问题？<a href="mailto:feedback@example.com">邮件告诉我们</a></div>
+  <div class="disc">文渠只指向官方机构与合法开放版本，不提供文献代下、代写、代查服务。AI 产出均可能出错，使用前请人工核对；学术润色仅做语言优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器，请定期备份。</div>
+  <div>© 2026 文渠</div>
+</div></footer>
+<script>
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+let __dp = null;
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); __dp = e; });
+</script>
+</body>
+</html>

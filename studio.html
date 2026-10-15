@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>科研工作台：选题 · 文献 · 分析 · 写作 · 投稿 · 工具台 — 文渠</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2456e6">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<meta name="description" content="一站式科研平台：项目工作流（选题雷达→文献库→文献矩阵→大纲写作→期刊投稿）+ 工具台（找文献/AI读论文/引用引擎/综述工坊/新论文雷达/科研数据库）。免费工具，AI需萤算Key，数据只存你的浏览器。">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/wb.css">
+<script src="assets/vendor/pdf.min.js"></script>
+</head>
+<body>
+
+<header class="site"><div class="container bar">
+  <a class="brand" href="index.html">文渠<small>科研一站平台</small></a>
+</div></header>
+
+<main class="container page">
+  <h1 class="title">科研工作台 <span class="beta">平台版</span></h1>
+  <p class="meta">项目工作流 + 工具台，一个页面全搞定<span class="dot">·</span><span class="upd">数据只存你的浏览器 · AI 需 Key（页头设置）</span></p>
+
+  <!-- 模式切换 + 工具条 -->
+  <div class="modeswitch">
+    <button class="modebtn on" data-mode="flow">🧭 项目工作流</button>
+    <button class="modebtn" data-mode="tools">🧰 工具台</button>
+    <span class="hint">工作流按项目推进（选题→文献→分析→写作→投稿）；工具台免建项目即用（检索/读论文/引用/综述/雷达/数据库）</span>
+    <span style="flex:1"></span>
+    <button class="toolbtn installBtn" hidden onclick="wqInstall()">⤓ 安装应用</button>
+    <button class="toolbtn" id="btnSet">⚙️ AI / 接口设置</button>
+    <button class="toolbtn" id="btnBasket">🧺 收藏篮 (<span id="bkCount">0</span>)</button>
+  </div>
+
+  <div id="setPanel" hidden><div class="container" style="padding:0">
+    <div class="grid4">
+      <div><label>API 地址（一般不用改，中转站/服务商提供）</label><input id="aiBase" type="text" placeholder="https://yingcompute.com/v1"></div>
+      <div><label>API Key（只存本浏览器；没有？注册后粘贴即可，检索类功能不需要它）</label><input id="aiKey" type="password" placeholder="sk-…"></div>
+      <div><label>模型</label><input id="aiModel" type="text" placeholder="glm-5.3-flash"></div>
+      <div><label>邮箱（Unpaywall 用，选填）</label><input id="upEmail" type="text" placeholder="your@mail.com"></div>
+    </div>
+    <div class="grid4">
+      <div style="grid-column:1/-1"><label>GROBID 服务地址（选填，高级：本地 Docker 起后端后填 http://localhost:8070）</label>
+      <input id="grobidUrl" type="text" placeholder="http://localhost:8070"></div>
+    </div>
+    <div class="actions">
+      <button class="btn2" id="aiSave">保存设置</button>
+      <label class="hint" style="display:flex;align-items:center;gap:6px;margin-left:6px"><input type="checkbox" id="aiConfirmChk"> AI 操作前弹「确认/取消」</label>
+      <span class="hint">没有 Key？<a href="https://yingcompute.com/register?aff=wl-studio" target="_blank" rel="noopener">注册萤算</a>（学生认证送额度）。Key 只存本机浏览器，请求直连你填写的服务地址。</span>
+    </div>
+  </div></div>
+
+  <div class="studio">
+    <!-- 左：项目栏 -->
+    <aside class="projbar">
+      <button id="btnNewProj" class="btn2" style="width:100%">＋ 新建研究项目</button>
+      <div id="projList" class="projlist"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="btnExportAll" class="toolbtn" style="flex:1">⤓ 备份全部</button>
+        <button id="btnVer" class="toolbtn" style="flex:1">📜 版本 (<span id="verCount">0</span>)</button>
+        <label class="toolbtn" style="flex:1;cursor:pointer;text-align:center">⤒ 导入备份<input id="importFile" type="file" accept=".json" hidden></label>
+      </div>
+      <p class="hint" style="margin-top:10px">AI 设置与收藏篮在页头；项目数据只存本浏览器（建议定期备份）。范式/层级在阶段1「项目配置」可改。</p>
+    </aside>
+
+    <!-- 右：双模式 -->
+    <section class="workarea">
+
+      <!-- ===== 模式一：项目工作流 ===== -->
+      <div id="mode-flow">
+        <div id="onboard" class="callout c-info" hidden></div>
+        <div class="stages">
+          <div id="progressLine" class="hint" style="width:100%;margin:-4px 0 6px"></div>
+          <button class="stage on" data-s="1">① 选题与定位</button>
+          <button class="stage" data-s="2">② 文献获取与管理</button>
+          <button class="stage" data-s="3">③ 阅读与综合</button>
+          <button class="stage" data-s="4">④ 设计与写作</button>
+          <button class="stage" data-s="5">⑤ 质检与投稿</button>
+        </div>
+
+        <!-- 阶段1 选题 -->
+        <div id="s1" class="stagepane">
+          <div id="sc1" class="stagecard"></div>
+          <section class="block">
+            <h2>项目配置<small>范式与层级影响全部 AI 生成（选题/矩阵/设计审查/写作/内审）</small></h2>
+            <div class="row" style="margin:0">
+              <label class="hint">范式</label>
+              <select id="cfgParadigm" style="flex:0 0 240px"></select>
+              <label class="hint">层级</label>
+              <select id="cfgLevel" style="flex:0 0 200px"></select>
+            </div>
+          </section>
+          <section class="block">
+            <h2>选题雷达<small>OpenAlex 全球发文趋势 + AI 三维评估（评分维度随范式与层级变化）</small></h2>
+            <div class="row">
+              <input id="topic" type="text" placeholder="研究主题（中英皆可，如：negative beta strategy / 乡村振兴与农村金融）">
+              <button id="btnTrend" class="btn2">跑趋势</button>
+              <button id="btnEval" data-ai class="btn2">AI 评估选题</button>
+            </div>
+            <div id="trendBox" class="trendbox" hidden></div>
+            <div class="row" style="margin-top:6px">
+              <a class="btn2 ghost" href="workbench.html?tab=radar">📡 新论文雷达（近30天）</a>
+              <span class="hint">每周扫一次与你主题相关的新论文，AI 按兴趣打分，收藏后可导入文献库。</span>
+            </div>
+            <p class="hint" id="selProg"></p>
+            <div id="selOut" class="aiout" hidden></div>
+          </section>
+        </div>
+
+        <!-- 阶段2 文献 -->
+        <div id="s2" class="stagepane" hidden>
+          <div id="sc2" class="stagecard"></div>
+          <section class="block">
+            <h2>文献获取<small>合规通道默认 + 第三方数据库入口</small></h2>
+            <div class="zhjump">
+              <b>免费合规路径（默认）：</b>
+              <div class="scen">
+                <span>🔍 聚合检索</span>
+                <a href="workbench.html?tab=search">本站检索+免费PDF标注（OpenAlex 2.5亿+）</a>
+              </div>
+              <div class="scen">
+                <span>🗄 官方数据库</span>
+                <a href="workbench.html?tab=db">数据库导航（知网/万方/ncpssd/NSTL/arXiv…）</a>
+                <a href="https://www.ncpssd.cn" target="_blank" rel="noopener">ncpssd（注册免费下）</a>
+                <a href="https://www.nstl.gov.cn" target="_blank" rel="noopener">NSTL 文献传递</a>
+              </div>
+              <div class="scen">
+                <span>📊 数据</span>
+                <a href="https://tushare.pro" target="_blank" rel="noopener">Tushare（A股免费档）</a>
+                <a href="https://www.ssrn.com" target="_blank" rel="noopener">SSRN/NBER 预印本</a>
+              </div>
+              <details class="fold" style="margin-top:8px">
+                <summary>更多渠道：第三方文献服务（自购卡自行登录）</summary>
+                <div class="body">
+                  <b>wxy88 文献云：</b><a href="http://www.wxy88.top/e/action/ListInfo/?classid=61" target="_blank" rel="noopener">中文库</a> · <a href="http://www.wxy88.top/e/action/ListInfo/?classid=63" target="_blank" rel="noopener">英文库</a> · <a href="http://www.wxy88.top/e/action/ListInfo/?classid=65" target="_blank" rel="noopener">数据档 CSMAR/EPS/锐思</a> · <a href="http://www.wxy88.top/e/action/ListInfo/?classid=187" target="_blank" rel="noopener">医学库</a> · <a href="http://www.wxy88.top/e/action/ListInfo/?classid=198" target="_blank" rel="noopener">智慧芽专利</a> · <a href="https://lib.wenx.top" target="_blank" rel="noopener">备用入口</a>
+                  <p class="hint" style="margin:6px 0 0">第三方服务需<b>自购卡自行登录</b>，本平台不代理、不留凭据；使用前请自行确认符合所在机构授权条款。博硕论文/非OA订阅刊/中文核心才需要它，免费场景优先走上方通道。</p>
+                </div>
+              </details>
+              <p class="hint" style="margin:4px 0 0">订阅刊/学位论文优先走所在机构图书馆与馆际互借；无权限的用工具台「无免费版·求助」面板（国家平台传递/向作者索要）。</p>
+            </div>
+
+          </section>
+          <section class="block">
+            <h2>项目文献库<small>每篇填标题即可，摘要可一键从 OpenAlex 补</small></h2>
+            <div class="row">
+              <input id="pTitle" type="text" placeholder="文献标题（必填）" style="flex:2;min-width:260px">
+              <input id="pAuth" type="text" placeholder="作者（选填，参考文献表用）" style="flex:1;min-width:160px">
+              <input id="pYear" type="text" placeholder="年份" style="max-width:80px">
+              <input id="pDoi" type="text" placeholder="DOI（选填，补摘要更准）" style="flex:1;min-width:180px">
+            </div>
+            <div class="row">
+              <input id="pVenue" type="text" placeholder="期刊/出处" style="flex:1">
+              <select id="pType" style="max-width:120px">
+                <option value="J">期刊[J]</option><option value="D">博硕[D]</option><option value="C">会议[C]</option><option value="R">报告[R]</option><option value="EB">在线[EB/OL]</option>
+              </select>
+              <button id="btnAddPaper" class="btn2">加入文献库</button>
+            </div>
+            <textarea id="pAbs" rows="3" placeholder="摘要/要点（选填；留空则之后用【补摘要】从 OpenAlex 拉取）"></textarea>
+            <div class="row" style="margin-top:0">
+              <button id="btnImportBasket" class="btn2 ghost">🧺 从收藏篮导入</button>
+              <span class="hint">先切到「🧰 工具台」检索并【➕收藏】，回来一键进项目文献库（DOI 自动带上，可批量【补摘要】）。</span>
+            </div>
+            <details class="fold">
+              <summary>批量导入：粘贴 DOI（每行一个，自动拉取题录+作者，≤25 条）</summary>
+              <div class="body">
+                <textarea id="doiBatch" rows="4" placeholder="10.1016/j.jfineco.2014.10.010&#10;10.1038/s41586-020-2649-2"></textarea>
+                <div class="row" style="margin-top:0"><button id="btnDoiBatch" class="btn2">批量导入</button><span class="hint" id="doiProg"></span></div>
+              </div>
+            </details>
+            <div id="paperList"></div>
+          </section>
+        </div>
+
+        <!-- 阶段3 分析 -->
+        <div id="s3" class="stagepane" hidden>
+          <div id="sc3" class="stagecard"></div>
+          <section class="block">
+            <h2>文献矩阵<small>逐篇 AI 提炼：方法 / 数据 / 结论 / 局限</small></h2>
+            <div class="row" style="margin-top:0">
+              <a class="btn2 ghost" href="workbench.html?tab=read">📖 需要精读全文？AI 读论文（上传PDF·带引用追问）</a>
+            </div>
+            <button id="btnMatrix" data-ai class="btn2">生成文献矩阵</button>
+            <p class="hint" id="mxProg"></p>
+            <div id="matrixOut" class="mtx" hidden></div>
+          </section>
+        </div>
+
+        <!-- 阶段4 写作 -->
+        <div id="s4" class="stagepane" hidden>
+          <div id="sc4" class="stagecard"></div>
+          <section class="block">
+            <h2>大纲与分节写作<small>大纲基于选题卡+文献矩阵生成</small></h2>
+            <div class="tmpl">
+              <button id="btnOutline" data-ai class="btn2">🌪️ 生成大纲（多视角）</button>
+              <button id="btnDesign" data-ai class="btn2" style="background:#37465c">🧪 研究设计审查</button>
+              <button id="btnConsistency" data-ai class="btn2" style="background:#0a7a43">🔎 跨节一致性检查</button>
+              <button id="btnExportDoc" class="btn2" style="background:#7a3fa8">⤓ 导出全文（Word）</button>
+              <a class="btn2 ghost" href="workbench.html?tab=cite">🔗 引用引擎（乱格式→GB/APA/BibTeX）</a>
+              <button id="btnAIDecl" data-ai class="btn2">📄 AI使用声明模板</button>
+            </div>
+            <div class="tmpl" id="secBtns" style="width:100%"></div>
+            <details class="fold" style="margin:10px 0">
+              <summary>✍️ 个人写作档案（跨项目共用，只存本机浏览器；AI 按你的风格起草）</summary>
+              <div class="body">
+                <label class="hint" style="font-weight:700">显式偏好（每次生成都会带上）</label>
+                <textarea id="stylePrefs" rows="2" placeholder="例：不用「综上所述」；结论先讲局限再讲贡献；方法节必须带公式编号；少用被动语态…"></textarea>
+                <div class="row" style="margin-top:0">
+                  <label class="hint" style="flex:1">AI 原稿 / 你的亲笔文字：<textarea id="styleSrc" rows="3" style="margin:4px 0" placeholder="贴 AI 起草稿（改稿学习用）或你自己写的文字（风格提炼用，≥200字）"></textarea></label>
+                  <label class="hint" style="flex:1">你的改稿：<textarea id="styleSrc2" rows="3" style="margin:4px 0" placeholder="把 AI 原稿按你的习惯改一遍粘到这里（改稿学习用）"></textarea></label>
+                </div>
+                <div class="row" style="margin-top:0">
+                  <button id="btnStyleExtract" data-ai class="btn2 ghost">🎨 从我的文字提炼风格画像</button>
+                  <button id="btnStyleLearn" data-ai class="btn2 ghost">📚 改稿学习（对比原稿与改稿）</button>
+                  <span class="hint" id="styleProg"></span>
+                </div>
+                <div id="stylePrev" class="callout c-info" hidden></div>
+              </div>
+            </details>
+            <div class="row" style="align-items:center">
+              <label class="enchk"><input id="enMode" type="checkbox"> 英文模式（投英文期刊，分节写作输出学术英文）</label>
+              <button id="btnInternal" data-ai class="btn2" style="background:#7a3fa8">👨‍🏫 三专家内审草稿</button>
+            </div>
+            <p class="hint" id="wProg"></p>
+            <div id="wOut" class="aiout" hidden></div>
+            <div class="row" style="margin-top:8px"><button id="btnWCopy" class="btn2" hidden>复制结果</button></div>
+            <div class="callout c-info" style="margin-top:14px">写作助手定位：辅助你自己写作，引用来自你的文献库；请遵守学校/期刊的 AI 使用与引用规范。本平台不提供代写。</div>
+          </section>
+        </div>
+
+        <!-- 阶段5 投稿 -->
+        <div id="s5" class="stagepane" hidden>
+          <div id="sc5" class="stagecard"></div>
+          <section class="block">
+            <h2>答辩 / 投稿材料<small>按项目层级自动出现对应材料按钮</small></h2>
+            <div class="row" id="defenseBtns" hidden></div>
+            <h3 style="margin:14px 0 0">期刊投稿</h3>
+            <button id="btnVenue" class="btn2">分析投稿去向</button>
+            <button id="btnStrategy" data-ai class="btn2">AI 投稿策略（冲/稳/保）</button>
+            <button id="btnCover" data-ai class="btn2">✉️ Cover Letter 生成</button>
+            <button id="btnRebuttal" data-ai class="btn2">📨 审稿回复起草</button>
+            <p class="hint" id="vProg"></p>
+            <div id="venueOut" class="mtx" hidden></div>
+            <div id="vOut" class="aiout" hidden></div>
+          </section>
+          <section class="block">
+            <h2>投稿检查清单</h2>
+            <div class="checklist">
+              <label><input type="checkbox"> 结构完整（IMRaD/期刊模板）</label>
+              <label><input type="checkbox"> 字数与格式符合期刊要求</label>
+              <label><input type="checkbox"> 参考文献格式统一（GB/T 7714 / APA）</label>
+              <label><input type="checkbox"> 图表编号与引用完整</label>
+              <label><input type="checkbox"> 伦理声明 / 利益冲突 / 基金标注</label>
+              <label><input type="checkbox"> AI 使用声明（如期刊要求）</label>
+              <label><input type="checkbox"> 查重自检走官方渠道（学校次数 / cx.cnki.net）</label>
+              <label><input type="checkbox"> Cover Letter 与 作者信息核对</label>
+            </div>
+            <p class="hint">状态：<select id="projStatus">
+              <option>选题中</option><option>写作中</option><option>已投稿</option><option>返修中</option><option>已录用</option><option>已发表</option>
+            </select>（保存在项目里，列表可见）</p>
+          </section>
+        </div>
+
+        
+        <section class="block" id="procBox">
+          <h2>📋 过程记录<small>「未留存」动作的摘要 + 版本索引——研究过程留痕，便于日后查阅</small></h2>
+          <div id="procList"></div>
+        </section>
+      </div>
+
+      <!-- ===== 模式二：工具台 ===== -->
+      <div id="mode-tools" hidden>
+        <div class="tabs" id="tabs">
+          <button class="tab on" data-tab="search">🔍 找 · 检索</button>
+          <button class="tab" data-tab="radar">📡 找 · 新论文雷达</button>
+          <button class="tab" data-tab="db">🗄 找 · 数据库导航</button>
+          <button class="tab" data-tab="read">📖 读 · AI读论文</button>
+          <button class="tab" data-tab="cite">🔗 整理 · 引用引擎</button>
+          <button class="tab" data-tab="storm">📝 写 · 综述工坊</button>
+          <button class="tab" data-tab="skills">🧠 写 · 技能库</button>
+          <button class="tab" data-tab="engines">🧰 开源引擎</button>
+        </div>
+
+        <!-- 找文献 -->
+        <section id="tab-search" class="tabpane">
+          <section class="block">
+            <h2>全球文献检索<small>数据源：OpenAlex（2.5亿+ 记录）· 免费PDF标注 · 可收藏进篮子喂给综述</small></h2>
+            <div class="row">
+              <input id="q" type="text" placeholder="英文关键词（如 momentum asset pricing）或 DOI（10.xxxx/…）">
+              <select id="qYear" style="flex:0 0 130px">
+                <option value="">不限年份</option><option>2026</option><option>2025</option><option>2024</option><option>2023</option><option>2022</option>
+              </select>
+              <select id="qN" style="flex:0 0 110px"><option value="10">10 条</option><option value="20">20 条</option><option value="25">25 条</option></select>
+              <button id="btnSearch" class="btn2">检索</button>
+            </div>
+            <div class="row" style="margin-top:0">
+              <label class="hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="qOA"> 只看有免费PDF的</label>
+              <label class="hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="qSortCited"> 按被引排序</label>
+            </div>
+            <p class="hint">【AI速读】基于官方摘要生成三句话速览；要读全文请切到「AI 读论文」上传 PDF。中文文献走官方站跳转（见下方）。</p>
+            <div id="zhJump" class="callout c-info" hidden>
+              <b>中文文献一键跳转：</b>
+              <a target="_blank" rel="noopener" id="jWf">万方</a> ·
+              <a target="_blank" rel="noopener" id="jBd">百度学术</a> ·
+              <a target="_blank" rel="noopener" href="https://www.ncpssd.cn">ncpssd 国家平台</a> ·
+              <a target="_blank" rel="noopener" href="https://www.zjlib.cn">浙图数字资源</a>
+              <div class="hint" style="margin-top:4px">中文库未开放检索 API，跳转官方站内搜索是最合规的方式。</div>
+            </div>
+            <div id="searchOut" class="results"></div>
+          </section>
+        </section>
+
+        <!-- AI 读论文 -->
+        <section id="tab-read" class="tabpane" hidden>
+          <section class="block">
+            <h2>① 导入论文<small>PDF（自托管 pdf.js 提取）/ TXT / 直接粘贴</small></h2>
+            <div class="callout c-warn" style="margin:8px 0">🔒 上传提醒：仅导入你已合法持有并可上传的文献；<b>审稿中/未公开稿件、涉密材料、含个人信息的医疗数据请勿上传</b>（分析内容会发送给你配置的模型服务）。</div>
+            <div id="drop" class="dropzone">把 PDF 拖到这里，或
+              <label class="filebtn">点击选择文件<input id="file" type="file" accept=".pdf,.txt,.md" hidden></label>
+            </div>
+            <textarea id="docText" rows="5" placeholder="（备用）直接粘贴论文文本…"></textarea>
+            <p class="hint" id="docStat">未导入文档</p>
+          </section>
+          <section class="block">
+            <h2>② 选分析模板<small>源自 ChatPaper 四模板 + gpt_academic 交互（按许可只借鉴设计）；长文自动分段再合成</small></h2>
+            <div class="tmpl">
+              <button class="btn2 tp" data-p="sum">📝 摘要速读</button>
+              <button class="btn2 tp" data-p="method">🔬 方法与结论</button>
+              <button class="btn2 tp" data-p="crit">🧩 批判评估·审稿</button>
+              <button class="btn2 tp" data-p="rebuttal">✉️ 审稿回复信</button>
+              <button class="btn2 tp" data-p="polish">✒️ 中译英·学术润色</button>
+              <button class="btn2 tp" data-p="card">📚 综述素材卡</button>
+            </div>
+            <textarea id="extraIn" rows="2" placeholder="补充输入（审稿回复信粘审稿意见；翻译可指定目标风格）… 摘要速读/方法等模板可留空"></textarea>
+            <div class="row">
+              <input id="customP" type="text" placeholder="或输入自定义指令后按回车">
+            </div>
+            <p class="hint" id="aiProg"></p>
+            <div id="aiOut" class="aiout" hidden></div>
+            <div class="row">
+              <button id="btnCopy" class="btn2 ghost" hidden>复制结果</button>
+            </div>
+            <div id="readLog" class="results" style="margin-top:12px"></div>
+          </section>
+          <section class="block">
+            <h2>③ 针对本文追问<small>paper-qa 式：本地检索最相关段落 → 带段落编号与页码回答（Apache-2.0 思路自实现）</small></h2>
+            <div class="row">
+              <input id="qaQ" type="text" placeholder="例：识别策略是什么？工具变量如何构造？（英文论文建议带英文术语）">
+              <button id="btnQA" class="btn2">追问</button>
+            </div>
+            <p class="hint" id="qaProg"></p>
+            <div id="qaOut" class="aiout" hidden></div>
+            <div id="qaSrc" class="results" hidden></div>
+          </section>
+          <details class="fold">
+            <summary>⚙️ 高级：GROBID 结构化（本地 Docker 选配）</summary>
+            <div class="body">
+            <h2 style="font-size:15px;margin:6px 0">抽取参考文献 → 一键送入「引用引擎」</h2>
+            <div class="row">
+              <button id="btnGrobid" class="btn2 ghost">用 GROBID 解析当前 PDF</button>
+              <span class="hint">服务地址在页头「AI / 接口设置」。GROBID 默认不开 CORS，需自行开启或走本地代理；未配置时此按钮不可用。</span>
+            </div>
+            <p class="hint" id="gbProg"></p>
+            </div>
+          </details>
+        </section>
+
+        <!-- 引用引擎 -->
+        <section id="tab-cite" class="tabpane" hidden>
+          <section class="block">
+            <h2>① 粘贴引用<small>BibTeX / RIS / DOI（每行一个）/ Word 里复制来的乱格式自由文本，混着来也行</small></h2>
+            <textarea id="citeIn" rows="8" placeholder="一行一条，直接从 Word / Zotero / PDF 里复制粘贴，例如：&#10;Fama, E. F., &amp; French, K. R. (2015). A five-factor asset pricing model. Journal of Financial Economics, 116(1), 1-22.&#10;10.1038/s41586-020-2649-2&#10;Barberis, N., &amp; Thaler, R. (2003). A survey of behavioral finance."></textarea>
+            <div class="row">
+              <button id="btnCiteParse" class="btn2">解析</button>
+              <span class="hint">自由文本自动经 Crossref 匹配 DOI（逐条限速，保持礼貌）；解析结果存本页，供下方格式化与追踪。</span>
+            </div>
+            <p class="hint" id="citeProg"></p>
+            <div id="parsedList" class="results"></div>
+          </section>
+          <section class="block">
+            <h2>② 格式化输出<small>GB/T 7714-2015（自实现）/ APA / Vancouver（citation.js · MIT）/ BibTeX / RIS</small></h2>
+            <div class="row">
+              <select id="citeFmt" style="flex:0 0 200px">
+                <option value="gb">GB/T 7714-2015（中文期刊）</option>
+                <option value="apa">APA 7</option>
+                <option value="vancouver">Vancouver</option>
+                <option value="bibtex">BibTeX (.bib)</option>
+                <option value="ris">RIS (.ris)</option>
+              </select>
+              <button id="btnCiteFmt" class="btn2">格式化</button>
+              <button id="btnCiteCopy" class="btn2 ghost" hidden>复制</button>
+              <button id="btnCiteDl" class="btn2 ghost" hidden>下载文件</button>
+            </div>
+            <div id="citeOut" class="aiout md" hidden></div>
+          </section>
+          <section class="block">
+            <h2>③ 批量找免费版<small>已解析的每条 → OpenAlex / Unpaywall 查合法 OA 副本（Unpaywall 逻辑，MIT）</small></h2>
+            <div class="row">
+              <button id="btnCiteOA" class="btn2">开始追踪</button>
+              <label class="hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="oaOnlyPdf"> 只认直接 PDF 链接</label>
+            </div>
+            <div class="prog" hidden><div id="oaBar"></div></div>
+            <p class="hint" id="oaProg"></p>
+            <div id="oaOut" class="results"></div>
+          </section>
+        </section>
+
+        <!-- 综述工坊 -->
+        <section id="tab-storm" class="tabpane" hidden>
+          <section class="block">
+            <h2>STORM 式综述草稿<small>多视角大纲 → 逐节检索实证文献 → 逐节起草带 [n] 引用 → 汇成 Markdown（思路源自 Stanford STORM，MIT 自实现）</small></h2>
+            <div class="row">
+              <input id="stTopic" type="text" placeholder="综述主题（如：机器学习在资产定价中的应用）">
+            </div>
+            <div class="row">
+              <label class="hint">章节数</label>
+              <select id="stN" style="flex:0 0 90px"><option>3</option><option selected>4</option><option>5</option><option>6</option></select>
+              <label class="hint">每节文献</label>
+              <select id="stK" style="flex:0 0 90px"><option>3</option><option selected>4</option><option>5</option><option>6</option></select>
+              <label class="hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="stBasket"> 优先使用收藏篮文献</label>
+              <label class="hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="stOA" checked> 只用有免费版的</label>
+            </div>
+            <div class="row">
+              <button id="btnStorm" class="btn2">🚀 生成综述草稿</button>
+              <button id="btnStormStop" class="btn2 gray" hidden>停止</button>
+              <span class="hint">全程约 2-5 分钟（多次调用 AI + 官方检索）。产出为「可改的骨架」，引用需人工核对——AI 可能配错 [n]。</span>
+            </div>
+            <div class="prog" hidden><div id="stBar"></div></div>
+            <p class="hint progtxt" id="stProg"></p>
+            <div id="stOutline" class="results"></div>
+            <div id="stOut" class="aiout md" hidden></div>
+            <div class="row">
+              <button id="btnStCopy" class="btn2 ghost" hidden>复制 Markdown</button>
+              <button id="btnStDl" class="btn2 ghost" hidden>下载 .md</button>
+            </div>
+          </section>
+        </section>
+
+        <!-- 新论文雷达 -->
+        <section id="tab-radar" class="tabpane" hidden>
+          <section class="block">
+            <h2>新论文雷达<small>研究兴趣 → 近 N 天新论文 → AI 打分与一句话推荐（zotero-arxiv-daily 思路，AGPL 只学架构，改用 OpenAlex 自实现）</small></h2>
+            <div class="row">
+              <input id="rdInterests" type="text" placeholder="研究兴趣，逗号分隔（如：momentum, asset pricing, machine learning finance）">
+              <select id="rdDays" style="flex:0 0 130px">
+                <option value="7">近 7 天</option><option value="14">近 14 天</option><option value="30" selected>近 30 天</option>
+              </select>
+              <button id="btnRadar" class="btn2">扫描</button>
+            </div>
+            <p class="hint">OpenAlex 收录每日新论文（含 arXiv/SSRN/出版社），按发表时间倒序取最新 30 篇，AI 按你的兴趣打 0-100 分并给中文推荐语。想每周自动看：浏览器收藏本页，周一早上扫一遍。</p>
+            <div class="prog" hidden><div id="rdBar"></div></div>
+            <p class="hint progtxt" id="rdProg"></p>
+            <div id="rdOut" class="results"></div>
+          </section>
+        </section>
+
+        <!-- 开源引擎（公开版自动隐藏） -->
+        <section id="tab-engines" class="tabpane" hidden>
+          <section class="block">
+            <h2>同类开源项目盘点 → 集成状态</h2>
+            <div class="callout c-line"><b>许可红绿灯：</b><span class="lic reuse">MIT / Apache</span> 可复用代码 · <span class="lic learn">GPL / AGPL</span> 只学架构不抄码 · <span class="lic caution">限制/需谨慎</span> 限制性许可或无许可，只借鉴思路。</div>
+            <div id="engOut" class="results"></div>
+          </section>
+          <section class="block">
+            <h2>分发渠道观察</h2>
+            <div id="chanOut" class="results"></div>
+          </section>
+        </section>
+
+        <!-- 技能库 -->
+        <section id="tab-skills" class="tabpane" hidden>
+          <section class="block">
+            <h2>学术提示词技能库<small>一键复制，或在「AI 读论文」页直接用</small></h2>
+            <div id="skOut" class="results"></div>
+          </section>
+          <section class="block">
+            <h2>边界与红线<small>做产品前先想清楚</small></h2>
+            <div class="callout c-warn"><b>学术润色的边界：</b>做"语言表达优化、去AI腔（合规版）"可以；做"规避 AIGC 检测"越红线——话术定位必须是前者。</div>
+            <div class="callout c-warn"><b>文献获取的边界：</b>只找出版社 OA、机构仓库等<b>合法开放版本</b>；不提供文献代下。</div>
+          </section>
+        </section>
+
+        <!-- 科研数据库 -->
+        <section id="tab-db" class="tabpane" hidden>
+          <section class="block">
+            <h2>学术数据库导航（官方 + 第三方）<small>点击直达官网新开页；检索与下载遵守各库读者协议</small></h2>
+            <div id="dbGrid" class="results"></div>
+          </section>
+          <section class="block">
+            <h2>地址直达<small>输入任意网址或搜索词，浏览器新开页打开</small></h2>
+            <div class="row">
+              <input id="dbUrl" type="text" placeholder="网址（如 www.nstl.gov.cn）或直接输入搜索词（走百度学术）">
+              <button id="dbGo" class="btn2">打开</button>
+            </div>
+            <p class="hint">为什么是"新开页"而不是页面内嵌：绝大多数学术平台设了防嵌入与跨站 Cookie 拦截——内嵌出来是个登录不上、点不动的空壳。新开页等同书签栏。</p>
+          </section>
+          <section class="block">
+            <h2>我的常用入口<small>自己添加（只存本浏览器），例如单位图书馆 VPN 门户</small></h2>
+            <div class="row">
+              <input id="dbName" type="text" placeholder="名称（如：本校图书馆VPN）" style="flex:0 0 220px">
+              <input id="dbPUrl" type="text" placeholder="网址 https://...">
+              <button id="dbAdd" class="btn2 ghost">添加</button>
+            </div>
+            <div id="dbPortals" class="results"></div>
+            <p class="hint">自定义入口的账号与使用行为由你自行把握；涉及机构订阅的，请遵守所在机构的读者协议。本平台不内置、不托管任何第三方账号凭据。</p>
+          </section>
+        </section>
+      </div>
+
+    </section>
+  </div>
+</main>
+
+<!-- 收藏篮 -->
+<div id="mask"></div>
+<aside id="basket">
+  <div class="bhead"><b>🧺 收藏篮</b><span class="hint">喂给「综述工坊」或导入项目文献库</span>
+    <span style="flex:1"></span><button class="toolbtn" id="bkClose">关闭</button></div>
+  <div class="blist" id="bkList"></div>
+  <div class="bfoot">
+    <button class="btn2" id="bkBib">导出 .bib</button>
+    <button class="btn2 ghost" id="bkGB">复制 GB/T 7714</button>
+    <button class="btn2 gray" id="bkClear">清空</button>
+  </div>
+</aside>
+
+<footer class="site"><div class="container">
+  <div class="links"><a href="index.html">首页</a> · 发现问题？<a href="mailto:feedback@example.com">邮件告诉我们</a></div>
+  <div class="disc">本平台检索与 OA 链接来自 OpenAlex / Crossref / Unpaywall 官方公开接口，仅指向来源方标注的合法开放版本；不提供文献代下、代写服务。AI 产出（速读、审稿、综述草稿、引用匹配）均可能出错，使用前请人工核对；学术润色仅做语言表达优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器。</div>
+  <div>© 2026 文渠 · 科研工作台 · 数据接口礼貌限速</div>
+</div></footer>
+
+<aside id="verDrawer">
+  <div class="vhead"><b>📜 版本档案</b><span class="hint" id="verProj"></span><span style="flex:1"></span><button class="toolbtn" id="verClose">关闭</button></div>
+  <div class="vlist" id="verList"></div>
+</aside>
+
+<div id="toast"></div>
+
+<!-- 新建项目表单（替代原生 prompt） -->
+<div id="npMask" hidden style="position:fixed;inset:0;background:rgba(20,28,44,.35);z-index:98"></div>
+<div id="npModal" hidden style="position:fixed;left:50%;top:22%;transform:translateX(-50%);width:min(440px,92vw);background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;z-index:99;box-shadow:0 12px 40px rgba(27,42,74,.18)">
+  <h3 style="margin:0 0 10px">新建研究项目</h3>
+  <label class="hint" style="font-weight:700">项目名称</label>
+  <input id="npName" type="text" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;margin:4px 0 10px">
+  <label class="hint" style="font-weight:700">研究范式（决定章节骨架/矩阵栏目/审查内容）</label>
+  <select id="npParadigm" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:9px;margin:4px 0 10px"></select>
+  <label class="hint" style="font-weight:700">层级（决定审稿口径/字数/创新标尺）</label>
+  <select id="npLevel" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:9px;margin:4px 0 12px"></select>
+  <p class="hint" style="margin:0 0 10px">后续可在阶段1「项目配置」里随时修改。</p>
+  <div style="display:flex;gap:10px;justify-content:flex-end">
+    <button id="npCancel" class="btn2 ghost">取消</button>
+    <button id="npOk" class="btn2">创建项目</button>
+  </div>
+</div>
+
+<script>
+/* 模式切换 + 旧 workbench 深链拦截（先于 studio.js/wb.js 注册，供 wb 深链触发） */
+document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-mode]").forEach(x => x.classList.toggle("on", x === b));
+  const tools = b.dataset.mode === "tools";
+  document.getElementById("mode-flow").hidden = tools;
+  document.getElementById("mode-tools").hidden = !tools;
+  document.body.classList.toggle("tools-mode", tools);
+}));
+document.addEventListener("click", e => {
+  const a = e.target.closest?.('a[href^="workbench.html"]');
+  if (!a) return;
+  e.preventDefault();
+  const t = new URL(a.href, location.href).searchParams.get("tab");
+  document.querySelector('[data-mode="tools"]')?.click();
+  if (t) document.querySelector('.tab[data-tab="' + CSS.escape(t) + '"]')?.click();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+</script>
+<script src="assets/paradigms.js"></script>
+<script src="assets/vendor/marked.min.js"></script>
+<script src="assets/vendor/purify.min.js"></script>
+<script src="assets/studio.js"></script>
+<script src="assets/wb.js"></script>
+<script>
+/* PWA：SW 注册 + 安装按钮（Chromium localhost/HTTPS 下出现） */
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+let __deferredPrompt = null;
+addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault(); __deferredPrompt = e;
+  document.querySelectorAll(".installBtn").forEach((b) => (b.hidden = false));
+});
+async function wqInstall() {
+  if (!__deferredPrompt) return;
+  __deferredPrompt.prompt();
+  await __deferredPrompt.userChoice;
+  __deferredPrompt = null;
+  document.querySelectorAll(".installBtn").forEach((b) => (b.hidden = true));
+}
+</script>
+</body>
+</html>
