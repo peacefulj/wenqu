@@ -564,7 +564,7 @@
 
   /* ---- v1.0.1（QA P2-15）：投稿检查清单勾选持久化到项目 ---- */
   (function bindChecklist() {
-    const boxes = () => [...document.querySelectorAll("#s5 .checklist input")];
+    const boxes = () => [...document.querySelectorAll("#s6 .checklist input")];
     boxes().forEach((chk, i) => chk.addEventListener("change", () => {
       const p = P(); if (!p) return;
       p.checklistState = p.checklistState || [];
@@ -579,6 +579,158 @@
   })();
 
   /* ================================================================
+   * ⑥ 参考文献附文末（v1.0.4）：[n] 可点击跳到文末明细并可修订题录
+   * 挂接点：包装 window.setMD——对 #wOut 的每次渲染自动做引用增强 + 附参考文献表；
+   *        工作台与 afterRender 通过 renderRefAppendices() 刷新各自容器。
+   * 编号口径：[n] = 文献库顺序（与校验中心/导出同源）。
+   * ================================================================ */
+  function citeEnhance(el) {
+    const max = (P() && P().papers.length) || 0;
+    if (!max) return;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (n0) {
+        return (n0.parentNode.closest && n0.parentNode.closest("a,pre,code,.refappendix,.citelink")) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    const hits = [];
+    while (walker.nextNode()) {
+      if (/\[\d{1,3}\]/.test(walker.currentNode.nodeValue)) hits.push(walker.currentNode);
+    }
+    hits.forEach(function (t) {
+      const frag = document.createDocumentFragment();
+      const v = t.nodeValue;
+      const re = /\[(\d{1,3})\]/g;
+      let m, last = 0;
+      while ((m = re.exec(v))) {
+        const n = parseInt(m[1], 10);
+        if (n < 1 || n > max) continue;
+        if (m.index > last) frag.appendChild(document.createTextNode(v.slice(last, m.index)));
+        const a = document.createElement("span");
+        a.className = "citelink"; a.dataset.n = String(n);
+        a.textContent = "[" + n + "]";
+        a.title = "点此查看参考文献 " + n + "（文末）";
+        frag.appendChild(a);
+        last = m.index + m[0].length;
+      }
+      if (last < v.length) frag.appendChild(document.createTextNode(v.slice(last)));
+      t.parentNode.replaceChild(frag, t);
+    });
+  }
+
+  function refTxt(f) {
+    return (f.author ? f.author + ". " : "") + f.title + "[" + (f.type || "J") + "]. " +
+      (f.venue || "出处待补") + ", " + (f.year || "年份待补") + (f.doi ? ". DOI: " + f.doi : "") + ".";
+  }
+
+  function refAppendixHTML(p, hlN) {
+    const rows = p.papers.map(function (f, i) {
+      return '<div class="refrow' + (hlN === i + 1 ? " flash" : "") + '" data-rn="' + (i + 1) + '">'
+        + '<span class="rn">[' + (i + 1) + ']</span><span class="rt">' + esc(refTxt(f)) + '</span>'
+        + '<button class="pillbtn" data-redit="' + (i + 1) + '" title="修订题录（作者/标题/年份/出处/DOI）">✏️修改</button>'
+        + (f.doi ? ' <a class="pillbtn" href="https://doi.org/' + esc(f.doi) + '" target="_blank" rel="noopener">DOI</a>' : "")
+        + '</div>';
+    }).join("");
+    return '<div class="refappendix"><b class="rahead">参考文献</b><span class="hint">（References — 编号与正文 [n] 一致；点正文引用可跳到这里，点 ✏️修改 可修订题录，修改会同步到文献库与导出）</span>'
+      + '<div class="reflist">' + (rows || '<p class="hint">文献库为空</p>') + '</div></div>';
+  }
+
+  function renderRefAppendices(hlN) {
+    const p = P();
+    const targets = [];
+    const wOut = document.getElementById("wOut");
+    if (wOut) {
+      let ap = document.getElementById("wRefsAppendix");
+      if (!ap) { ap = document.createElement("div"); ap.id = "wRefsAppendix"; wOut.insertAdjacentElement("afterend", ap); }
+      ap.style.display = p && p.papers.length ? "" : "none";
+      targets.push([ap, p]);
+    }
+    const wb = document.getElementById("wbRefs");
+    if (wb) targets.push([wb, p]);
+    targets.forEach(function (pair) {
+      pair[0].innerHTML = (p && p.papers.length) ? refAppendixHTML(p, hlN) : '<p class="hint">文献库为空</p>';
+    });
+  }
+
+  function startRefEdit(row) {
+    const p = P(); if (!p) return;
+    const n = parseInt(row.dataset.rn, 10);
+    const f = p.papers[n - 1]; if (!f) return;
+    const inp = function (k, ph, val) {
+      return '<input class="refEd" data-k="' + k + '" value="' + esc(val || "") + '" placeholder="' + ph + '">';
+    };
+    row.classList.add("editing");
+    row.innerHTML = '<span class="rn">[' + n + ']</span>'
+      + inp("author", "作者", f.author) + inp("title", "标题（必填）", f.title)
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%">'
+      + '<select class="refEd" data-k="type">' + ["J", "D", "C", "M", "R", "EB"].map(function (t) {
+          return '<option value="' + t + '"' + (f.type === t ? " selected" : "") + ">[" + t + "]</option>";
+        }).join("") + '</select>'
+      + inp("venue", "期刊/出处", f.venue) + inp("year", "年份", f.year) + inp("doi", "DOI", f.doi)
+      + '<button class="pillbtn" data-resave="' + n + '" style="background:#0a7a43;color:#fff">💾 保存</button>'
+      + '<button class="pillbtn" data-recancel="1">取消</button></div>';
+    row.querySelector('.refEd[data-k="title"]').focus();
+  }
+
+  function saveRefEdit(row) {
+    const p = P(); if (!p) return;
+    const n = parseInt(row.dataset.rn, 10);
+    const f = p.papers[n - 1]; if (!f) return;
+    let bad = "";
+    row.querySelectorAll(".refEd").forEach(function (inp) {
+      const k = inp.dataset.k, v = inp.value.trim();
+      if (k === "title" && !v) { bad = "标题不能为空"; return; }
+      if (k === "year" && v && !/^\d{4}$/.test(v)) { bad = "年份应为 4 位数字"; return; }
+      f[k] = v;
+    });
+    if (bad) { toast(bad); return; }
+    f.verify = {}; /* 题录被人工修订后，旧核验结论作废 */
+    save();
+    renderRefAppendices(n);
+    renderPapers();
+    trailAdd(p, "act", "修订参考文献题录", "[" + n + "] " + (f.title || "").slice(0, 40));
+    save(); renderProcessLog();
+    toast("[" + n + "] 题录已更新（引用编号不变）");
+  }
+
+  /* 全局委托：正文 [n] 点击 → 滚动定位 + 高亮；明细行的编辑/保存/取消 */
+  document.addEventListener("click", function (e) {
+    const cl = e.target.closest(".citelink");
+    if (cl) {
+      const n = cl.dataset.n;
+      const row = document.querySelector('.refappendix .refrow[data-rn="' + CSS.escape(n) + '"]');
+      if (row) {
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash");
+      } else {
+        toast("[" + n + "] 暂无对应文献（正文引用与文献库不一致，建议跑一次「引用存在性核验」）");
+      }
+      return;
+    }
+    const ed = e.target.closest("[data-redit]");
+    if (ed) { startRefEdit(ed.closest(".refrow")); return; }
+    const sv = e.target.closest("[data-resave]");
+    if (sv) { saveRefEdit(sv.closest(".refrow")); return; }
+    const cx = e.target.closest("[data-recancel]");
+    if (cx) { renderRefAppendices(); return; }
+  });
+
+  /* 包装 setMD：#wOut 渲染后自动增强引用并附文末参考文献 */
+  (function wrapSetMD() {
+    const orig = window.setMD;
+    if (typeof orig !== "function") return;
+    window.setMD = function (el, text) {
+      orig(el, text);
+      try {
+        if (el && el.id === "wOut") {
+          citeEnhance(el);
+          renderRefAppendices();
+        }
+      } catch (e) { console.warn("citeEnhance", e); }
+    };
+  })();
+
+
+  /* ================================================================
    * afterRender：studio.renderAll 之后刷新本模块 UI（不打断输入）
    * ================================================================ */
   window.WQUI = {
@@ -587,6 +739,7 @@
       try { renderChecks(); } catch (e) {}
       try { renderDatacards(); } catch (e) {}
       try { if (window.__wqRestoreChecklist) window.__wqRestoreChecklist(); } catch (e) {}
+      try { renderRefAppendices(); } catch (e) {}
       try { if (window.wqRenderUsage) window.wqRenderUsage(); } catch (e) {}
     }
   };

@@ -23,6 +23,17 @@
   .ckitem{padding:7px 4px;border-bottom:1px dashed var(--line);font-size:13px}
   .ckitem:last-child{border-bottom:none}
   .pillbtn{border:1px solid var(--line);background:#fff;border-radius:999px;padding:2px 10px;font-size:12px;cursor:pointer}
+.citelink{color:#2456e6;cursor:pointer;border-bottom:1px dotted #2456e6;font-weight:600}
+.refappendix{margin-top:12px;border-top:2px solid var(--line);padding-top:8px}
+.rahead{font-size:13.5px;margin-right:6px}
+.reflist{max-height:340px;overflow:auto;margin-top:6px}
+.refrow{padding:5px 4px;border-bottom:1px dashed var(--line);font-size:12.8px;line-height:1.55;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.refrow .rn{font-weight:700;flex:0 0 2.4em}
+.refrow .rt{flex:1;min-width:200px}
+.refrow.flash{animation:refflash 1.8s ease}
+@keyframes refflash{0%{background:#fff3c4}100%{background:transparent}}
+.refrow.editing{flex-direction:column;align-items:stretch;background:#fafbfd;border-radius:9px;padding:8px}
+.refrow input,.refrow select{padding:4px 7px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;font:inherit}
 </style>
 </head>
 <body>
@@ -41,7 +52,7 @@
     <button class="modebtn on" data-mode="flow">🧭 项目工作流</button>
     <button class="modebtn" data-mode="tools">🧰 工具台</button>
     <a class="toolbtn" href="quick.html" style="text-decoration:none">⚡ 参考稿（快速开始）</a>
-    <span class="hint">工作流按项目推进（选题→文献→分析→写作→投稿）；工具台免建项目即用（检索/读论文/引用/综述/雷达/数据库）</span>
+    <span class="hint">工作流按项目推进（选题→文献→分析→写作→修改→投稿）；工具台免建项目即用（检索/读论文/引用/综述/雷达/数据库）</span>
     <span style="flex:1"></span>
     <button class="toolbtn installBtn" hidden onclick="wqInstall()">⤓ 安装应用</button>
     <button class="toolbtn" id="btnSet">⚙️ AI / 接口设置</button>
@@ -97,8 +108,9 @@
           <button class="stage on" data-s="1">① 选题与定位</button>
           <button class="stage" data-s="2">② 文献获取与管理</button>
           <button class="stage" data-s="3">③ 阅读与综合</button>
-          <button class="stage" data-s="4">④ 设计与写作</button>
-          <button class="stage" data-s="5">⑤ 质检与投稿</button>
+          <button class="stage" data-s="4">④ 设计与写作（从零开始）</button>
+          <button class="stage" data-s="5">⑤ 参考稿修改</button>
+          <button class="stage" data-s="6">⑥ 质检与投稿</button>
         </div>
 
         <!-- 阶段1 选题 -->
@@ -276,6 +288,12 @@
             <div class="callout c-info" style="margin-top:14px">写作助手定位：辅助你自己写作，引用来自你的文献库；请遵守学校/期刊的 AI 使用与引用规范。层级不限制 AI 参与程度（硕博同样可参考整段生成）——如何采用与改写由你决定，导出附《AI 使用说明》与归属统计。本平台不做检测规避。</div>
           </section>
 
+
+        </div>
+
+        <!-- 阶段5 参考稿修改（v1.0.4 自"设计与写作"拆出） -->
+        <div id="s5" class="stagepane" hidden>
+          <div id="sc5" class="stagecard"></div>
           <section class="block">
             <h2>🛠 修改工作台<small>生成之后的环节才是价值所在：参考稿 ↔ 我的稿，逐段采用/改写，归属账本自动记录，本人贡献度一目了然</small></h2>
             <div id="wbNoRef" class="callout c-info" hidden>该项目还没有参考稿。去 <a href="quick.html">⚡ 参考稿工作台</a> 生成一份（Agent 免费、只付 token、50 篇真实文献），或直接用上方分节写作自起稿。</div>
@@ -308,13 +326,17 @@
                 <summary>📊 与参考稿的逐段对比（diff）</summary>
                 <div class="body" id="wbDiff"><p class="hint">保存本节后自动生成。</p></div>
               </details>
+              <details class="fold" style="margin-top:6px">
+                <summary>📑 参考文献明细（附正文引用 [n] 可点击定位，✏️ 修改题录）</summary>
+                <div class="body" id="wbRefs"></div>
+              </details>
             </div>
           </section>
         </div>
 
-        <!-- 阶段5 投稿 -->
-        <div id="s5" class="stagepane" hidden>
-          <div id="sc5" class="stagecard"></div>
+        <!-- 阶段6 质检与投稿 -->
+        <div id="s6" class="stagepane" hidden>
+          <div id="sc6" class="stagecard"></div>
           <section class="block">
             <h2>🔬 校验中心<small>引用存在性 → 引用-论断对应 → 数字来源绑定 → 格式规范；每次结果存档，改稿后一键「回测」对比</small></h2>
             <div class="tmpl" style="width:100%">

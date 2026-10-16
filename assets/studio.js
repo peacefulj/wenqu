@@ -912,8 +912,9 @@ function renderStageCards() {
   set("sc1", "<b>阶段目标：</b>确定研究问题与创新点　<b>产出：</b>趋势图 + 选题卡<br>" + ck(has.trend, "趋势图已生成", "趋势未生成") + " · " + ck(has.sel, "选题卡已存入", "选题卡未生成（点「AI 评估选题」）") + "　<b>下一步 →</b> ② 文献获取与管理");
   set("sc2", "<b>阶段目标：</b>建立项目文献库　<b>当前：</b>" + (p?.papers.length || 0) + " 篇（" + abs + " 篇带摘要）　<b>建议规模：</b>" + LV(p).lit + "<br>工具：上方免费检索 / 批量 DOI / 收藏篮导入 / 逐条添加　<b>下一步 →</b> ③ 阅读与综合");
   set("sc3", "<b>前置依赖：</b>带摘要文献 " + abs + " 篇 " + (abs === 0 ? "—— ⚠ 为 0 时矩阵无法生成，请先回阶段2补摘要" : "") + "<br><b>产出：</b>文献矩阵（依据：摘要级）+ AI 读论文精读 + 综述素材　<b>下一步 →</b> ④ 设计与写作");
-  set("sc4", "<b>前置：</b>" + ck(has.sel, "选题卡", "选题卡缺（生成质量下降）") + " · " + ck(has.matrix, "文献矩阵", "矩阵缺（无法标注引用编号）") + "<br><b>产出：</b>大纲 + 研究设计审查 + 分节草稿 " + draftN + " 篇 + 全文导出　<b>下一步 →</b> ⑤ 质检与投稿");
-  set("sc5", "<b>产出：</b>三专家内审 + 修改清单 + 一致性检查 + 期刊/答辩包　<b>完成后：</b>" + (LV(p).name === "本科毕设" ? "导出全文 → 查重 → 答辩" : LV(p).id === "general" ? "导出全文 → 同行/合作者反馈（如需投稿再走期刊匹配）" : "投稿 → 返修用「审稿回复起草」"));
+  set("sc4", "<b>前置：</b>" + ck(has.sel, "选题卡", "选题卡缺（生成质量下降）") + " · " + ck(has.matrix, "文献矩阵", "矩阵缺（无法标注引用编号）") + "<br><b>产出：</b>大纲 + 研究设计审查 + 分节草稿 " + draftN + " 篇 + 全文导出　<b>下一步 →</b> ⑤ 参考稿修改（有参考稿时）或 ⑥ 质检与投稿");
+  set("sc5", "<b>阶段目标：</b>把参考稿逐段改成你自己的东西　<b>产出：</b>我的稿（逐节）+ 归属账本 + 本人贡献度 + 归属报告<br>用法：左侧参考稿逐段「采用/改写/追问依据」→ 右侧编辑保存（正文 [n] 可点击跳到文末参考文献并可修订题录）　<b>下一步 →</b> ⑥ 质检与投稿");
+  set("sc6", "<b>产出：</b>引用核验 + 论断抽查 + 三专家内审 + 一致性检查 + 期刊/答辩包　<b>完成后：</b>" + (LV(p).name === "本科毕设" ? "导出全文 → 查重 → 答辩" : LV(p).id === "general" ? "导出全文 → 同行/合作者反馈（如需投稿再走期刊匹配）" : "投稿 → 返修用「审稿回复起草」"));
   const pl = $("progressLine");
   if (pl) pl.innerHTML = "关键产出 <b>" + done + "/8</b>：趋势 " + (has.trend ? "✓" : "○") + " · 选题卡 " + (has.sel ? "✓" : "○") + " · 文献≥10 " + (has.lit10 ? "✓" : "○") + " · 摘要≥5 " + (has.abs5 ? "✓" : "○") + " · 矩阵 " + (has.matrix ? "✓" : "○") + " · 大纲 " + (has.outline ? "✓" : "○") + " · 设计审查 " + (has.design ? "✓" : "○") + " · 草稿 " + (has.draft ? "✓" : "○");
 }
@@ -1133,7 +1134,7 @@ if (!DB.projects.length) newProject("示例项目：我的第一个研究");
     const pid = q.get("p");
     if (pid && DB.projects.some(x => x.id === pid)) DB.cur = pid;
     const st = q.get("stage");
-    if (st && /^[1-5]$/.test(st)) setTimeout(() => document.querySelector('.stage[data-s="' + st + '"]')?.click(), 0);
+    if (st && /^[1-6]$/.test(st)) setTimeout(() => document.querySelector('.stage[data-s="' + st + '"]')?.click(), 0);
   } catch (e) {}
 })();
 renderProjects(); renderAll();
