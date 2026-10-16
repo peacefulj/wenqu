@@ -57,9 +57,9 @@
     </div>
     <div class="grid4">
       <div><label>GROBID 服务地址（选填，高级：本地 Docker 起后端后填 http://localhost:8070）</label>
-      <input id="grobidUrl" type="text" placeholder="http://localhost:8070"></div>
-      <div><label>单价·输入（元/百万token，选填——用于本机费用折算）</label><input id="aiPriceIn" type="text" placeholder="如 2"></div>
-      <div><label>单价·输出（元/百万token，选填）</label><input id="aiPriceOut" type="text" placeholder="如 8"></div>
+      <input id="grobidUrl" type="text" placeholder="http://localhost:8070" aria-label="GROBID 服务地址"></div>
+      <div><label>单价·输入（元/百万token，选填——用于本机费用折算）</label><input id="aiPriceIn" type="text" placeholder="如 2" aria-label="输入单价，元每百万token"></div>
+      <div><label>单价·输出（元/百万token，选填）</label><input id="aiPriceOut" type="text" placeholder="如 8" aria-label="输出单价，元每百万token"></div>
     </div>
     <div class="actions">
       <button class="btn2" id="aiSave">保存设置</button>
@@ -289,7 +289,7 @@
               </div>
               <div class="wbgrid" style="margin-top:8px">
                 <div>
-                  <div class="wbhead">📋 参考稿（AI · 只读）<span class="hint" id="wbRefMeta"></span></div>
+                  <div class="wbhead">📋 参考稿（AI · 只读）<span class="hint" id="wbRefMeta"></span><div class="hint" style="font-weight:400">参考稿的 [n] 编号=文献库当前顺序；在阶段②<b>删除文献</b>会使编号错位，删除前请留意。</div></div>
                   <div id="wbRefPane" class="wbpane"></div>
                 </div>
                 <div>

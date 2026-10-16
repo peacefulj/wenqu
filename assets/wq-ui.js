@@ -176,7 +176,22 @@
 
   (function bindWorkbench() {
     if (!has("wbSec")) return;
-    $("wbSec").addEventListener("change", () => renderWbPanes(true));
+    $("wbSec").addEventListener("change", async () => {
+      /* v1.0.1（QA P1-4）：有未保存修改时先询问，不再静默覆盖 */
+      const prevSec = wbState.sec, mine = $("wbMine").value;
+      const p = P();
+      const saved = (p && p.draft && p.draft[prevSec]) || "";
+      if (prevSec && mine.trim() && mine !== saved) {
+        let act = "save";
+        if (window.wqChoose) {
+          act = await window.wqChoose("「" + prevSec + "」有未保存的修改", ["切换前如何处理这份修改？"], [
+            { label: "💾 保存并切换", key: "save", primary: true }, { label: "丢弃修改", key: "discard" }, { label: "留在本节", key: "stay" }]);
+        } else { act = confirm("保存修改并切换？（取消=留在本节）") ? "save" : "stay"; }
+        if (act === "stay") { const sel = $("wbSec"); sel.value = prevSec; return; }
+        if (act === "save") { saveDraft(prevSec, true); }
+      }
+      renderWbPanes(true);
+    });
     $("wbSaveDraft").addEventListener("click", () => saveDraft($("wbSec").value));
     $("wbMine").addEventListener("input", () => { /* 输入中不重渲染，防打断 */ });
     $("wbRecalc").addEventListener("click", () => { renderContrib(); toast("归属账本已重算"); });
@@ -400,8 +415,8 @@
       });
       if (!lines.length) { toast("同一校验项至少跑两次才能回测对比"); return; }
       const out = $("ckOut");
-      const div = document.createElement("div");
-      div.className = "callout c-info";
+      let div = document.getElementById("ckRetestBox");
+      if (!div) { div = document.createElement("div"); div.id = "ckRetestBox"; div.className = "callout c-info"; out.before(div); }
       div.innerHTML = "<b>🔁 回测对比</b>" + mdRender(lines.join("\n"));
       out.before(div);
       trailAdd(p, "act", "校验回测", lines.length + " 项对比");
@@ -490,10 +505,11 @@
     $("btnExportDoc2").addEventListener("click", () => {
       const p = P(); if (!p) return toast("先新建项目");
       const pq = PQ(p);
-      const drafted = pq.sections.filter(s => p.draft && p.draft[s]);
+      const secList = exportSecList(p, pq);
+      const drafted = secList.filter(s => p.draft && p.draft[s]);
       if (!drafted.length) { toast("还没有「我的稿」内容：先在④修改工作台采用/写作，再导出"); return; }
       const esc2 = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      const parts = pq.sections.map(s => {
+      const parts = secList.map(s => {
         let t = p.draft?.[s] || "";
         if (t) t = t.replace(/〔生成：[^〕]*〕/g, "").trim();
         return `<h2>${esc2(s)}</h2>` + (t ? t.split(/\n+/).map(x => `<p>${esc2(x)}</p>`).join("") : "<p>〔本节未写〕</p>");
@@ -546,6 +562,22 @@
     window.wqRenderUsage();
   })();
 
+  /* ---- v1.0.1（QA P2-15）：投稿检查清单勾选持久化到项目 ---- */
+  (function bindChecklist() {
+    const boxes = () => [...document.querySelectorAll("#s5 .checklist input")];
+    boxes().forEach((chk, i) => chk.addEventListener("change", () => {
+      const p = P(); if (!p) return;
+      p.checklistState = p.checklistState || [];
+      p.checklistState[i] = chk.checked;
+      save();
+    }));
+    window.__wqRestoreChecklist = function () {
+      const p = P(); const st = p && p.checklistState;
+      if (!st) return;
+      boxes().forEach((chk, i) => { chk.checked = !!st[i]; });
+    };
+  })();
+
   /* ================================================================
    * afterRender：studio.renderAll 之后刷新本模块 UI（不打断输入）
    * ================================================================ */
@@ -554,6 +586,7 @@
       try { renderWorkbench(); } catch (e) { console.warn("wb", e); }
       try { renderChecks(); } catch (e) {}
       try { renderDatacards(); } catch (e) {}
+      try { if (window.__wqRestoreChecklist) window.__wqRestoreChecklist(); } catch (e) {}
       try { if (window.wqRenderUsage) window.wqRenderUsage(); } catch (e) {}
     }
   };

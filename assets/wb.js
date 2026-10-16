@@ -82,10 +82,13 @@ function copyText(text, btn) {
 function aiConfirmOn() {
   try { const s = JSON.parse(localStorage.getItem("wenqu_ai") || "{}"); return s.confirm !== false; } catch { return true; }
 }
+/* v1.0.1 修复（QA P0-1）：确认框单例互踩会覆盖前一个 resolver 导致按钮永久卡死——
+   所有调用排队串行：前一个弹窗关闭后才弹下一个 */
+let __wqCQueue = Promise.resolve();
 window.wqConfirmAI = function (opts) {
   opts = opts || {};
   if (!aiConfirmOn()) return Promise.resolve(true);
-  return new Promise(function (resolve) {
+  const run = () => new Promise(function (resolve) {
     let mask = document.getElementById("wqCMask");
     if (!mask) {
       mask = document.createElement("div");
@@ -112,7 +115,11 @@ window.wqConfirmAI = function (opts) {
     document.getElementById("wqCOk").onclick = function () { done(true); };
     document.getElementById("wqCCancel").onclick = function () { done(false); };
   });
+  const q = __wqCQueue.then(run, run);
+  __wqCQueue = q.catch(function () {});
+  return q;
 };
+
 
 
 /* v0.5.1：页内通知与输入弹窗（替代原生 alert/prompt，避免阻塞卡死） */
@@ -593,7 +600,7 @@ function searchCard(w, i) {
     <div class="rmeta"><span class="lpill">${esc(LANG_NAME[langOf(w)] || langOf(w))}</span>${esc(w.publication_year || "")} · ${esc(venue)} · ${esc(authors.join(", "))}${(w.authorships || []).length > 4 ? " 等" : ""} · 被引 ${w.cited_by_count ?? 0}</div>
     <div class="rbtns">
       ${pdf ? `<a class="pill ok" href="${esc(pdf)}" target="_blank" rel="noopener">📥 免费 PDF</a>` : `<button class="pill no" data-helpbtn>无免费版 · 求助</button>`}
-      <button class="pill" data-act="ab" ${hasAb ? "" : "disabled"}>⚡AI速读</button>
+      <button class="pill" data-act="ab" ${hasAb ? "" : "disabled"} ${hasAb ? "" : "title=该文无摘要无法速读"}>⚡AI速读</button>
       <button class="pill" data-act="add">➕收藏</button>
       <button class="pill" data-act="cite">引 ↗</button>
       ${doi ? `<a class="pill" href="https://doi.org/${esc(doi)}" target="_blank" rel="noopener">DOI</a>` : ""}
@@ -1531,7 +1538,10 @@ ${batch.map(b => b.line).join("\n")}`, { temperature: 0.2, max_tokens: 2048 });
   }
   scored.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   bar.style.width = "100%";
-  prog.textContent = `完成 ✓ ${scored.filter(x => (x.score ?? 0) >= 70).length} 篇 ≥70 分。按 AI 相关度排序：`;
+  const scoredN = scored.filter(x => x.score != null).length;
+  prog.textContent = scoredN
+    ? `完成 ✓ ${scored.filter(x => (x.score ?? 0) >= 70).length} 篇 ≥70 分。按 AI 相关度排序：`
+    : "AI 打分未执行（未配置 Key 或调用失败）——以下为检索结果，配置 Key 后可重新扫描打分：";
   out.innerHTML = scored.map((x, i) => {
     const pdf = oaLink(x.w);
     const cls = (x.score ?? 0) >= 80 ? "hi" : (x.score ?? 0) >= 60 ? "mid" : "";
@@ -1697,4 +1707,18 @@ if (__deepTab) {
   document.querySelector('[data-mode="tools"]')?.click();
   document.querySelector('.tab[data-tab="' + CSS.escape(__deepTab) + '"]')?.click();
 }
+
+
+/* v1.0.1（QA P0-1 同族）：wqNotice/wqPromptAI/wqChoose 与确认框共用同一单例 mask——统一入同一队列（放在定义之后，IIFE 收尾前） */
+["wqNotice", "wqPromptAI", "wqChoose"].forEach(function (name) {
+  const orig = window[name];
+  if (typeof orig !== "function") return;
+  window[name] = function () {
+    const args = arguments;
+    const run = () => orig.apply(null, args);
+    const q2 = __wqCQueue.then(run, run);
+    __wqCQueue = q2.catch(function () {});
+    return q2;
+  };
+});
 })();

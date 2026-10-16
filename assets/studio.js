@@ -80,6 +80,8 @@ const LV = (p) => window.WQ_LEVELS.find(x => x.id === (p?.level || "journal")) |
     if (p.trail.length > 200) p.trail.length = 200;
   }
   delete p.processLog;
+  /* v1.0.1（QA P1-6 存量修正） */
+  if (p.pipeline && p.pipeline.status === "failed" && p.status === "参考稿生成中") p.status = "参考稿中断（可续跑）";
 }); })();
 
 const newProject = (name, paradigm, level) => {
@@ -125,7 +127,10 @@ async function callAI(userMsg, maxTokens = 4096) {
 function withBusy(btn, fn) {
   if (!btn || btn._busy) return;
   btn._busy = true; btn.disabled = true;
-  Promise.resolve(fn()).finally(() => { btn._busy = false; btn.disabled = false; refreshAIButtons(); });
+  Promise.resolve(fn()).catch(e => { console.warn("withBusy:", e && e.message); }).finally(() => { btn._busy = false; btn.disabled = false; refreshAIButtons(); });
+  /* v1.0.1（QA P0-1 兜底）：promise 永久挂起时 10 分钟后自动解锁 */
+  const __wbT0 = Date.now();
+  setTimeout(() => { if (btn && btn._busy && Date.now() - __wbT0 > 595000) { btn._busy = false; btn.disabled = false; try { refreshAIButtons(); } catch (e) {} toast("操作超时已解锁，请重试"); } }, 600000);
 }
 /* await 后重取项目：防止期间删除/切换导致结果写丢 */
 function liveProj(pid) {
@@ -141,7 +146,10 @@ function wqGaps(p) {
   const n = (p && p.papers.length) || 0;
   const abs = p ? p.papers.filter(f => f.abs).length : 0;
   if (!n) g.push("注意：文献库为空——生成内容将缺乏依据");
-  else if (!p.matrix) g.push("注意：文献矩阵未生成（现有 " + n + " 篇，其中 " + abs + " 篇带摘要）");
+  else if (!p.matrix) {
+    if (p.mode === "quick" && p.ref) g.push("提示：参考稿已含 " + n + " 篇真实文献（矩阵可选——生成后可深化引用核对）");
+    else g.push("注意：文献矩阵未生成（现有 " + n + " 篇，其中 " + abs + " 篇带摘要）");
+  }
   return g;
 }
 /* v0.5：AI 操作前统一确认（复用工具台弹窗；可在 AI 设置中关闭）
@@ -363,7 +371,7 @@ $("btnDoiBatch").addEventListener("click", () => withBusy($("btnDoiBatch"), asyn
     } catch { fail++; }
     await sleep(350); // 对 Crossref 保持礼貌
   }
-  prog.textContent = `完成 ✓ 成功 ${ok} · 重复跳过 ${dup} · 失败 ${fail}`;
+  prog.textContent = `完成 ✓ 成功 ${ok} · 重复跳过 ${dup} · 失败 ${fail}（识别 ${dois.length}/${raw.length} 行）`;
   { const pp = liveProj(pid); if (pp) { addVersion(pp, "文献批量导入（" + ok + " 篇）", ok ? pp.papers.map((f, i) => "[" + (i + 1) + "] " + f.title).join("\n") : "（无新增）", "tool"); save(); } }
   $("doiBatch").value = "";
 }));
@@ -396,14 +404,30 @@ function renderPapers() {
         <td>${i + 1}</td>
         <td>${esc(f.title.slice(0, 55))}${f.title.length > 55 ? "…" : ""}${f.doi ? `<br><a href="https://doi.org/${esc(f.doi)}" target="_blank" rel="noopener" class="mono">DOI</a>` : ""}</td>
         <td>${esc(f.year || "—")}</td><td>${esc(f.venue || "—")}</td>
-        <td>${f.abs ? '<span class="badge b-ok">✓</span>' : `<button class="btn2 btn-sm" data-abs="${f.id}">补摘要</button>`}</td>
+        <td>${f.abs ? '<span class="badge b-ok">✓</span>' : `<button class="btn2 btn-sm" data-abs="${f.id}">补摘要</button>`}${(!f.doi && f.verify && f.verify.doiSuggest) ? `<br><button class="btn2 btn-sm" data-adoptdoi="${f.id}" title="核验匹配 ${esc(f.verify.doiSuggest)}（匹配度 ${f.verify.score}）">采纳DOI</button>` : ""}</td>
         <td><button class="btn2 btn-sm warn" data-rm="${f.id}">删</button></td>
       </tr>`).join("") + "</table>"
       : '<p class="hint">文献库为空。可单条添加、批量粘贴 DOI，或从收藏篮导入。</p>');
   document.querySelectorAll("[data-abs]").forEach(b => b.addEventListener("click", () => withBusy(b, () => fillAbs(b.dataset.abs))));
-  document.querySelectorAll("[data-rm]").forEach(b => b.addEventListener("click", () => {
-    const p2 = cur(); p2.papers = p2.papers.filter(f => f.id !== b.dataset.rm);
+  document.querySelectorAll("[data-rm]").forEach(b => b.addEventListener("click", async () => {
+    const p2 = cur(); if (!p2) return;
+    /* v1.0.1（编号双轨）：快速稿的 [n] 与文献库顺序绑定，删除会使既有编号错位——先警告 */
+    if (p2.mode === "quick" && p2.ref) {
+      const ok = await (window.wqConfirmAI ? wqConfirmAI({ title: "删除文献会使参考稿引用编号错位？", lines: ["参考稿各节的 [n] 编号与文献库顺序一致", "删除后请到④工作台重核相关引用（或改用「保留条目、仅修订题录」）"], okText: "仍要删除" }) : confirm("删除会使参考稿引用编号错位，仍要删除？"));
+      if (!ok) return;
+    }
+    p2.papers = p2.papers.filter(f => f.id !== b.dataset.rm);
     save(); renderPapers(); renderProjects();
+  }));
+  /* v1.0.1（QA P1-9）：核验匹配到的 DOI 一键采纳 */
+  document.querySelectorAll("[data-adoptdoi]").forEach(b => b.addEventListener("click", () => {
+    const p2 = cur(); if (!p2) return;
+    const f = p2.papers.find(x => x.id === b.dataset.adoptdoi);
+    if (f && f.verify && f.verify.doiSuggest) {
+      f.doi = f.verify.doiSuggest;
+      save(); renderPapers(); toast("已采纳 DOI：" + f.doi);
+      trailAdd(p2, "act", "采纳核验 DOI", f.title.slice(0, 40) + " → " + f.doi); save();
+    }
   }));
 }
 
@@ -567,12 +591,24 @@ async function draftSection(sec, btn) {
     const hint = pq.secHint[sec] ? `\n本节范式要求：${pq.secHint[sec]}` : "";
     const designLike = sec.includes("设计") || sec.includes("方法") || sec.includes("对象");
     const useDesign = p0.design && designLike;
-    const txt = await callAI(`你是学术写作助手（${pq.name}范式）。请基于大纲与文献矩阵，起草论文的「${sec}」一节：${lv.length}。${hint}
+    /* v1.0.1（QA P2-19）：长文分节写作改流式输出（与参考稿一致），完成后仍走 Markdown 渲染与落盘 */
+    const __prompt = `你是学术写作助手（${pq.name}范式）。请基于大纲与文献矩阵，起草论文的「${sec}」一节：${lv.length}。${hint}
 论述中在对应位置标注引用编号[n]（编号只能取自文献矩阵且禁止虚构；标注「禁止引用」的编号一律不得使用），需要补充数据处用〔待补：xxx〕占位。不要虚构文献。${useDesign ? "\n本节涉及研究设计/方法，须严格按下方审查报告的方案撰写。" : ""}${sec === "引言" ? "\n引言末尾补一段 Contribution Statement（相对文献矩阵的三点边际贡献）。" : ""}${en ? "" : ""} 语言要求：${langSpec}${styleBlock()}
 
 大纲：${(p0.outline || "（未生成大纲，建议先点「生成大纲」按钮）").slice(0, 2000)}
-
-${outlineCtx(p0)}${designCtx}`, 6000);
+${outlineCtx(p0)}${designCtx}`;
+    let txt = "";
+    if (window.WQCore && WQCore.ai.stream) {
+      out.hidden = false;
+      let __lastPaint = 0;
+      const r = await WQCore.ai.stream(__prompt, { max_tokens: 6000 }, (_d, full) => {
+        const now = Date.now();
+        if (now - __lastPaint > 250) { __lastPaint = now; out.textContent = full; out.scrollTop = out.scrollHeight; }
+      });
+      txt = r.text;
+    } else {
+      txt = await callAI(__prompt, 6000);
+    }
     const p = liveProj(pid); if (!p) { prog.textContent = "项目已被删除，结果丢弃"; return; }
     if (/当前状态诊断|请您提供|请先提供|无法支撑|缺乏研究主题|缺乏研究大纲|输入不足|无法撰写|需要您补充|暂无足够|无法为您|无法直接撰写/.test(txt) && txt.length < 2600) {
       out.hidden = false; setMD(out, txt); $("btnWCopy").hidden = false;
@@ -660,13 +696,24 @@ ${parts.join("\n\n").slice(0, 9000)}`, 6000);
   } catch (e) { prog.textContent = "失败：" + e.message; }
 }));
 
+/* v1.0.1（QA P0-2）：导出节序 = 参考稿节序 ∪ 我的稿键 ∪ 范式节（去重保序）——快速稿节名由 AI 自定，按范式节遍历会丢节 */
+function exportSecList(p, pq) {
+  const list = [], seen = new Set();
+  const push = (x) => { const s0 = String(x || "").trim(); if (s0 && !seen.has(s0)) { seen.add(s0); list.push(s0); } };
+  ((p && p.ref && p.ref.order) || []).forEach(push);
+  Object.keys((p && p.draft) || {}).forEach(push);
+  ((pq && pq.sections) || []).forEach(push);
+  return list;
+}
+
 /* 全文合并导出（Word 可直接打开的 .doc；章节顺序=范式章节表） */
 $("btnExportDoc").addEventListener("click", () => {
   const p = cur(); if (!p) return wqNotice("先新建项目");
   const pq = PQ(p);
   const esc2 = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const metaLines = [];
-  const parts = pq.sections.map(s => {
+  const secList = exportSecList(p, pq);
+  const parts = secList.map(s => {
     let t = p.draft?.[s] || "";
     if (t) t = t.replace(/〔生成：[^〕]*〕/g, (m) => { metaLines.push(s + "：" + m.replace(/^〔|〕$/g, "")); return ""; }).trim();
     return `<h2>${esc2(s)}</h2>` + (t ? t.split(/\n+/).map(x => `<p>${esc2(x)}</p>`).join("") : "<p>〔本节未起草〕</p>");
@@ -679,7 +726,7 @@ $("btnExportDoc").addEventListener("click", () => {
   a.href = URL.createObjectURL(new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" }));
   a.download = (p.topic || p.name || "论文全文").replace(/[\\/:*?"<>|]/g, "_") + ".doc";
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  const drafted = pq.sections.filter(s => p.draft && p.draft[s]).length;
+  const drafted = secList.filter(s => p.draft && p.draft[s]).length;
   trailAdd(p, "export", "导出全文（Word）", (p.topic || p.name) + " · 已起草 " + drafted + "/" + pq.sections.length + " 节" + (drafted ? "" : "（尚为空稿占位）"));
   save(); renderProcessLog();
 });

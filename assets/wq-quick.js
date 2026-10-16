@@ -195,6 +195,9 @@
 
     var lv = lvObj(proj._form.level), tp = TYPE_SPEC[proj._form.type] || TYPE_SPEC.thesis;
     var perWords = Math.round(proj._form.words / proj._form.secs);
+    /* v1.0.1（QA P2-13）：任务书/开题类是条目式短文，不按整篇论文均摊字数 */
+    if (proj._form.type === "task") perWords = Math.min(perWords, 450);
+    if (proj._form.type === "proposal") perWords = Math.min(perWords, 800);
 
     var steps = [
       { id: "refs", label: "检索 " + proj._form.refsN + " 篇真实文献（OpenAlex）", run: stepRefs },
@@ -231,7 +234,9 @@
       $("qDoneRow").hidden = false;
     } catch (e) {
       renderSteps(steps, stateMap());
-      $("qMsg").textContent = (/已手动停止/.test(e.message) ? "已停止" : "出错：" + e.message) + " —— 点「继续生成参考稿」可从断点续跑。";
+      const __stopped = /已手动停止|已停止/.test(e.message) || (ctl && ctl.signal && ctl.signal.aborted);
+      $("qMsg").textContent = (__stopped ? "已停止（已完成部分已保存）" : "出错：" + e.message) + " —— 点「续跑」可从断点继续。";
+      try { if (proj.pipeline && proj.pipeline.status === "failed") { proj.status = "参考稿中断（可续跑）"; saveDB(); } } catch (e2) {}
       $("qGo").textContent = "▶ 续跑（从断点继续）";
     } finally {
       clearInterval(actualTimer);
@@ -283,7 +288,7 @@
       var refList = refs.map(function (r0) { return "[" + r0.n + "] " + r0.title + " (" + r0.year + ")"; }).join("\n");
       var prompt = "你是学术写作教练。为一份【" + lv.name + "·" + tp.name + "】生成提纲。" +
         "题目：" + c.proj.topic + "\n" +
-        "章节要求：" + tp.hint + "；共 " + c.proj._form.secs + " 个正文章节（参考文献表不算章节）。\n" +
+        "章节要求：" + tp.hint + "；共 " + c.proj._form.secs + " 个正文章节（参考文献表不算章节）——必须正好 " + c.proj._form.secs + " 节，不多不少。\n" +
         "层级要求：" + (lv.innovation || "") + "；文献规模：" + (lv.lit || "") + "。\n" +
         (pqObj(c.proj.paradigm).sections ? "可参考该范式推荐章节：" + pqObj(c.proj.paradigm).sections.join(" / ") + "（按题型调整）\n" : "") +
         (c.proj._form.material ? "用户已有材料/提纲（沿用其结构与思路，可优化）：" + c.proj._form.material.slice(0, 1500) + "\n" : "") +
@@ -322,7 +327,7 @@
         var prevTail = prevName && c.proj.refDraft.sections[prevName] ? String(c.proj.refDraft.sections[prevName].text).slice(-350) : "";
         var prompt = "你是学术写作助手。这是给「" + lv.name + "」用的【" + tp.name + "】参考稿（学习参考用途）。现在只写「" + sec.name + "」这一节。\n" +
           "本节要点：\n- " + (sec.points || []).join("\n- ") + "\n" +
-          "本节字数目标：约 " + perWords + " 字。\n" +
+          "本节字数目标：约 " + perWords + " 字（不要低于一半、不要超过 " + Math.round(perWords * 1.4) + " 字）。\n" +
           "引用规范：在对应位置标注 [n]；编号只能取自文献列表；本节优先引用：" + secRefs.map(function (r0) { return r0.n; }).join("、") + "。禁止编造文献编号。\n" +
           "数据规范：需要数据、表格、图、公式支撑的地方，写「〔图表占位：说明需要什么数据或图〕」，禁止编造具体数字。\n" +
           (prevTail ? "上一节（" + prevName + "）结尾：「…" + prevTail + "」，自然衔接，不要重复。\n" : "") +
@@ -418,7 +423,7 @@
       c.proj.status = "写作中";
       /* 版本档案 + 轨迹（与 studio 的 addVersion/trailAdd 同构） */
       c.proj.versions = c.proj.versions || [];
-      c.proj.versions.unshift({ ts: WQCore.stamp(), kind: "参考稿·全文", content: ref0.fullText.slice(0, 12000), field: "ref" });
+      c.proj.versions.unshift({ ts: WQCore.stamp(), kind: "参考稿·全文", content: ref0.fullText, field: "ref" });
       if (c.proj.versions.length > 40) c.proj.versions.length = 40;
       c.proj.trail = c.proj.trail || [];
       c.proj.trail.unshift({ ts: WQCore.stamp(), type: "ai", label: "参考稿生成（" + order.length + " 节 / " + (c.proj.papers || []).length + " 篇文献）", note: "模型 " + ref0.model + " · 参考 Agent，逐节落盘" });

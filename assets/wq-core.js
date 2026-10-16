@@ -249,8 +249,13 @@
             if (chunk.usage) usage = chunk.usage;
           }
         }
+      } catch (e) {
+        /* v1.0.1 修复（QA P0-3）：读流阶段的中止（最常见的停止点）也要映射成人话 */
+        if ((opts.signal && opts.signal.aborted) || (e && e.name === "AbortError")) throw new Error("已手动停止");
+        throw e;
       } finally { clearTimeout(timer); }
     }
+    if (!text && opts.signal && opts.signal.aborted) throw new Error("已手动停止");
     if (!text) throw new Error("模型返回为空（检查 Key / 模型 / 余额；推理型模型可能把 token 花在思维链上）");
     var est = usage ? { inTok: usage.prompt_tokens || 0, outTok: usage.completion_tokens || 0, real: true }
       : { inTok: estimateTokens(userMsg), outTok: estimateTokens(text), real: false };
