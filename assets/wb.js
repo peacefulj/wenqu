@@ -276,7 +276,7 @@ $("aiSave").addEventListener("click", () => {
   lsSet("wenqu_ai", JSON.stringify(Object.assign({}, prev, {
     base: $("aiBase").value.trim() || AI_DEF.base,
     key: $("aiKey").value.trim(),
-    model: $("aiModel").value.trim() || AI_DEF.model,
+    model: $("aiModel").value.trim() || prev.model || AI_DEF.model,
     confirm: $("aiConfirmChk") ? $("aiConfirmChk").checked : true,
   })));
   lsSet("wenqu_email", $("upEmail").value.trim());

@@ -184,6 +184,25 @@
       : ("约 " + (inTok + outTok).toLocaleString() + " tokens ≈ ¥" + v);
   }
 
+  /* v1.0.2：探测服务商可用模型——只填 Key 的用户留空模型名时自动选择 */
+  var MODEL_PREFS = ["kimi-k2.6", "kimi-k2", "glm-5.3-flash", "glm-5.2", "deepseek-v3", "deepseek-chat", "gpt-4o-mini", "gpt-4.1-mini", "claude-3-5-haiku", "qwen-plus"];
+  async function probeModels(base, key) {
+    base = String(base || conf().base || "").replace(/\/+$/, "");
+    var headers = key ? { Authorization: "Bearer " + key } : {};
+    var r = await fetch(base + "/models", { headers: headers });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    var j = await r.json();
+    var ids = (j.data || []).map(function (m) { return m.id; });
+    var pick = null;
+    for (var i = 0; i < MODEL_PREFS.length; i++) {
+      if (ids.indexOf(MODEL_PREFS[i]) >= 0) { pick = MODEL_PREFS[i]; break; }
+      var hit = ids.find(function (x) { return typeof x === "string" && x.indexOf(MODEL_PREFS[i]) === 0; });
+      if (hit) { pick = hit; break; }
+    }
+    if (!pick && ids.length) pick = ids[0];
+    return { pick: pick, list: ids };
+  }
+
   /* 流式调用；onDelta 可选。返回 {text, usage, est} */
   async function streamAI(userMsg, opts, onDelta) {
     opts = opts || {};
@@ -218,6 +237,10 @@
     if (!res.ok) {
       clearTimeout(timer);
       var t = await res.text().catch(function () { return ""; });
+      /* v1.0.2：模型无渠道是最常见的新手坑，给可执行的指引 */
+      if (res.status === 503 || /model_not_found|无可用渠道|does not exist|not found/i.test(t)) {
+        throw new Error("模型「" + body.model + "」在该服务商没有可用渠道——请到「AI / 接口设置」更换模型名（留空保存可自动探测可用模型）。原始信息：" + String(t).slice(0, 140));
+      }
       throw new Error("HTTP " + res.status + " " + String(t).slice(0, 180));
     }
     var ctype = res.headers.get("content-type") || "";
@@ -444,7 +467,7 @@
     loadLocal: loadLocal, saveLocal: saveLocal,
     ai: {
       conf: conf, setConf: setConf, estimateTokens: estimateTokens,
-      stream: streamAI, call: callAI, usageToday: usageToday, estCostText: estCostText,
+      stream: streamAI, call: callAI, usageToday: usageToday, estCostText: estCostText, probeModels: probeModels,
       usageAll: function () { try { return JSON.parse(localStorage.getItem(LS_USAGE) || "{}"); } catch (e) { return {}; } }
     },
     pipeline: WQPipeline,

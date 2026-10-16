@@ -46,15 +46,42 @@
     var c = WQCore.ai.conf();
     $("qkBase").value = c.base || ""; $("qkKey").value = c.key || ""; $("qkModel").value = c.model || "";
     $("qkPriceIn").value = c.priceIn || ""; $("qkPriceOut").value = c.priceOut || "";
-    $("qkSave").addEventListener("click", function () {
-      WQCore.ai.setConf({
-        base: $("qkBase").value.trim() || "https://yingcompute.com/v1",
-        key: $("qkKey").value.trim(),
-        model: $("qkModel").value.trim() || "glm-5.3-flash",
-        priceIn: $("qkPriceIn").value.trim(), priceOut: $("qkPriceOut").value.trim()
-      });
-      $("qkSaveMsg").textContent = "已保存 ✓"; renderKeyState(); updateEst();
-      setTimeout(function () { $("qkSaveMsg").textContent = ""; }, 2000);
+    /* v1.0.2：自愈——配了非萤算服务商但模型还是默认 glm-5.3-flash（会 503 无渠道），自动探测并修正 */
+    (async function autoHeal() {
+      try {
+        if (!c.key || !c.base) return;
+        if (/yingcompute/.test(c.base)) return;
+        if (c.model && c.model !== "glm-5.3-flash") return;
+        var pr = await WQCore.ai.probeModels(c.base, c.key);
+        if (pr.pick && pr.pick !== c.model) {
+          WQCore.ai.setConf({ model: pr.pick });
+          $("qkModel").value = pr.pick;
+          $("qkSaveMsg").textContent = "检测到原模型在该服务商不可用，已自动切换为：" + pr.pick;
+          setTimeout(function () { $("qkSaveMsg").textContent = ""; }, 6000);
+        }
+      } catch (e) { /* 静默 */ }
+    })();
+    $("qkSave").addEventListener("click", async function () {
+      var b = $("qkBase").value.trim() || "https://yingcompute.com/v1";
+      var k = $("qkKey").value.trim();
+      var m = $("qkModel").value.trim();
+      /* v1.0.2：模型名留空 → 自动探测该服务商可用模型（只填 Key 就能用） */
+      if (!m) {
+        $("qkSaveMsg").textContent = "模型名留空——正在探测可用模型…";
+        try {
+          var pr = await WQCore.ai.probeModels(b, k);
+          m = pr.pick || WQCore.ai.conf().model || "glm-5.3-flash";
+          $("qkModel").value = m;
+          $("qkSaveMsg").textContent = "已自动选择该服务商可用模型：" + m;
+        } catch (e) {
+          m = WQCore.ai.conf().model || "glm-5.3-flash";
+          $("qkSaveMsg").textContent = "探测失败（" + e.message.slice(0, 40) + "），沿用原模型：" + m;
+        }
+      }
+      WQCore.ai.setConf({ base: b, key: k, model: m, priceIn: $("qkPriceIn").value.trim(), priceOut: $("qkPriceOut").value.trim() });
+      if (!($("qkSaveMsg").textContent || "").indexOf("已自动")) $("qkSaveMsg").textContent = "已保存 ✓";
+      renderKeyState(); updateEst();
+      setTimeout(function () { $("qkSaveMsg").textContent = ""; }, 5000);
     });
   })();
 
@@ -301,11 +328,20 @@
         obj = parseJSONLoose(txt);
       }
       var secs = (obj.sections || []).filter(function (s) { return s && s.name; });
+      /* v1.0.2：模型偶尔会把「参考文献/致谢/附录」也当正文章节产出（白花钱且结构重复）——确定性剔除 */
+      var dropped = [];
+      secs = secs.filter(function (s) {
+        var nm = String(s.name || "").trim();
+        if (/^(参考文献|参考资料|致谢|附录|references|acknowledg)/i.test(nm)) { dropped.push(nm); return false; }
+        return true;
+      });
       if (secs.length < 3) throw new Error("提纲解析失败（节数过少），请重试");
+      if (dropped.length) report("已剔除非正文节：" + dropped.join("、") + "（参考文献表由系统自动生成）");
       c.proj.refDraft.outline = { sections: secs };
       c.save();
       outPush("提纲", secs.map(function (s, i) { return (i + 1) + ". " + s.name + "　" + (s.points || []).slice(0, 3).join("；"); }).join("\n"));
-      report("✓ 提纲 " + secs.length + " 节");
+      var want = c.proj._form.secs;
+      report("✓ 提纲 " + secs.length + " 节" + (secs.length !== want ? "（你设了 " + want + " 节，模型按内容结构给出 " + secs.length + " 节——以实际结构为准）" : ""));
     }
 
     async function stepWrite(c, report) {
