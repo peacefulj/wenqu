@@ -3,29 +3,44 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>科研工作台：选题 · 文献 · 分析 · 写作 · 投稿 · 工具台 — 文渠</title>
+<title>文渠科研工作台 · 萤算科研 — 生成只是起点：修改 · 核验 · 复现</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#2456e6">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
-<meta name="description" content="一站式科研平台：项目工作流（选题雷达→文献库→文献矩阵→大纲写作→期刊投稿）+ 工具台（找文献/AI读论文/引用引擎/综述工坊/新论文雷达/科研数据库）。免费工具，AI需萤算Key，数据只存你的浏览器。">
+<meta name="description" content="萤算科研（工作台内部名：文渠）：参考稿 Agent + 修改工作台（归属账本/贡献度）+ 校验中心（引用核验/数字绑定/回测）+ 数据复现。免费检索，AI 只按 token 计费，数据只存你的浏览器。">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="stylesheet" href="assets/wb.css">
 <script src="assets/vendor/pdf.min.js"></script>
+<style>
+  .wbgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+  @media (max-width:900px){.wbgrid{grid-template-columns:1fr}}
+  .wbhead{font-weight:700;font-size:13px;margin-bottom:6px}
+  .wbpane{border:1px solid var(--line);border-radius:10px;background:#fafbfd;max-height:420px;overflow:auto;padding:8px 10px}
+  .wbpara{padding:8px 6px;border-bottom:1px dashed var(--line);font-size:13px;line-height:1.6}
+  .wbpara:last-child{border-bottom:none}
+  .wbpara .pb{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap}
+  #wbMine{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit;font-size:13px;line-height:1.6}
+  .ckitem{padding:7px 4px;border-bottom:1px dashed var(--line);font-size:13px}
+  .ckitem:last-child{border-bottom:none}
+  .pillbtn{border:1px solid var(--line);background:#fff;border-radius:999px;padding:2px 10px;font-size:12px;cursor:pointer}
+</style>
 </head>
 <body>
 
 <header class="site"><div class="container bar">
-  <a class="brand" href="index.html">文渠<small>科研一站平台</small></a>
+  <a class="brand" href="index.html">萤算科研<small>文渠工作台</small></a>
+  <nav class="main"><a class="on" href="studio.html">科研工作台</a><a href="quick.html">参考稿</a></nav>
 </div></header>
 
 <main class="container page">
-  <h1 class="title">科研工作台 <span class="beta">平台版</span></h1>
+  <h1 class="title">文渠科研工作台 <span class="beta">生成只是起点</span></h1>
   <p class="meta">项目工作流 + 工具台，一个页面全搞定<span class="dot">·</span><span class="upd">数据只存你的浏览器 · AI 需 Key（页头设置）</span></p>
 
   <!-- 模式切换 + 工具条 -->
   <div class="modeswitch">
     <button class="modebtn on" data-mode="flow">🧭 项目工作流</button>
     <button class="modebtn" data-mode="tools">🧰 工具台</button>
+    <a class="toolbtn" href="quick.html" style="text-decoration:none">⚡ 参考稿（快速开始）</a>
     <span class="hint">工作流按项目推进（选题→文献→分析→写作→投稿）；工具台免建项目即用（检索/读论文/引用/综述/雷达/数据库）</span>
     <span style="flex:1"></span>
     <button class="toolbtn installBtn" hidden onclick="wqInstall()">⤓ 安装应用</button>
@@ -41,13 +56,20 @@
       <div><label>邮箱（Unpaywall 用，选填）</label><input id="upEmail" type="text" placeholder="your@mail.com"></div>
     </div>
     <div class="grid4">
-      <div style="grid-column:1/-1"><label>GROBID 服务地址（选填，高级：本地 Docker 起后端后填 http://localhost:8070）</label>
+      <div><label>GROBID 服务地址（选填，高级：本地 Docker 起后端后填 http://localhost:8070）</label>
       <input id="grobidUrl" type="text" placeholder="http://localhost:8070"></div>
+      <div><label>单价·输入（元/百万token，选填——用于本机费用折算）</label><input id="aiPriceIn" type="text" placeholder="如 2"></div>
+      <div><label>单价·输出（元/百万token，选填）</label><input id="aiPriceOut" type="text" placeholder="如 8"></div>
     </div>
     <div class="actions">
       <button class="btn2" id="aiSave">保存设置</button>
       <label class="hint" style="display:flex;align-items:center;gap:6px;margin-left:6px"><input type="checkbox" id="aiConfirmChk"> AI 操作前弹「确认/取消」</label>
-      <span class="hint">没有 Key？<a href="https://yingcompute.com/register?aff=wl-studio" target="_blank" rel="noopener">注册萤算</a>（学生认证送额度）。Key 只存本机浏览器，请求直连你填写的服务地址。</span>
+      <span class="hint" id="usageBox"></span>
+    </div>
+    <div class="hint" style="margin-top:6px;line-height:1.7">
+      💰 <b>没有 Key？</b><a href="https://yingcompute.com/register?aff=wl-studio" target="_blank" rel="noopener">注册萤算领新人礼包</a>（参考稿/改写/校验都用它，按 token 计费、无套餐）；
+      有兑换码的在 <a href="https://yingcompute.com" target="_blank" rel="noopener">萤算控制台</a> → 令牌 → 兑换。班级/课题组团购：一张批量兑换码全组共用，找客服开批量码。
+      层级不限制 AI 参与程度（硕博同样可生成整段参考稿）——是否采用、如何改由你决定，导出会附《AI 使用说明》与归属统计。
     </div>
   </div></div>
 
@@ -184,20 +206,48 @@
             <p class="hint" id="mxProg"></p>
             <div id="matrixOut" class="mtx" hidden></div>
           </section>
+          <section class="block">
+            <h2>🗂 数据卡<small>记录每份数据的来源、变量与处理步骤——结果可追溯、可复现；AI 据此生成分析代码与复现清单</small></h2>
+            <div class="row" style="margin-top:0">
+              <input id="dcName" placeholder="数据名称（如：县域面板 2010-2020）" style="flex:1;min-width:180px">
+              <input id="dcSource" placeholder="来源（网址 / 数据库名 / 自行采集）" style="flex:1;min-width:180px">
+              <button id="dcAdd" class="btn2">＋ 添加数据卡</button>
+            </div>
+            <textarea id="dcVars" rows="2" placeholder="变量说明（每行一个：变量名=含义，选填）"></textarea>
+            <div id="dcList" class="results"></div>
+            <div class="row">
+              <button id="dcCode" class="btn2" data-ai>🐍 生成分析代码（Python/R）</button>
+              <button id="dcChecklist" class="btn2" data-ai>✅ 生成复现清单（按范式与层级）</button>
+              <span class="hint" id="dcProg"></span>
+            </div>
+            <div id="dcOut" class="aiout md" hidden></div>
+            <div class="row" style="margin-top:6px"><button id="btnDcCopy" class="btn2 ghost" hidden>复制结果</button></div>
+          </section>
         </div>
 
         <!-- 阶段4 写作 -->
         <div id="s4" class="stagepane" hidden>
           <div id="sc4" class="stagecard"></div>
           <section class="block">
-            <h2>大纲与分节写作<small>大纲基于选题卡+文献矩阵生成</small></h2>
+            <h2>大纲与分节写作<small>大纲基于选题卡+文献矩阵生成；生成只是起点——下方「修改工作台」才是主战场</small></h2>
             <div class="tmpl">
               <button id="btnOutline" data-ai class="btn2">🌪️ 生成大纲（多视角）</button>
               <button id="btnDesign" data-ai class="btn2" style="background:#37465c">🧪 研究设计审查</button>
-              <button id="btnConsistency" data-ai class="btn2" style="background:#0a7a43">🔎 跨节一致性检查</button>
               <button id="btnExportDoc" class="btn2" style="background:#7a3fa8">⤓ 导出全文（Word）</button>
               <a class="btn2 ghost" href="workbench.html?tab=cite">🔗 引用引擎（乱格式→GB/APA/BibTeX）</a>
               <button id="btnAIDecl" data-ai class="btn2">📄 AI使用声明模板</button>
+            </div>
+            <div class="tmpl" style="width:100%">
+              <button id="btnExportDoc2" class="btn2" style="background:#0a7a43">⤓ 导出全文 + 归属说明（推荐）</button>
+              <label class="hint">排版预设
+                <select id="expFmt" style="max-width:220px">
+                  <option value="thesis-cn">学位论文·通用（宋体小四/1.5倍行距）</option>
+                  <option value="thesis-fs">学位论文·仿宋（仿宋_GB2312 四号）</option>
+                  <option value="journal-en">期刊英文·Times 12pt 双倍行距</option>
+                  <option value="plain">朴素（默认宋体 12pt）</option>
+                </select>
+              </label>
+              <span class="hint">预设只排版不代写；具体以学校/期刊最新模板为准。</span>
             </div>
             <div class="tmpl" id="secBtns" style="width:100%"></div>
             <details class="fold" style="margin:10px 0">
@@ -219,18 +269,67 @@
             </details>
             <div class="row" style="align-items:center">
               <label class="enchk"><input id="enMode" type="checkbox"> 英文模式（投英文期刊，分节写作输出学术英文）</label>
-              <button id="btnInternal" data-ai class="btn2" style="background:#7a3fa8">👨‍🏫 三专家内审草稿</button>
             </div>
             <p class="hint" id="wProg"></p>
             <div id="wOut" class="aiout" hidden></div>
             <div class="row" style="margin-top:8px"><button id="btnWCopy" class="btn2" hidden>复制结果</button></div>
-            <div class="callout c-info" style="margin-top:14px">写作助手定位：辅助你自己写作，引用来自你的文献库；请遵守学校/期刊的 AI 使用与引用规范。本平台不提供代写。</div>
+            <div class="callout c-info" style="margin-top:14px">写作助手定位：辅助你自己写作，引用来自你的文献库；请遵守学校/期刊的 AI 使用与引用规范。层级不限制 AI 参与程度（硕博同样可参考整段生成）——如何采用与改写由你决定，导出附《AI 使用说明》与归属统计。本平台不做检测规避。</div>
+          </section>
+
+          <section class="block">
+            <h2>🛠 修改工作台<small>生成之后的环节才是价值所在：参考稿 ↔ 我的稿，逐段采用/改写，归属账本自动记录，本人贡献度一目了然</small></h2>
+            <div id="wbNoRef" class="callout c-info" hidden>该项目还没有参考稿。去 <a href="quick.html">⚡ 参考稿工作台</a> 生成一份（Agent 免费、只付 token、50 篇真实文献），或直接用上方分节写作自起稿。</div>
+            <div id="wbMain" hidden>
+              <div class="row" style="margin-top:0">
+                <label class="hint">节</label>
+                <select id="wbSec" style="flex:0 0 240px"></select>
+                <span style="flex:1"></span>
+                <button id="wbRecalc" class="btn2 ghost btn-sm">🔄 重算归属账本</button>
+                <button id="wbLedgerDl" class="btn2 ghost btn-sm">⤓ 归属报告 .md</button>
+              </div>
+              <div class="wbgrid" style="margin-top:8px">
+                <div>
+                  <div class="wbhead">📋 参考稿（AI · 只读）<span class="hint" id="wbRefMeta"></span></div>
+                  <div id="wbRefPane" class="wbpane"></div>
+                </div>
+                <div>
+                  <div class="wbhead">✍️ 我的稿（这一节，可编辑）</div>
+                  <textarea id="wbMine" rows="14" placeholder="把左侧参考稿的段落「采用」过来改，或直接自己写。保存后自动对比、计入归属账本。"></textarea>
+                  <div class="row" style="margin-top:6px">
+                    <button id="wbSaveDraft" class="btn2 btn-sm">💾 保存本节</button>
+                    <button id="wbRewrite" class="btn2 btn-sm" data-ai>✒️ 按我的表达改写本节</button>
+                    <button id="wbAsk" class="btn2 btn-sm" data-ai>💬 追问依据</button>
+                    <span class="hint" id="wbProg"></span>
+                  </div>
+                </div>
+              </div>
+              <div id="wbContrib" style="margin-top:8px"></div>
+              <details class="fold" style="margin-top:6px">
+                <summary>📊 与参考稿的逐段对比（diff）</summary>
+                <div class="body" id="wbDiff"><p class="hint">保存本节后自动生成。</p></div>
+              </details>
+            </div>
           </section>
         </div>
 
         <!-- 阶段5 投稿 -->
         <div id="s5" class="stagepane" hidden>
           <div id="sc5" class="stagecard"></div>
+          <section class="block">
+            <h2>🔬 校验中心<small>引用存在性 → 引用-论断对应 → 数字来源绑定 → 格式规范；每次结果存档，改稿后一键「回测」对比</small></h2>
+            <div class="tmpl" style="width:100%">
+              <button id="ckRefs" class="btn2">1️⃣ 引用存在性核验（Crossref 比对，免费）</button>
+              <button id="ckClaims" class="btn2" data-ai>2️⃣ 引用-论断对应抽查</button>
+              <button id="ckNums" class="btn2">3️⃣ 数字来源绑定（本地）</button>
+              <button id="ckFormat" class="btn2">4️⃣ 格式规范检查（本地）</button>
+              <button id="btnConsistency" data-ai class="btn2" style="background:#0a7a43">🔎 跨节一致性检查</button>
+              <button id="btnInternal" data-ai class="btn2" style="background:#7a3fa8">👨‍🏫 三专家内审草稿</button>
+              <button id="ckRetest" class="btn2 ghost">🔁 回测：与上次结果对比</button>
+            </div>
+            <p class="hint" id="ckProg"></p>
+            <div id="ckOut" class="results"></div>
+            <div class="callout c-info" style="margin-top:8px"><b>原创性自检（合规口径）：</b>先弄懂你学校的规则（重复率/AIGC 率阈值、指定检测平台、免费次数）。检测请走学校统一安排或官方渠道；本平台不内置检测、不做检测规避，也不对任何检测结果作承诺。</div>
+          </section>
           <section class="block">
             <h2>答辩 / 投稿材料<small>按项目层级自动出现对应材料按钮</small></h2>
             <div class="row" id="defenseBtns" hidden></div>
@@ -263,7 +362,12 @@
 
         
         <section class="block" id="procBox">
-          <h2>📋 过程记录<small>「未留存」动作的摘要 + 版本索引——研究过程留痕，便于日后查阅</small></h2>
+          <h2>🧭 项目轨迹<small>思维链与决策过程：AI 生成与版本、发起/取消的确认、留存选择、载入、导入导出——自动记录，便于作者回看与日后追溯</small></h2>
+          <div class="row">
+            <input id="trailNote" type="text" placeholder="记一条决策笔记（为什么选这个方向 / 为什么放弃某个结果 / 下次要试什么…）" style="flex:1">
+            <button id="btnTrailAdd" class="btn2">＋ 记一条</button>
+            <button id="btnTrailDl" class="btn2 ghost">⤓ 导出轨迹</button>
+          </div>
           <div id="procList"></div>
         </section>
       </div>
@@ -276,8 +380,7 @@
           <button class="tab" data-tab="db">🗄 找 · 数据库导航</button>
           <button class="tab" data-tab="read">📖 读 · AI读论文</button>
           <button class="tab" data-tab="cite">🔗 整理 · 引用引擎</button>
-          <button class="tab" data-tab="storm">📝 写 · 综述工坊</button>
-          <button class="tab" data-tab="skills">🧠 写 · 技能库</button>
+          <button class="tab" data-tab="storm">📝 写 · 综述素材</button>
           <button class="tab" data-tab="engines">🧰 开源引擎</button>
         </div>
 
@@ -286,18 +389,24 @@
           <section class="block">
             <h2>全球文献检索<small>数据源：OpenAlex（2.5亿+ 记录）· 免费PDF标注 · 可收藏进篮子喂给综述</small></h2>
             <div class="row">
-              <input id="q" type="text" placeholder="英文关键词（如 momentum asset pricing）或 DOI（10.xxxx/…）">
-              <select id="qYear" style="flex:0 0 130px">
-                <option value="">不限年份</option><option>2026</option><option>2025</option><option>2024</option><option>2023</option><option>2022</option>
+              <input id="q" type="text" placeholder="关键词（中英皆可，中文自动 AI 转译双语检索）或 DOI（10.xxxx/…）">
+              <select id="qLang" style="flex:0 0 120px" title="检索语种">
+                <option value="en">英文</option>
+                <option value="zh">中文</option>
+                <option value="both">英文+中文</option>
               </select>
-              <select id="qN" style="flex:0 0 110px"><option value="10">10 条</option><option value="20">20 条</option><option value="25">25 条</option></select>
+              <select id="qYear" style="flex:0 0 120px">
+                <option value="">不限年份</option><option value="r3">近3年</option><option value="r5">近5年</option><option value="r10">近10年</option><option>2026</option><option>2025</option><option>2024</option><option>2023</option><option>2022</option>
+              </select>
+              <select id="qN" style="flex:0 0 110px"><option value="25">25 条</option><option value="50" selected>50 条</option><option value="100">100 条</option><option value="200">200 条</option></select>
               <button id="btnSearch" class="btn2">检索</button>
             </div>
+            <div id="qTrans" class="callout c-info" hidden style="margin-top:8px"></div>
             <div class="row" style="margin-top:0">
               <label class="hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="qOA"> 只看有免费PDF的</label>
               <label class="hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="qSortCited"> 按被引排序</label>
             </div>
-            <p class="hint">【AI速读】基于官方摘要生成三句话速览；要读全文请切到「AI 读论文」上传 PDF。中文文献走官方站跳转（见下方）。</p>
+            <p class="hint">【AI速读】基于官方摘要生成三句话速览。中文输入会自动 AI 转译成学术英文做双语检索（可改检索词重搜）；结果可切「📊 论文矩阵」批量比较、AI 抽取研究问题/方法/发现并导出 CSV。</p>
             <div id="zhJump" class="callout c-info" hidden>
               <b>中文文献一键跳转：</b>
               <a target="_blank" rel="noopener" id="jWf">万方</a> ·
@@ -306,7 +415,9 @@
               <a target="_blank" rel="noopener" href="https://www.zjlib.cn">浙图数字资源</a>
               <div class="hint" style="margin-top:4px">中文库未开放检索 API，跳转官方站内搜索是最合规的方式。</div>
             </div>
+            <div id="sBar" class="sbar" hidden></div>
             <div id="searchOut" class="results"></div>
+            <div id="mtxBox" class="mtxbox" hidden></div>
           </section>
         </section>
 
@@ -363,6 +474,12 @@
             <p class="hint" id="gbProg"></p>
             </div>
           </details>
+          <section class="block">
+            <h2>🧠 提示词技能库<small>一键复制，直接粘到上方「自定义指令」用（原独立技能库已并入本页）</small></h2>
+            <div id="skOut" class="results"></div>
+            <div class="callout c-warn"><b>学术润色的边界：</b>做"语言表达优化"可以；做"规避 AIGC 检测"越红线——话术定位必须是前者。</div>
+            <div class="callout c-warn"><b>文献获取的边界：</b>只找出版社 OA、机构仓库等<b>合法开放版本</b>；不提供文献代下。</div>
+          </section>
         </section>
 
         <!-- 引用引擎 -->
@@ -402,13 +519,18 @@
             <div class="prog" hidden><div id="oaBar"></div></div>
             <p class="hint" id="oaProg"></p>
             <div id="oaOut" class="results"></div>
+            <div class="row" id="oaFindRow" hidden>
+              <button id="btnOaFind" class="btn2" style="background:#7a3fa8">🔎 AI 找可行下载渠道</button>
+              <span class="hint">对「无免费版」条目：大模型判断可能的<b>合法</b>来源（预印本 / 机构库 / 作者主页）+ 保证可用的检索入口；仍找不到可走 wxy88 兜底（外部服务，用自己的账号）</span>
+            </div>
+            <div id="oaFindOut" class="aiout md" hidden></div>
           </section>
         </section>
 
         <!-- 综述工坊 -->
         <section id="tab-storm" class="tabpane" hidden>
           <section class="block">
-            <h2>STORM 式综述草稿<small>多视角大纲 → 逐节检索实证文献 → 逐节起草带 [n] 引用 → 汇成 Markdown（思路源自 Stanford STORM，MIT 自实现）</small></h2>
+            <h2>综述素材草稿（STORM 式）<small>多视角大纲 → 逐节检索实证文献 → 逐节起草带 [n] 引用 → 汇成 Markdown（思路源自 Stanford STORM，MIT 自实现）</small></h2>
             <div class="row">
               <input id="stTopic" type="text" placeholder="综述主题（如：机器学习在资产定价中的应用）">
             </div>
@@ -447,7 +569,7 @@
               </select>
               <button id="btnRadar" class="btn2">扫描</button>
             </div>
-            <p class="hint">OpenAlex 收录每日新论文（含 arXiv/SSRN/出版社），按发表时间倒序取最新 30 篇，AI 按你的兴趣打 0-100 分并给中文推荐语。想每周自动看：浏览器收藏本页，周一早上扫一遍。</p>
+            <p class="hint">OpenAlex 收录每日新论文（含 arXiv/SSRN/出版社），按发表时间倒序取最新 50 篇，AI 按你的兴趣打 0-100 分并给中文推荐语。想每周自动看：浏览器收藏本页，周一早上扫一遍。</p>
             <div class="prog" hidden><div id="rdBar"></div></div>
             <p class="hint progtxt" id="rdProg"></p>
             <div id="rdOut" class="results"></div>
@@ -464,19 +586,6 @@
           <section class="block">
             <h2>分发渠道观察</h2>
             <div id="chanOut" class="results"></div>
-          </section>
-        </section>
-
-        <!-- 技能库 -->
-        <section id="tab-skills" class="tabpane" hidden>
-          <section class="block">
-            <h2>学术提示词技能库<small>一键复制，或在「AI 读论文」页直接用</small></h2>
-            <div id="skOut" class="results"></div>
-          </section>
-          <section class="block">
-            <h2>边界与红线<small>做产品前先想清楚</small></h2>
-            <div class="callout c-warn"><b>学术润色的边界：</b>做"语言表达优化、去AI腔（合规版）"可以；做"规避 AIGC 检测"越红线——话术定位必须是前者。</div>
-            <div class="callout c-warn"><b>文献获取的边界：</b>只找出版社 OA、机构仓库等<b>合法开放版本</b>；不提供文献代下。</div>
           </section>
         </section>
 
@@ -525,9 +634,9 @@
 </aside>
 
 <footer class="site"><div class="container">
-  <div class="links"><a href="index.html">首页</a> · 发现问题？<a href="mailto:feedback@example.com">邮件告诉我们</a></div>
+  <div class="links"><a href="index.html">首页</a> · <a href="quick.html">参考稿</a> · 发现问题？<a href="mailto:feedback@example.com">邮件告诉我们</a></div>
   <div class="disc">本平台检索与 OA 链接来自 OpenAlex / Crossref / Unpaywall 官方公开接口，仅指向来源方标注的合法开放版本；不提供文献代下、代写服务。AI 产出（速读、审稿、综述草稿、引用匹配）均可能出错，使用前请人工核对；学术润色仅做语言表达优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器。</div>
-  <div>© 2026 文渠 · 科研工作台 · 数据接口礼貌限速</div>
+  <div>© 2026 萤算科研 · 文渠工作台 · 数据接口礼貌限速</div>
 </div></footer>
 
 <aside id="verDrawer">
@@ -578,6 +687,8 @@ document.addEventListener("click", e => {
 <script src="assets/vendor/purify.min.js"></script>
 <script src="assets/studio.js"></script>
 <script src="assets/wb.js"></script>
+<script src="assets/wq-core.js"></script>
+<script src="assets/wq-ui.js"></script>
 <script>
 /* PWA：SW 注册 + 安装按钮（Chromium localhost/HTTPS 下出现） */
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {

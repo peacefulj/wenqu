@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>参考稿工作台 — 萤算科研</title>
+<meta name="description" content="免费参考稿 Agent：输入题目，10 分钟生成一份带真实文献的完整参考稿（提纲可改、分节流式、引用可点开），生成后在科研工作台里修改、核验、加入你自己的东西。只按 token 计费，无套餐。">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2456e6">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<style>
+  .quickgrid{display:grid;grid-template-columns:380px 1fr;gap:16px;align-items:start}
+  @media (max-width:960px){.quickgrid{grid-template-columns:1fr}}
+  .qform label{display:block;margin:10px 0 4px;font-weight:700;font-size:13px}
+  .qform textarea,.qform input,.qform select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font:inherit}
+  .steps{border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:10px 0}
+  .step{display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:13px}
+  .step .st{flex:0 0 1.6em}
+  .step.done .st{color:var(--ok)}.step.running .st{color:#2456e6}.step.failed .st{color:var(--bad)}
+  .cost{font-size:12.5px;color:#5c6675;background:#f6f8fc;border-radius:10px;padding:8px 12px;margin:8px 0}
+  .refout{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff}
+  .streampre{white-space:pre-wrap;font-size:13px;line-height:1.55}
+</style>
+</head>
+<body>
+
+<header class="site"><div class="container bar">
+  <a class="brand" href="index.html">萤算科研<small>参考稿 · 工作台</small></a>
+  <nav class="main"><a href="studio.html">科研工作台</a><a class="on" href="quick.html">参考稿</a></nav>
+</div></header>
+
+<main class="container page">
+  <h1 class="title">参考稿工作台 <span class="beta">生成只是起点</span></h1>
+  <p class="meta">一份可改、可查、可续跑的<b>学习参考稿</b>：提纲可编辑 · 50 篇真实文献 · 分节流式生成 · 引用编号可核验<span class="dot">·</span>Agent 免费使用，只按 token 付给模型服务（生成前先看预估）</p>
+
+  <div class="callout c-warn" style="margin:10px 0">
+    <b>这份稿子是「参考」，不是「成品」：</b>它的价值在于给你一个可以下手改的底稿——请在工作台里逐节修改、核验引用、补上你自己的数据与观点。
+    平台不做降 AI 率、不承诺检测通过；导出会自动附《AI 使用说明》与归属统计。请遵守学校与期刊的 AI 使用规范。
+  </div>
+
+  <div id="nokey" class="callout c-info" hidden style="margin:10px 0">
+    <b>还没有配置 AI Key。</b>参考稿由大模型生成，按 token 计费——<b>注册萤算送新人额度，生成几万字的参考稿用不完</b>：
+    <a href="https://yingcompute.com/register?aff=wl-quick" target="_blank" rel="noopener">注册萤算（新人礼包）</a> → 把 Key 粘到下方设置 → 回来点「开始生成」。
+    <div class="grid4" style="margin-top:10px">
+      <div><label>API 地址</label><input id="qkBase" type="text" placeholder="https://yingcompute.com/v1"></div>
+      <div><label>API Key</label><input id="qkKey" type="password" placeholder="sk-…"></div>
+      <div><label>模型</label><input id="qkModel" type="text" placeholder="glm-5.3-flash"></div>
+      <div><label>单价（元/百万token，选填，用于估金额）</label><div style="display:flex;gap:6px"><input id="qkPriceIn" type="text" placeholder="输入价"><input id="qkPriceOut" type="text" placeholder="输出价"></div></div>
+    </div>
+    <div class="actions"><button class="btn2" id="qkSave">保存设置</button><span class="hint" id="qkSaveMsg"></span></div>
+  </div>
+
+  <div class="quickgrid">
+    <!-- 左：表单 -->
+    <div class="qform">
+      <label>论文题目 / 研究主题（5–80 字）</label>
+      <textarea id="qTitle" rows="2" placeholder="例：数字经济对县域城乡收入差距的影响研究"></textarea>
+      <div class="row" style="margin-top:4px"><button id="qSuggest" class="btn2 ghost btn-sm">💡 帮我想题目</button><span class="hint" id="qSugMsg"></span></div>
+      <div id="qSugList" class="results" style="margin-top:6px"></div>
+
+      <label>层级</label>
+      <select id="qLevel"></select>
+      <label>类型</label>
+      <select id="qType">
+        <option value="thesis">毕业论文（整篇）</option>
+        <option value="proposal">开题报告</option>
+        <option value="review">文献综述</option>
+        <option value="journal">期刊论文</option>
+        <option value="task">任务书</option>
+      </select>
+      <div class="row">
+        <div style="flex:1"><label>总字数目标</label>
+          <select id="qWords"><option value="8000">8000 字</option><option value="12000" selected>12000 字</option><option value="15000">15000 字</option><option value="20000">20000 字</option></select></div>
+        <div style="flex:1"><label>分节数</label>
+          <select id="qSecs"><option>6</option><option>8</option><option selected>10</option><option>12</option><option>14</option></select></div>
+      </div>
+      <label>参考文献（OpenAlex 真实检索）</label>
+      <select id="qRefs"><option value="50" selected>50 篇（默认）</option><option value="60">60 篇</option><option value="80">80 篇</option></select>
+      <details class="fold" style="margin-top:10px">
+        <summary>已有材料 / 高级选项（可选）</summary>
+        <div class="body">
+          <label class="hint" style="font-weight:700">已有开题报告或提纲要点（粘贴文本，AI 会沿用你的结构）</label>
+          <textarea id="qMat" rows="4" placeholder="例：第一章 绪论（研究背景/意义）…&#10;或粘贴开题报告的研究内容部分"></textarea>
+          <label class="hint" style="font-weight:700;margin-top:8px">研究范式</label>
+          <select id="qParadigm"></select>
+          <p class="hint">范式决定章节骨架与矩阵栏目；不确定就用默认。</p>
+        </div>
+      </details>
+
+      <div class="cost" id="qEst">填写题目后，这里显示 token 预估与金额。</div>
+      <div class="row">
+        <button id="qGo" class="btn2" style="flex:1">🚀 开始生成参考稿</button>
+        <button id="qStop" class="btn2 gray" hidden>停止</button>
+      </div>
+      <p class="hint" style="margin-top:6px">逐节落盘：中途关页/断网，回来点「续跑」不白花钱。层级不限制生成（硕士/博士同样可生成整篇参考稿，如何使用由你决定，归属账本会如实记录）。</p>
+    </div>
+
+    <!-- 右：进度与输出 -->
+    <div>
+      <div class="steps" id="qSteps"><p class="hint">步骤进度会显示在这里。</p></div>
+      <div class="cost" id="qActual">本次实际消耗：—</div>
+      <div class="refout" id="qOut" hidden><div class="streampre" id="qStream"></div></div>
+      <div class="row" id="qDoneRow" hidden style="margin-top:10px">
+        <a id="qGoStudio" class="btn2" style="background:#0a7a43;text-align:center;flex:1">进入工作台：修改 · 核验 · 加入你自己的东西 →</a>
+      </div>
+      <p class="hint" id="qMsg"></p>
+    </div>
+  </div>
+</main>
+
+<footer class="site"><div class="container">
+  <div class="disc">参考稿由 AI 生成，仅作学习与写作参考：引用全部来自 OpenAlex 真实检索结果，但 AI 仍可能配错 [n]，采用前请逐条核对；数据与图表为占位建议，须用你自己的数据替换。本平台不提供代写、不做检测规避；请遵守所在学校/期刊的 AI 使用规范。</div>
+  <div>© 2026 萤算科研 · 数据只存本机浏览器</div>
+</div></footer>
+
+<script src="assets/paradigms.js"></script>
+<script src="assets/vendor/marked.min.js"></script>
+<script src="assets/vendor/purify.min.js"></script>
+<script src="assets/wq-core.js"></script>
+<script src="assets/wq-quick.js"></script>
+<script>
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>

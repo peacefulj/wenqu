@@ -263,12 +263,15 @@ function getAI() {
   } catch { return { ...AI_DEF, key: "" }; }
 }
 $("aiSave").addEventListener("click", () => {
-  lsSet("wenqu_ai", JSON.stringify({
+  /* v1.0 合并式保存：保留扩展字段（priceIn/priceOut 等由 wq-ui 写入），避免被整体覆写 */
+  let prev = {};
+  try { prev = JSON.parse(localStorage.getItem("wenqu_ai") || "{}") || {}; } catch (e) { prev = {}; }
+  lsSet("wenqu_ai", JSON.stringify(Object.assign({}, prev, {
     base: $("aiBase").value.trim() || AI_DEF.base,
     key: $("aiKey").value.trim(),
     model: $("aiModel").value.trim() || AI_DEF.model,
     confirm: $("aiConfirmChk") ? $("aiConfirmChk").checked : true,
-  }));
+  })));
   lsSet("wenqu_email", $("upEmail").value.trim());
   lsSet("wenqu_grobid", $("grobidUrl").value.trim());
   oaMail = $("upEmail").value.trim(); // 立即生效，不必刷新页面
@@ -386,7 +389,7 @@ function gotoTab(name) { document.querySelector(`.tab[data-tab="${name}"]`)?.cli
 
 /* ================= Tab1 找文献 ================= */
 const OA = "https://api.openalex.org/works";
-const OA_SELECT = "id,display_name,publication_year,doi,open_access,best_oa_location,primary_location,authorships,type,cited_by_count,abstract_inverted_index";
+const OA_SELECT = "id,display_name,publication_year,doi,open_access,best_oa_location,primary_location,authorships,type,cited_by_count,abstract_inverted_index,language";
 
 function oaAbstract(inv) {
   if (!inv) return "";
@@ -400,11 +403,56 @@ function oaLink(w) {
   return oa.oa_url || loc.pdf_url || loc.landing_page_url || null;
 }
 
+/* v0.9：中英双语检索（中文输入自动 AI 转译）+ 条数扩容 + 检索结果论文矩阵 */
+const QLANG_KEY = "wenqu_qlang", QN_KEY = "wenqu_qn";
+const transCache = {}, qOverride = {};
+let sRows = [], sQ = "", sMeta = null, sView = "cards", sLangView = "all";
+let mtxExtra = {}, mtxSort = { k: "", dir: -1 }, mtxStop = false;
+(function restoreSearchPrefs() {
+  try {
+    const l = localStorage.getItem(QLANG_KEY); if (l && $("qLang")) $("qLang").value = l;
+    const n = localStorage.getItem(QN_KEY);
+    if (n && [...$("qN").options].some(o => o.value === n)) $("qN").value = n;
+  } catch (e) {}
+})();
+function yearFilter(v) {
+  if (!v) return "";
+  const m = /^r(\d+)$/.exec(v);
+  if (m) return "from_publication_date:" + (new Date().getFullYear() - (+m[1]) + 1) + "-01-01";
+  return "publication_year:" + v;
+}
+function langOf(w) {
+  const l = String(w.language || "").toLowerCase();
+  return l.indexOf("zh") === 0 ? "zh" : (l || "?");
+}
+const LANG_NAME = { en: "EN", zh: "中文", "?": "未知" };
+const authorsOf = (w, n) => (w.authorships || []).slice(0, n || 99).map(a => a.author?.display_name || "").filter(Boolean).join(", ");
+const venueOf = (w) => w.primary_location?.source?.display_name || "";
+async function translateQuery(q) {
+  if (transCache[q]) return transCache[q];
+  const txt = await callAI("把下面的学术检索词同时给出英文和中文两个版本，用于学术数据库检索。要求：使用该领域通行的学术术语；英文写成关键词短语（不要整句，不加引号和布尔运算符）；只输出 JSON：{\"en\":\"...\",\"zh\":\"...\"}\n检索词：" + q, { temperature: 0, max_tokens: 300, timeout: 30000 });
+  const j = parseJSONLoose(txt);
+  const r = { en: String(j.en || "").trim(), zh: String(j.zh || "").trim() };
+  transCache[q] = r;
+  return r;
+}
+async function oaSearch(q, n, filters) {
+  const f = filters.length ? "&filter=" + filters.join(",") : "";
+  const sort = $("qSortCited").checked ? "cited_by_count:desc" : "relevance_score:desc";
+  const d = await fetchJSON(`${OA}?search=${encodeURIComponent(q)}&per-page=${n}&sort=${sort}${f}&select=${OA_SELECT}${mto()}`, {}, 45000);
+  return { rows: d.results || [], count: d.meta?.count || 0 };
+}
+
 async function doSearch() {
   const q = $("q").value.trim();
   const out = $("searchOut");
   if (!q) { out.innerHTML = '<p class="hint">请输入关键词或 DOI</p>'; return; }
   const btn = $("btnSearch"); btn.disabled = true;
+  const lang = $("qLang") ? $("qLang").value : "en";
+  const N = +$("qN").value || 50;
+  lsSet(QLANG_KEY, lang); lsSet(QN_KEY, String(N));
+  $("qTrans").hidden = true;
+  out.hidden = false; $("mtxBox").hidden = true; $("sBar").hidden = true;
   out.innerHTML = '<p class="hint">检索中…</p>';
   if (/[\u4e00-\u9fff]/.test(q)) {
     $("zhJump").hidden = false;
@@ -412,26 +460,99 @@ async function doSearch() {
     $("jBd").href = "https://xueshu.baidu.com/s?wd=" + encodeURIComponent(q);
   } else $("zhJump").hidden = true;
 
-  const filters = [];
-  if ($("qOA").checked) filters.push("is_oa:true");
-  if ($("qYear").value) filters.push("publication_year:" + $("qYear").value);
-  const sort = $("qSortCited").checked ? "cited_by_count:desc" : "relevance_score:desc";
+  const base = [];
+  if ($("qOA").checked) base.push("is_oa:true");
+  const yf = yearFilter($("qYear").value); if (yf) base.push(yf);
   try {
-    let url;
-    if (/^10\./.test(q)) url = `${OA}/https://doi.org/${encodeURIComponent(q)}?select=${OA_SELECT}${mto()}`;
-    else {
-      const f = filters.length ? `&filter=${filters.join(",")}` : "";
-      url = `${OA}?search=${encodeURIComponent(q)}&per-page=${$("qN").value}&sort=${sort}${f}&select=${OA_SELECT}${mto()}`;
+    if (/^10\./.test(q)) {
+      const d = await fetchJSON(`${OA}/https://doi.org/${encodeURIComponent(q)}?select=${OA_SELECT}${mto()}`);
+      sRows = d.id ? [d] : []; sQ = q; sMeta = { lang: "doi", parts: [{ label: "DOI", q: q, count: sRows.length, got: sRows.length }] };
+    } else {
+      const hasZh = /[\u4e00-\u9fff]/.test(q);
+      let qEn = q, qZh = q, transNote = "";
+      const ov = qOverride[q] || {};
+      if (lang !== "zh" && hasZh) {          // 中文输入 + 需要英文检索 → AI 转译
+        if (ov.en) qEn = ov.en;
+        else {
+          out.innerHTML = '<p class="hint">正在把中文检索词转译为英文学术检索词…</p>';
+          try { qEn = (await translateQuery(q)).en || q; transNote = "ai"; }
+          catch (e) { qEn = q; transNote = "fail:" + e.message; }
+        }
+      }
+      if (lang !== "en" && !hasZh) {          // 英文输入 + 需要中文检索 → AI 转译
+        if (ov.zh) qZh = ov.zh;
+        else {
+          out.innerHTML = '<p class="hint">正在生成中文检索词…</p>';
+          try { qZh = (await translateQuery(q)).zh || q; transNote = "ai"; }
+          catch (e) { qZh = q; transNote = "fail:" + e.message; }
+        }
+      }
+      const jobs = [];
+      if (lang === "en") jobs.push({ label: "英文", q: qEn, n: N, f: base.concat(["language:en"]) });
+      if (lang === "zh") jobs.push({ label: "中文", q: qZh, n: N, f: base.concat(["language:zh"]) });
+      if (lang === "both") {
+        const half = Math.ceil(N / 2);
+        jobs.push({ label: "英文", q: qEn, n: half, f: base.concat(["language:en"]) });
+        jobs.push({ label: "中文", q: qZh, n: N - half, f: base.concat(["language:zh"]) });
+      }
+      out.innerHTML = '<p class="hint">检索中（' + jobs.map(j => j.label + "「" + esc(j.q) + "」").join(" + ") + "）…</p>";
+      const res = await Promise.all(jobs.map(j => oaSearch(j.q, j.n, j.f).catch(e => ({ rows: [], count: 0, err: e.message }))));
+      const seen = new Set(); sRows = [];
+      res.forEach(r => r.rows.forEach(w => { const k = w.id || w.doi; if (k && !seen.has(k)) { seen.add(k); sRows.push(w); } }));
+      sQ = q;
+      sMeta = { lang, transNote, qEn, qZh, hasZh, parts: jobs.map((j, i) => ({ label: j.label, q: j.q, count: res[i].count, got: res[i].rows.length, err: res[i].err })) };
+      renderTransBar();
+      if (!sRows.length && res.every(r => r.err)) throw new Error(res[0].err);
     }
-    const d = await fetchJSON(url);
-    const rows = d.results || (d.id ? [d] : []);
-    if (!rows.length) { out.innerHTML = '<p class="hint">没有命中。试试更宽的关键词，中文文献用上方官方站跳转。</p>'; return; }
-    out.innerHTML = rows.map((w, i) => searchCard(w, i)).join("") +
-      '<p class="hint">免费 PDF = 出版社或机构仓库的合法开放版本。【AI速读】基于官方摘要；【➕收藏】入篮后可喂给「综述工坊」、导出 .bib。</p>';
-    bindSearchCards(rows);
+    mtxExtra = {}; sLangView = "all";
+    if (!sRows.length) { out.innerHTML = '<p class="hint">没有命中。试试更宽的关键词，或切换「中文 / 英文 / 中+英」。</p>'; return; }
+    renderSearch();
+    if (window.wqTrail) window.wqTrail("act", "文献检索", q.slice(0, 40) + " · " + ({ en: "英文", zh: "中文", both: "中+英", doi: "DOI" }[sMeta.lang] || "") + " · " + sRows.length + " 条");
   } catch (e) {
     out.innerHTML = `<p class="hint">检索失败（${esc(e.message)}）。OpenAlex 偶发限流，稍等几秒重试。</p>`;
   } finally { btn.disabled = false; }
+}
+
+/* 转译条：显示实际检索词，可手改后重搜 */
+function renderTransBar() {
+  const m = sMeta, box = $("qTrans");
+  if (!m || m.lang === "doi") { box.hidden = true; return; }
+  const showEn = m.lang !== "zh" && m.hasZh, showZh = m.lang !== "en" && !m.hasZh;
+  if (!showEn && !showZh) { box.hidden = true; return; }
+  const fail = String(m.transNote || "").indexOf("fail:") === 0;
+  box.hidden = false;
+  box.innerHTML = (fail ? "⚠️ AI 转译失败（" + esc(m.transNote.slice(5)) + "），已用原词检索。" : "🌐 已用 AI 转译检索词：")
+    + (showEn ? ' 英文 <input id="qEnEd" type="text" value="' + esc(m.qEn) + '" style="width:260px;padding:4px 8px">' : "")
+    + (showZh ? ' 中文 <input id="qZhEd" type="text" value="' + esc(m.qZh) + '" style="width:200px;padding:4px 8px">' : "")
+    + ' <button class="pill" id="btnReQ">用此检索词重搜</button>';
+  $("btnReQ").addEventListener("click", () => {
+    const o = qOverride[sQ] = qOverride[sQ] || {};
+    if ($("qEnEd")) o.en = $("qEnEd").value.trim();
+    if ($("qZhEd")) o.zh = $("qZhEd").value.trim();
+    doSearch();
+  });
+}
+
+/* 结果区：统计条 + 卡片 / 矩阵视图切换 + 语种筛选 */
+function viewRows() { return sLangView === "all" ? sRows : sRows.filter(w => langOf(w) === sLangView); }
+function renderSearch() {
+  const m = sMeta || { parts: [] };
+  const nZh = sRows.filter(w => langOf(w) === "zh").length;
+  const nOA = sRows.filter(w => oaLink(w)).length;
+  const yrs = sRows.map(w => w.publication_year).filter(Boolean);
+  const bar = $("sBar"); bar.hidden = false;
+  bar.innerHTML = '<div class="sstat">命中 ' + m.parts.map(p => "<b>" + esc(p.label) + "</b> " + (p.count || 0).toLocaleString() + " 篇（取 " + p.got + "）" + (p.err ? ' <span style="color:var(--bad)">失败</span>' : "")).join(" · ")
+    + ' ｜ 已载入 <b>' + sRows.length + '</b> 篇（中文 ' + nZh + ' · 英文/其他 ' + (sRows.length - nZh) + '）· 免费PDF ' + nOA + (yrs.length ? " · " + Math.min(...yrs) + "–" + Math.max(...yrs) : "") + "</div>"
+    + '<div class="sview"><span class="seg"><button data-sv="cards" class="' + (sView === "cards" ? "on" : "") + '">🗂 卡片</button><button data-sv="matrix" class="' + (sView === "matrix" ? "on" : "") + '">📊 论文矩阵</button></span>'
+    + ' <span class="seg"><button data-lv="all" class="' + (sLangView === "all" ? "on" : "") + '">全部</button><button data-lv="en" class="' + (sLangView === "en" ? "on" : "") + '">EN</button><button data-lv="zh" class="' + (sLangView === "zh" ? "on" : "") + '">中文</button></span></div>';
+  bar.querySelectorAll("[data-sv]").forEach(b => b.addEventListener("click", () => { sView = b.dataset.sv; renderSearch(); }));
+  bar.querySelectorAll("[data-lv]").forEach(b => b.addEventListener("click", () => { sLangView = b.dataset.lv; renderSearch(); }));
+  const rows = viewRows();
+  if (sView === "matrix") { $("searchOut").hidden = true; $("mtxBox").hidden = false; renderMatrix(); return; }
+  $("mtxBox").hidden = true; $("searchOut").hidden = false;
+  $("searchOut").innerHTML = (rows.length ? rows.map(w => searchCard(w, sRows.indexOf(w))).join("") : '<p class="hint">该语种下没有结果。</p>')
+    + '<p class="hint">免费 PDF = 出版社或机构仓库的合法开放版本。【AI速读】基于官方摘要；【➕收藏】入篮后可喂给「综述工坊」、导出 .bib；切到「📊 论文矩阵」可批量比较与导出。</p>';
+  bindSearchCards(sRows);
 }
 /* 无免费版时的合法求助兜底：官方平台跳转 + 向作者索要（学界惯例）。不接入任何文献代下渠道 */
 function mailTplOf(w) {
@@ -469,7 +590,7 @@ function searchCard(w, i) {
   const hasAb = !!w.abstract_inverted_index;
   return `<div class="rcard" data-i="${i}">
     <div class="rt"><a href="${esc(w.doi || w.id)}" target="_blank" rel="noopener">${i + 1}. ${esc(w.display_name)}</a></div>
-    <div class="rmeta">${esc(w.publication_year || "")} · ${esc(venue)} · ${esc(authors.join(", "))}${(w.authorships || []).length > 4 ? " 等" : ""} · 被引 ${w.cited_by_count ?? 0}</div>
+    <div class="rmeta"><span class="lpill">${esc(LANG_NAME[langOf(w)] || langOf(w))}</span>${esc(w.publication_year || "")} · ${esc(venue)} · ${esc(authors.join(", "))}${(w.authorships || []).length > 4 ? " 等" : ""} · 被引 ${w.cited_by_count ?? 0}</div>
     <div class="rbtns">
       ${pdf ? `<a class="pill ok" href="${esc(pdf)}" target="_blank" rel="noopener">📥 免费 PDF</a>` : `<button class="pill no" data-helpbtn>无免费版 · 求助</button>`}
       <button class="pill" data-act="ab" ${hasAb ? "" : "disabled"}>⚡AI速读</button>
@@ -506,6 +627,7 @@ function bindSearchCards(rows) {
           try {
             const r = await callAI("你是学术助手。基于下面的官方摘要，用中文输出三句话：①这篇论文做了什么 ②怎么做的（数据/方法）③核心发现或贡献。不超过120字。\n\n【摘要】" + ab);
             box.innerHTML = "⚡ " + mdRender(r); box.dataset.rawmd = String(r || "");
+            if (window.wqTrail) window.wqTrail("ai", "搜索速读", String(w.display_name || "").slice(0, 50));
           } catch (e) { box.textContent = "速读失败：" + e.message; }
         } else if (btn.dataset.act === "cite") {
           const authors = (w.authorships || []).slice(0, 3).map(a => a.author?.display_name || "").join(", ");
@@ -521,9 +643,208 @@ function bindSearchCards(rows) {
   });
   bindHelp($("searchOut"), rows);
 }
+/* ===== v0.9 论文矩阵：批量比较 / AI 抽取字段 / 导出 CSV·Markdown / 送入收藏篮·项目文献库 ===== */
+let mtxSel = new Set(), mtxFilter = "", mtxProgTxt = "";
+function mtxRows() {
+  let rows = viewRows().slice();
+  if (mtxFilter) {
+    const f = mtxFilter.toLowerCase();
+    rows = rows.filter(w => (String(w.display_name || "") + " " + authorsOf(w, 6) + " " + venueOf(w)).toLowerCase().indexOf(f) >= 0);
+  }
+  const k = mtxSort.k;
+  if (k) rows.sort((a, b) => {
+    if (k === "title") return mtxSort.dir * String(a.display_name || "").localeCompare(String(b.display_name || ""), "zh");
+    const va = k === "year" ? (a.publication_year || 0) : (a.cited_by_count || 0);
+    const vb = k === "year" ? (b.publication_year || 0) : (b.cited_by_count || 0);
+    return mtxSort.dir * (va - vb);
+  });
+  return rows;
+}
+const mtxA = (w) => mtxExtra[w.id] || null;
+function mtxCell(w, key) {
+  const a = mtxA(w); if (!a) return '<span class="mtxempty">—</span>';
+  if (a.noAb) return '<span class="mtxempty">无摘要</span>';
+  const v = a[key];
+  return v ? esc(v) : '<span class="mtxempty">摘要未提及</span>';
+}
+function renderMatrix() {
+  const rows = mtxRows();
+  const selN = mtxSel.size;
+  const th = (k, label, w2) => '<th class="' + (mtxSort.k === k ? "on" : "") + '" data-sk="' + k + '"' + (w2 ? ' style="min-width:' + w2 + '"' : "") + '>' + label + (mtxSort.k === k ? (mtxSort.dir < 0 ? " ↓" : " ↑") : "") + "</th>";
+  $("mtxBox").innerHTML = `
+    <div class="mbar">
+      <input id="mtxF" type="text" placeholder="在结果内筛选（题名 / 作者 / 期刊）" value="${esc(mtxFilter)}" style="flex:1;min-width:180px">
+      <button class="pill" id="mtxAll">全选当前 ${rows.length}</button>
+      <button class="pill" id="mtxNone">清空选择</button>
+      <span class="hint" id="mtxSel">已选 ${selN} 篇</span>
+    </div>
+    <div class="mbar">
+      <button class="pill" id="mtxAI" style="background:#7a3fa8;color:#fff;border-color:#7a3fa8">✨ AI 抽取字段（问题/方法/发现/局限）</button>
+      <button class="pill" id="mtxStop" hidden>停止</button>
+      <button class="pill" id="mtxCsv">⤓ CSV（Excel 可开）</button>
+      <button class="pill" id="mtxMd">⤓ Markdown</button>
+      <button class="pill" id="mtxMdCopy">复制 Markdown</button>
+      <button class="pill" id="mtxPk">🧺 选中入收藏篮</button>
+      <button class="pill" id="mtxProj">＋ 选中存入项目文献库</button>
+    </div>
+    <p class="hint" id="mtxProg">${mtxProgTxt}</p>
+    <div class="mwrap"><table class="mtx">
+      <thead><tr><th style="width:28px"><input type="checkbox" id="mtxAllCk"></th><th style="width:36px">#</th>${th("title", "题名")}<th style="min-width:110px">作者</th>${th("year", "年", "52px")}${th("cited", "被引", "60px")}<th style="min-width:120px">期刊</th><th style="width:44px">语种</th><th style="width:52px">免费</th><th style="min-width:130px">研究问题</th><th style="min-width:130px">方法 / 数据</th><th style="min-width:130px">主要发现</th><th style="min-width:110px">局限</th></tr></thead>
+      <tbody>${rows.map(w => {
+        const id = w.id, oa = oaLink(w), doi = w.doi ? w.doi.replace("https://doi.org/", "") : "";
+        const ab = oaAbstract(w.abstract_inverted_index);
+        return `<tr data-id="${esc(id)}">
+          <td><input type="checkbox" class="mtxck" ${mtxSel.has(id) ? "checked" : ""}></td>
+          <td class="mono">${sRows.indexOf(w) + 1}</td>
+          <td><a href="${esc(w.doi || w.id)}" target="_blank" rel="noopener">${esc(String(w.display_name || "").slice(0, 150))}</a>${ab ? ' <button class="pill mtxabs" title="展开摘要">摘要</button>' : ""}</td>
+          <td>${esc(authorsOf(w, 2))}${(w.authorships || []).length > 2 ? " 等" : ""}</td>
+          <td class="mono">${esc(w.publication_year || "")}</td>
+          <td class="mono">${w.cited_by_count ?? 0}</td>
+          <td>${esc(venueOf(w).slice(0, 60))}</td>
+          <td>${LANG_NAME[langOf(w)] || esc(langOf(w))}</td>
+          <td>${oa ? `<a class="pill ok" href="${esc(oa)}" target="_blank" rel="noopener">📥</a>` : '<span class="mtxempty">—</span>'}</td>
+          <td>${mtxCell(w, "q")}</td><td>${mtxCell(w, "method")}${mtxA(w) && !mtxA(w).noAb && mtxA(w).data ? "<br><span class=\"hint\">" + esc(mtxA(w).data) + "</span>" : ""}</td>
+          <td>${mtxCell(w, "findings")}</td><td>${mtxCell(w, "limits")}</td>
+        </tr>${ab ? `<tr class="absrow" data-abr="${esc(id)}" hidden><td></td><td colspan="12" style="color:var(--muted);font-size:12.5px">${esc(ab.slice(0, 600))}${ab.length > 600 ? "…" : ""}</td></tr>` : ""}`;
+      }).join("")}</tbody>
+    </table></div>
+    <p class="hint">矩阵说明：点表头「题名 / 年 / 被引」排序；「AI 抽取字段」按勾选（未勾=当前筛选全部）逐批调用 AI，只依据官方摘要、摘要未提及的一律标注——AI 列仅供参考，正式引用前请核对原文。</p>`;
+  bindMatrix();
+}
+function bindMatrix() {
+  const box = $("mtxBox");
+  const rerenderKeep = () => { mtxProgTxt = $("mtxProg") ? $("mtxProg").textContent : mtxProgTxt; renderMatrix(); };
+  box.querySelectorAll("[data-sk]").forEach(t => t.addEventListener("click", () => {
+    const k = t.dataset.sk;
+    if (mtxSort.k === k) mtxSort.dir *= -1; else { mtxSort.k = k; mtxSort.dir = k === "title" ? 1 : -1; }
+    renderMatrix();
+  }));
+  const f = $("mtxF"); if (f) f.addEventListener("input", () => { mtxFilter = f.value; mtxProgTxt = $("mtxProg").textContent; renderMatrix(); const g = $("mtxF"); if (g) { g.focus(); g.setSelectionRange(g.value.length, g.value.length); } });
+  box.querySelectorAll(".mtxck").forEach(ck => ck.addEventListener("change", () => {
+    const id = ck.closest("tr").dataset.id;
+    if (ck.checked) mtxSel.add(id); else mtxSel.delete(id);
+    $("mtxSel").textContent = "已选 " + mtxSel.size + " 篇";
+  }));
+  box.querySelectorAll(".mtxabs").forEach(b => b.addEventListener("click", () => {
+    const tr = b.closest("tr"), abs = tr.nextElementSibling;
+    if (abs && abs.classList.contains("absrow")) abs.hidden = !abs.hidden;
+  }));
+  const allCk = $("mtxAllCk");
+  if (allCk) allCk.addEventListener("change", () => { mtxRows().forEach(w => allCk.checked ? mtxSel.add(w.id) : mtxSel.delete(w.id)); renderMatrix(); });
+  $("mtxAll").addEventListener("click", () => { mtxRows().forEach(w => mtxSel.add(w.id)); renderMatrix(); });
+  $("mtxNone").addEventListener("click", () => { mtxSel.clear(); renderMatrix(); });
+  $("mtxStop").addEventListener("click", () => { mtxStop = true; });
+  $("mtxAI").addEventListener("click", mtxAIExtract);
+  $("mtxCsv").addEventListener("click", () => exportMatrix("csv"));
+  $("mtxMd").addEventListener("click", () => exportMatrix("md"));
+  $("mtxMdCopy").addEventListener("click", () => copyText(matrixMarkdown(), $("mtxMdCopy")));
+  $("mtxPk").addEventListener("click", () => {
+    const rows = selOrView();
+    if (!rows.length) { toast("先勾选或保留结果"); return; }
+    const b = getBasket(); let n = 0;
+    rows.forEach(w => {
+      const doi = w.doi ? w.doi.replace("https://doi.org/", "") : "";
+      if (doi && b.some(x => x.doi === doi)) return;
+      if (!doi && b.some(x => x.title === w.display_name)) return;
+      b.push({ doi, title: w.display_name, year: w.publication_year || "", venue: venueOf(w), authors: (w.authorships || []).map(a => a.author?.display_name || "").filter(Boolean), oa_url: oaLink(w) });
+      n++;
+    });
+    saveBasket(b); toast(n ? "已入收藏篮 " + n + " 篇" : "都已在收藏篮");
+  });
+  $("mtxProj").addEventListener("click", () => {
+    const rows = selOrView();
+    if (!rows.length) { toast("先勾选或保留结果"); return; }
+    const items = rows.map(w => ({ doi: w.doi ? w.doi.replace("https://doi.org/", "") : "", title: w.display_name, year: w.publication_year || "", venue: venueOf(w), authors: (w.authorships || []).map(a => a.author?.display_name || "").filter(Boolean), oa_url: oaLink(w) }));
+    if (typeof window.wqAddToPapers === "function") {
+      const r = window.wqAddToPapers(items);
+      if (!r.ok) { toast(r.msg); return; }
+      toast(r.n ? "已存入项目文献库 " + r.n + " 篇（阶段②可继续管）" : "都已存在于项目文献库");
+      if (!r.n) return;
+      if (window.wqTrail) window.wqTrail("importT", "检索矩阵入库", r.n + " 篇（检索：" + sQ.slice(0, 30) + "）");
+    } else {
+      const b = getBasket(); items.forEach(x => b.push(x)); saveBasket(b);
+      toast("已入收藏篮（本页无项目工作流，可在工作台项目里一键导入）");
+    }
+  });
+}
+function selOrView() { const rows = mtxRows(); return mtxSel.size ? rows.filter(w => mtxSel.has(w.id)) : rows; }
+
+async function mtxAIExtract() {
+  const rows = selOrView();
+  const withAb = rows.filter(w => w.abstract_inverted_index);
+  const noAb = rows.length - withAb.length;
+  if (!withAb.length) { toast("所选论文都没有官方摘要，无法抽取"); return; }
+  const B = 8, calls = Math.ceil(withAb.length / B);
+  if (!(await wqConfirmAI({ title: "AI 批量抽取矩阵字段？", lines: [
+    "论文 " + withAb.length + " 篇" + (noAb ? "（另有 " + noAb + " 篇无摘要，将标注「无摘要」）" : ""),
+    "分批调用 AI " + calls + " 次，约 " + Math.max(1, Math.round(calls * 0.5)) + "-" + Math.ceil(calls * 1.2) + " 分钟",
+    "只依据官方摘要抽取；摘要未提及的字段一律标注，不会编造",
+  ], okText: "开始抽取" }))) return;
+  const prog = $("mtxProg"); $("mtxAI").disabled = true; $("mtxStop").hidden = false; mtxStop = false;
+  rows.forEach(w => { if (!w.abstract_inverted_index) mtxExtra[w.id] = { noAb: true }; });
+  let done = 0;
+  try {
+    for (let s = 0; s < withAb.length; s += B) {
+      if (mtxStop) break;
+      const batch = withAb.slice(s, s + B);
+      prog.textContent = "AI 抽取中：第 " + (Math.floor(s / B) + 1) + "/" + calls + " 批（" + done + "/" + withAb.length + " 篇）…（可直接查看下方表格，完成后自动刷新）";
+      const list = batch.map((w, i) => "【" + (i + 1) + "】题名：" + w.display_name + "\n摘要：" + oaAbstract(w.abstract_inverted_index).slice(0, 1500)).join("\n\n");
+      const txt = await callAI(`你是文献计量助手。对下面每篇论文，仅依据给出的题名与摘要，抽取字段并输出 JSON 数组（每篇一个对象，不要多余文字）：
+[{"i":1,"q":"研究问题（≤40字）","method":"方法（≤40字）","data":"数据/样本（≤30字）","findings":"主要发现（≤50字）","limits":"局限（≤40字，摘要未提则写「摘要未提及」）"}]
+规则：只写摘要中真实出现的信息；摘要没说的写「摘要未提及」；不得编造数据、样本、结论。用简体中文。\n\n${list}`, { temperature: 0, max_tokens: 3000 });
+      let arr = [];
+      try { arr = parseJSONLoose(txt); } catch (e) { arr = []; }
+      if (!Array.isArray(arr)) arr = [];
+      arr.forEach(o => {
+        const w = batch[(+o.i || 0) - 1]; if (!w) return;
+        mtxExtra[w.id] = { q: String(o.q || "").slice(0, 80), method: String(o.method || "").slice(0, 80), data: String(o.data || "").slice(0, 60), findings: String(o.findings || "").slice(0, 100), limits: String(o.limits || "").slice(0, 80) };
+      });
+      batch.forEach(w => { if (!mtxExtra[w.id]) mtxExtra[w.id] = { q: "（本批抽取失败，可重跑）" }; });
+      done += batch.length;
+      mtxProgTxt = "抽取进度：" + done + "/" + withAb.length + " 篇";
+      renderMatrix();
+    }
+    mtxProgTxt = (mtxStop ? "已停止。" : "抽取完成 ✓ ") + "共 " + done + " 篇" + (noAb ? "，另有 " + noAb + " 篇无摘要" : "") + "。AI 列仅供参考，引用前请核对原文。";
+    if (window.wqTrail) window.wqTrail("ai", "检索矩阵·AI抽取", done + " 篇（检索：" + sQ.slice(0, 30) + "）");
+  } catch (e) {
+    mtxProgTxt = "抽取中断：" + e.message + "（已完成的批次已保留，可再点抽取续跑）";
+    if (window.wqTrail) window.wqTrail("cancel", "检索矩阵·AI抽取", "中断：" + e.message.slice(0, 60));
+  } finally {
+    $("mtxAI").disabled = false; $("mtxStop").hidden = true;
+    renderMatrix();
+  }
+}
+
+function matrixMarkdown() {
+  const rows = mtxRows();
+  const cut = (s, n) => String(s || "").replace(/\|/g, "／").replace(/\s+/g, " ").slice(0, n || 60);
+  const head = "| # | 题名 | 作者 | 年 | 期刊 | 被引 | 语种 | 研究问题 | 方法/数据 | 主要发现 | 局限 |\n|---|------|------|----|------|------|------|----------|-----------|----------|------|";
+  const body = rows.map((w, i) => {
+    const a = mtxA(w), g = (k) => a ? (a.noAb ? "无摘要" : cut(a[k], 50)) : "";
+    const title = cut(w.display_name, 90) + (w.doi ? " [" + w.doi.replace("https://doi.org/", "") + "]" : "");
+    return "| " + (i + 1) + " | " + title + " | " + cut(authorsOf(w, 2)) + " | " + (w.publication_year || "") + " | " + cut(venueOf(w), 40) + " | " + (w.cited_by_count ?? 0) + " | " + (LANG_NAME[langOf(w)] || "") + " | " + g("q") + " | " + g("method") + (a && !a.noAb && a.data ? "（" + cut(a.data, 20) + "）" : "") + " | " + g("findings") + " | " + g("limits") + " |";
+  }).join("\n");
+  return "# 论文矩阵：" + sQ + "\n\n> 来源：OpenAlex（检索 " + (sMeta && sMeta.parts ? sMeta.parts.map(p => p.label + "「" + p.q + "」" + p.count + " 篇").join(" · ") : "") + "）\n> 导出：" + new Date().toISOString().slice(0, 16).replace("T", " ") + " · 本页共 " + rows.length + " 篇" + (mtxSel.size ? "（勾选 " + mtxSel.size + " 篇）" : "") + "\n> ⚠️ AI 抽取列仅依据官方摘要，正式引用前请核对原文。\n\n" + head + "\n" + body + "\n";
+}
+function exportMatrix(fmt) {
+  const rows = mtxRows();
+  if (!rows.length) { toast("没有可导出的行"); return; }
+  if (fmt === "md") {
+    dlText("论文矩阵-" + String(sQ).replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 30) + ".md", matrixMarkdown());
+  } else {
+    const q2 = (s) => '"' + String(s ?? "").replace(/"/g, '""').replace(/\r?\n/g, " ") + '"';
+    const head = ["#", "题名", "作者", "年份", "期刊", "被引", "语种", "类型", "DOI", "免费全文", "研究问题", "方法/数据", "主要发现", "局限", "摘要", "OpenAlex"];
+    const lines = rows.map((w, i) => {
+      const a = mtxA(w), g = (k) => a ? (a.noAb ? "无摘要" : (a[k] || "")) : "";
+      return [i + 1, w.display_name, authorsOf(w, 99), w.publication_year || "", venueOf(w), w.cited_by_count ?? 0, LANG_NAME[langOf(w)] || langOf(w), (w.type || "").replace(/-/g, " "), w.doi ? w.doi.replace("https://doi.org/", "") : "", oaLink(w) || "", g("q"), (g("method") + (a && !a.noAb && a.data ? "（" + a.data + "）" : "")), g("findings"), g("limits"), oaAbstract(w.abstract_inverted_index), w.id].map(q2).join(",");
+    });
+    dlText("论文矩阵-" + String(sQ).replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 30) + ".csv", "\ufeff" + head.map(q2).join(",") + "\n" + lines.join("\n"));
+  }
+  if (window.wqTrail) window.wqTrail("export", "导出论文矩阵", rows.length + " 篇 → " + (fmt === "md" ? "Markdown" : "CSV"));
+}
+
 $("btnSearch").addEventListener("click", doSearch);
 $("q").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
-
 /* ================= Tab2 AI 读论文 ================= */
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "assets/vendor/pdf.worker.min.js";
 let docText = "", docPages = null, docName = "";
@@ -613,9 +934,11 @@ async function analyze(prompt, label) {
     }
     const secs = Math.round((Date.now() - t0) / 1000);
     prog.textContent = "完成 ✓（" + label + " · " + text.length + " 字符 · " + chunks.length + " 段 · 用时 " + secs + "s）";
+    clearInterval(timer); // v0.8 修复：先停计时器，否则「完成 ✓」会被每秒的「已用 Ns」覆写并定格
     setMD(out, result);
     $("btnCopy").hidden = false;
     rlogAdd({ ts: new Date().toISOString().slice(0, 16).replace("T", " "), label: label, doc: docName || "粘贴文本", len: (result || "").length, result: String(result || "").slice(0, 30000) });
+    if (window.wqTrail) window.wqTrail("ai", "读论文·" + label, "用时 " + secs + "s · " + text.length + " 字" + (chunks.length > 1 ? " · 分段 " + chunks.length : "") + " · 来源：" + (docName || "粘贴文本"));
     await maybeKeepToProject("读论文·" + label, result);
   } catch (e) { prog.textContent = "分析失败：" + e.message; }
   clearInterval(timer);
@@ -694,6 +1017,7 @@ $("btnQA").addEventListener("click", async () => {
       `<div class="srcitem">材料${i + 1}${h.page ? " · 第 " + h.page + " 页" : ""} · ${esc(h.text.slice(0, 90))}…</div>`).join("");
     prog.textContent = `完成 ✓ 命中 ${hits.length} 段`;
     rlogAdd({ ts: new Date().toISOString().slice(0, 16).replace("T", " "), label: "追问：" + q.slice(0, 24), doc: docName || "粘贴文本", len: (ans || "").length, result: String(ans || "").slice(0, 30000) });
+    if (window.wqTrail) window.wqTrail("ai", "追问", q.slice(0, 40) + " · 命中 " + hits.length + " 段");
     await maybeKeepToProject("追问·" + q.slice(0, 24), ans);
   } catch (e) { out.textContent = "失败：" + e.message; prog.textContent = ""; }
   finally { btn.disabled = false; }
@@ -964,6 +1288,7 @@ $("btnCiteDl").addEventListener("click", () => {
 });
 
 /* 批量找免费版（OpenAlex + Unpaywall） */
+let oaMisses = [];            // v0.8：本轮「无免费版」条目，供 AI 找渠道
 async function upwByDOI(doi, email) {
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return null;
   try { return await fetchJSON(`https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`); }
@@ -978,7 +1303,7 @@ $("btnCiteOA").addEventListener("click", async () => {
   const out = $("oaOut"), prog = $("oaProg"), bar = $("oaBar");
   document.querySelector("#tab-cite .prog").hidden = false;
   out.innerHTML = "";
-  const rows = []; let found = 0;
+  const rows = []; const misses = []; let found = 0;
   for (let i = 0; i < parsedCsl.length; i++) {
     const c = parsedCsl[i];
     bar.style.width = `${((i + 1) / parsedCsl.length) * 100}%`;
@@ -997,15 +1322,59 @@ $("btnCiteOA").addEventListener("click", async () => {
       }
     } catch (e) { /* 单条失败不中断 */ }
     const ok = onlyPdf ? oaPdf : (oaPdf || oaLanding);
-    if (ok) found++;
+    if (ok) found++; else misses.push(c);
     rows.push(`<tr><td>${i + 1}</td><td>${esc(String(c.title).slice(0, 70))}${c.issued?.["date-parts"]?.[0]?.[0] ? ` <span class="mono">(${c.issued["date-parts"][0][0]})</span>` : ""}</td>
       <td>${ok ? (oaPdf ? `<a class="pill ok" href="${esc(oaPdf)}" target="_blank" rel="noopener">📥 直接PDF</a>` : "") : ""} ${ok && !oaPdf ? `<a class="pill" href="${esc(oaLanding)}" target="_blank" rel="noopener">开放版本</a>` : ""}${!ok ? '<span class="pill no">无免费版</span>' : ""}</td>
       <td>${c.DOI ? `<a class="pill" href="https://doi.org/${esc(c.DOI)}" target="_blank" rel="noopener">DOI</a>` : "—"}</td></tr>`);
     out.innerHTML = `<table class="tb"><tr><th>#</th><th>文献</th><th>免费全文</th><th>DOI</th></tr>${rows.join("")}</table>`;
     await sleep(400);
   }
-  prog.textContent = `完成：${found}/${parsedCsl.length} 条找到合法免费版（${Math.round(found / parsedCsl.length * 100)}%）。未找到的走机构图书馆或向作者索要。`;
+  prog.textContent = `完成：${found}/${parsedCsl.length} 条找到合法免费版（${Math.round(found / parsedCsl.length * 100)}%）。未找到的可点下方【AI 找可行下载渠道】。`;
   btnOA.disabled = false;
+  oaMisses = misses;
+  const fr = $("oaFindRow"), fb = $("btnOaFind");
+  if (fr && fb) {
+    fr.hidden = false; fb.disabled = !misses.length;
+    fb.textContent = misses.length ? `🔎 AI 找可行下载渠道（${misses.length} 条无免费版）` : "🔎 AI 找渠道（全部已找到）";
+    const fo = $("oaFindOut"); if (fo) { fo.hidden = true; fo.innerHTML = ""; fo.dataset.rawmd = ""; }
+  }
+});
+
+/* v0.8：无免费版 → AI 找可行获取渠道（合法渠道判断 + 高置信链接 + 保证可用的检索入口 + 兜底）
+ * 边界：只找合法开放版本与检索入口；不提供代下/盗版/付费墙绕过；wxy88 仅作外部兜底链接（BYO 账号，平台不代登录、不存凭据） */
+$("btnOaFind")?.addEventListener("click", async () => {
+  if (!oaMisses.length) { $("oaProg").textContent = "没有待找条目：先跑一次【开始追踪】"; return; }
+  if (!(await wqConfirmAI({ title: "用 AI 找可行下载渠道？", lines: [
+    oaMisses.length + " 篇未找到合法免费版",
+    "调用 AI 1 次，约 10-40 秒",
+    "AI 给出的链接需打开后人工核对标题 / 作者 / 年份",
+  ], okText: "开始寻找" }))) return;
+  const out = $("oaFindOut"); out.hidden = false; setMD(out, "AI 正在分析可行渠道…");
+  const list = oaMisses.map((c, i) => {
+    const au = (c.author || []).map(a => a.family || a.literal || "").filter(Boolean).slice(0, 3).join(", ");
+    const yr = c.issued?.["date-parts"]?.[0]?.[0] || "";
+    return `[${i + 1}] ${c.title}${au ? " / " + au : ""}${c["container-title"] ? " / " + c["container-title"] : ""}${yr ? " / " + yr : ""}${c.DOI ? " / DOI:" + c.DOI : ""}`;
+  }).join("\n");
+  try {
+    const txt = await callAI(`你是文献获取助手。以下论文在 OpenAlex/Unpaywall 没有标注合法免费版。请逐篇分析可行的获取渠道，只给合法途径（预印本平台 arXiv / SSRN / NBER / RePEc / ChinaXiv、机构知识库、作者个人主页、期刊免费期后版本、会议或工作论文版）：
+1) 每篇一节：**标题** → 「渠道判断」（最可能存在哪个合法来源，一句理由）→ 「可能链接」（仅当你确有把握时给出：如已知 arXiv ID 可给直达链接并标「高置信」；没有把握就不要写 URL）→ 「检索建议」（在哪搜、用什么关键词）。
+2) 严禁编造链接或 DOI；不确定一律用文字检索建议代替。
+3) 严禁盗版站点、付费墙绕过、代下服务。
+用简体中文，逐篇简洁输出。
+
+论文列表：
+${list}`);
+    const enc = (s) => encodeURIComponent(String(s || "").slice(0, 120));
+    const links = oaMisses.map((c, i) => {
+      const q = enc(c.title);
+      return `<li><b>${i + 1}. ${esc(String(c.title).slice(0, 70))}</b> — <a href="https://xueshu.baidu.com/s?wd=${q}" target="_blank" rel="noopener">百度学术</a> · <a href="https://www.bing.com/search?q=${q}%20pdf" target="_blank" rel="noopener">Bing</a> · <a href="https://arxiv.org/search/?query=${q}&searchtype=all" target="_blank" rel="noopener">arXiv</a> · <a href="https://scholar.google.com/scholar?q=${q}" target="_blank" rel="noopener">Google Scholar</a></li>`;
+    }).join("");
+    out.innerHTML = mdRender(txt)
+      + `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #dfe3ea"><b>🔎 保证可用的检索入口（标题精确匹配）</b><ul style="margin:6px 0 0;padding-left:18px">${links}</ul>`
+      + `<p style="margin:10px 0 0;font-size:12.5px;color:#5c6675">仍未找到？可到 <a href="http://www.wxy88.top" target="_blank" rel="noopener nofollow">wxy88 文献平台</a> 用你自己的账号试试（外部服务，本平台不代登录、不保存凭据）。AI 给出的直达链接可能失效或错误，打开后请先核对标题 / 作者 / 年份。</p></div>`;
+    out.dataset.rawmd = txt;
+    if (window.wqTrail) window.wqTrail("ai", "AI 找下载渠道", oaMisses.length + " 篇无免费版：已给出渠道判断与检索入口");
+  } catch (e) { setMD(out, "失败：" + e.message); }
 });
 
 /* ================= Tab4 综述工坊 ================= */
@@ -1106,6 +1475,7 @@ ${poolList}`, { temperature: 0.4 });
     const md = `# ${topic}（综述草稿）\n\n> 由文渠科研工作台生成 · 文献池 ${pool.length} 篇 · 生成日期 ${new Date().toISOString().slice(0, 10)}\n> ⚠️ AI 草稿：所有引用 [n] 与论断请人工核对后再使用。\n\n## 引言\n\n${intro.trim()}\n\n${drafts.join("\n\n")}\n\n## 结语\n\n${concl.trim()}\n\n## 参考文献\n\n${refs.join("\n")}\n`;
     setP(100, `完成 ✓ 全文约 ${md.length} 字，参考文献 ${pool.length} 条`);
     setMD($("stOut"), md);
+    if (window.wqTrail) window.wqTrail("ai", "综述草稿", topic.slice(0, 30) + " · " + md.length + " 字 · " + pool.length + " 篇文献");
     await maybeKeepToProject("综述草稿·" + topic.slice(0, 20), md);
     $("btnStCopy").hidden = false; $("btnStDl").hidden = false;
   } catch (e) {
@@ -1123,7 +1493,7 @@ $("btnRadar").addEventListener("click", async () => {
   const btn = $("btnRadar"); btn.disabled = true;
   lsSet("wenqu_radar", interests);
   const days = $("rdDays").value;
-  if (!(await wqConfirmAI({ title: "扫描新论文并用 AI 打分？", lines: ["拉取近 " + days + " 天新论文（最多 30 篇）", "调用 AI 约 3 次（每批 10 篇打分）"], okText: "开始扫描" }))) { btn.disabled = false; toast("已取消"); return; }
+  if (!(await wqConfirmAI({ title: "扫描新论文并用 AI 打分？", lines: ["拉取近 " + days + " 天新论文（至少 50 篇）", "调用 AI 约 5 次（每批 10 篇打分）"], okText: "开始扫描" }))) { btn.disabled = false; toast("已取消"); return; }
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
   const out = $("rdOut"), prog = $("rdProg"), bar = $("rdBar");
   document.querySelector("#tab-radar .prog").hidden = false;
@@ -1131,7 +1501,7 @@ $("btnRadar").addEventListener("click", async () => {
   out.innerHTML = "";
   let rows = [];
   try {
-    const d = await fetchJSON(`${OA}?search=${encodeURIComponent(interests)}&filter=from_publication_date:${since}&sort=publication_date:desc&per-page=30&select=${OA_SELECT}&mailto=${oaMail}`);
+    const d = await fetchJSON(`${OA}?search=${encodeURIComponent(interests)}&filter=from_publication_date:${since}&sort=publication_date:desc&per-page=50&select=${OA_SELECT}&mailto=${oaMail}`);
     rows = d.results || [];
   } catch (e) { prog.textContent = "检索失败：" + e.message; btn.disabled = false; return; }
   if (!rows.length) { prog.textContent = "这个时间段没有命中新论文，放宽天数或改关键词。"; bar.style.width = "100%"; btn.disabled = false; return; }
