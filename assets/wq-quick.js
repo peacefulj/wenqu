@@ -21,10 +21,17 @@
   function plainLen(s) { return String(s || "").replace(/\s+/g, "").length; }
   /* 宽容 JSON 解析：剥掉 ```json 围栏、截取首尾大括号 */
   function parseJSONLoose(s) {
+    /* v1.0.3：支持数组与对象两种输出——此前只截 {..}，模型返回 [..] 时截成 "{..},{..}]" 直接炸（用户实测报错） */
     s = String(s || "").replace(/```(?:json)?/g, "").trim();
-    var a = s.indexOf("{"), b = s.lastIndexOf("}");
-    if (a >= 0 && b > a) s = s.slice(a, b + 1);
-    return JSON.parse(s);
+    var a1 = s.indexOf("["), b1 = s.lastIndexOf("]");
+    var a2 = s.indexOf("{"), b2 = s.lastIndexOf("}");
+    if (a1 >= 0 && (a2 < 0 || a1 < a2) && b1 > a1) {
+      try { return JSON.parse(s.slice(a1, b1 + 1)); } catch (e) {}
+    }
+    if (a2 >= 0 && b2 > a2) {
+      try { return JSON.parse(s.slice(a2, b2 + 1)); } catch (e) {}
+    }
+    throw new Error("返回内容不是合法 JSON");
   }
 
   var TYPE_SPEC = {
@@ -90,7 +97,7 @@
     $("qLevel").innerHTML = lv.map(function (x) { return '<option value="' + x.id + '">' + esc(x.name) + "</option>"; }).join("");
     $("qLevel").value = "bsc";
     $("qParadigm").innerHTML = (window.WQ_PARADIGMS || []).map(function (x) { return '<option value="' + x.id + '">' + esc(x.name) + "（" + esc(x.desc || "") + "）</option>"; }).join("");
-    ["qTitle", "qWords", "qSecs", "qRefs", "qType", "qLevel", "qMat"].forEach(function (id) {
+    ["qTitle", "qWords", "qSecs", "qRefs", "qType", "qLevel", "qLang", "qMat"].forEach(function (id) {
       $(id).addEventListener("change", updateEst); $(id).addEventListener("input", updateEst);
     });
     renderKeyState();
@@ -102,17 +109,35 @@
     var kw = $("qTitle").value.trim();
     var b = $("qSuggest"); b.disabled = true; $("qSugMsg").textContent = "AI 想题目中…";
     try {
-      var txt = await WQCore.ai.call(
-        (kw ? "围绕主题「" + kw + "」" : "面向本科/硕士毕业论文") + "，给出 3 个中文论文题目。要求：小切口、可操作、数据可得（公开统计/问卷/公开数据库），每个题目一句话说明数据来源。只输出 JSON 数组：[{\"t\":\"题目\",\"d\":\"数据来源\"}]", 600, { temperature: 0.8, max_tokens: 600 });
-      var arr = parseJSONLoose(txt); if (!Array.isArray(arr)) throw new Error("格式异常");
-      $("qSugList").innerHTML = arr.slice(0, 3).map(function (x, i) {
-        return '<div class="srcitem"><b>' + esc(x.t || x.title || "") + '</b><div class="hint">' + esc(x.d || "") + ' <button class="pill" data-use="' + i + '">用这个</button></div></div>';
+      /* v1.0.3：接受宽泛关键词（如「地方债」），结果可编辑后再填入 */
+      var ask = kw
+        ? "用户输入的关键词是「" + kw + "」（可能是宽泛主题词，如：地方债、乡村振兴）。请基于它给出 3 个具体、可操作的中文论文题目：小切口、数据可得（公开统计/问卷/公开数据库），每个题目一句话说明数据来源。只输出 JSON 数组，格式 [{\"t\":\"题目\",\"d\":\"数据来源\"}]，不要输出任何其他文字。"
+        : "面向本科/硕士毕业论文，给出 3 个具体、可操作的中文论文题目（小切口、数据可得），每个题目一句话说明数据来源。只输出 JSON 数组，格式 [{\"t\":\"题目\",\"d\":\"数据来源\"}]，不要输出任何其他文字。";
+      var arr = null;
+      for (var attempt = 0; attempt < 2 && !arr; attempt++) {
+        var txt = await WQCore.ai.call(attempt ? (ask + "（上次输出不是合法 JSON 数组，请严格只输出 JSON 数组本身）") : ask, 600, { temperature: attempt ? 0.3 : 0.8, max_tokens: 600 });
+        var parsed = parseJSONLoose(txt);
+        if (Array.isArray(parsed)) arr = parsed;
+        else if (parsed && typeof parsed === "object") arr = parsed.titles || parsed.data || parsed.list || parsed.items || null;
+      }
+      if (!arr || !arr.length) throw new Error("AI 没有给出可用的题目列表，请重试");
+      arr = arr.slice(0, 3).map(function (x) { return { t: String(x.t || x.title || x.name || "").trim(), d: String(x.d || x.data || x.source || x.desc || "").trim() }; }).filter(function (x) { return x.t; });
+      if (!arr.length) throw new Error("AI 返回的题目为空，请重试");
+      $("qSugList").innerHTML = arr.map(function (x, i) {
+        return '<div class="srcitem" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+          + '<input class="sugEd" data-i="' + i + '" value="' + esc(x.t) + '" style="flex:1;min-width:200px;padding:6px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px">'
+          + '<button class="pill" data-use="' + i + '">✓ 填入</button>'
+          + '<div class="hint" style="flex-basis:100%">' + esc(x.d) + '</div></div>';
       }).join("");
-      var titles = arr.slice(0, 3).map(function (x) { return x.t || x.title || ""; });
       $("qSugList").querySelectorAll("[data-use]").forEach(function (btn) {
-        btn.addEventListener("click", function () { $("qTitle").value = titles[+btn.dataset.use] || ""; updateEst(); });
+        btn.addEventListener("click", function () {
+          var ed = $("qSugList").querySelector('.sugEd[data-i="' + btn.dataset.use + '"]');
+          if (ed && ed.value.trim()) { $("qTitle").value = ed.value.trim(); $("qTitle").focus(); updateEst(); }
+          $("qSugMsg").textContent = "已填入（可直接修改）";
+          setTimeout(function () { $("qSugMsg").textContent = ""; }, 3000);
+        });
       });
-      $("qSugMsg").textContent = "";
+      $("qSugMsg").textContent = "想到 " + arr.length + " 个题目：可在框里改，改完点「✓ 填入」";
     } catch (e) { $("qSugMsg").textContent = "失败：" + e.message; }
     finally { b.disabled = false; }
   });
@@ -120,7 +145,7 @@
   /* ---------- token 预估 ---------- */
   var EST = { inTok: 0, outTok: 0, calls: 0 };
   function updateEst() {
-    var words = +$("qWords").value, secs = +$("qSecs").value, refs = +$("qRefs").value;
+    var words = +$("qWords").value || 12000, secs = +$("qSecs").value || 10, refs = +$("qRefs").value || 50;
     var per = Math.round(words / secs);
     var inTok = 0, outTok = 0, calls = 0;
     if ($("qTitle").value.trim().length >= 5) {
@@ -173,9 +198,10 @@
       title: $("qTitle").value.trim(),
       level: $("qLevel").value,
       type: $("qType").value,
-      words: +$("qWords").value,
+      words: Math.min(80000, Math.max(2000, +$("qWords").value || 12000)),
       secs: +$("qSecs").value,
-      refsN: +$("qRefs").value,
+      refsN: Math.min(200, Math.max(10, +$("qRefs").value || 50)),
+      lang: $("qLang").value || "both",
       material: $("qMat").value.trim(),
       paradigm: $("qParadigm").value
     };
@@ -194,7 +220,7 @@
     if (busy) return;
     var f = collectForm();
     if (!hasKey()) { renderKeyState(); return; }
-    if (f.title.length < 5) { $("qMsg").textContent = "题目至少 5 个字"; $("qTitle").focus(); return; }
+    if (f.title.length < 2) { $("qMsg").textContent = "主题/关键词至少 2 个字"; $("qTitle").focus(); return; }
     busy = true; ctl = new AbortController();
     $("qGo").disabled = true; $("qStop").hidden = false; $("qDoneRow").hidden = true; $("qMsg").textContent = "";
     usageStart = WQCore.ai.usageToday();
@@ -215,7 +241,7 @@
         ref: { generatedAt: "", type: f.type, words: f.words, sections: {}, order: [] },
         refDraft: {}, versions: [], trail: [], outs: {}
       };
-      proj._form = { type: f.type, words: f.words, secs: f.secs, refsN: f.refsN, level: f.level, material: f.material.slice(0, 2000), paradigm: f.paradigm };
+      proj._form = { type: f.type, words: f.words, secs: f.secs, refsN: f.refsN, level: f.level, lang: f.lang, material: f.material.slice(0, 2000), paradigm: f.paradigm };
       DB.projects.unshift(proj); DB.cur = proj.id;
     }
     var saveDB = function () { WQCore.saveLocal(DB); };
@@ -275,13 +301,31 @@
     /* ===== 步骤实现 ===== */
     async function stepRefs(c, report) {
       report("检索文献中…");
-      var q = c.proj.topic;
+      /* v1.0.3：文献语言可选（中英/中/英，默认中英）——中文主题自动加 AI 翻译的英文检索词，合并去重 */
+      var lang = c.proj._form.lang || "both";
+      var q0 = c.proj.topic;
+      var queries = [q0];
+      var cjk = /[\u4e00-\u9fff]/.test(q0);
+      if (lang !== "zh" && cjk) {
+        report("AI 翻译检索词（中→英）…");
+        try {
+          var enq = String(await WQCore.ai.call("把下面的中文研究主题翻译成英文学术检索词：只输出英文关键词短语本身（不要整句、不加引号、不要解释）。\n主题：" + q0, 120, { temperature: 0, max_tokens: 120 })).trim().replace(/^["']|["']$/g, "");
+          if (enq.length > 3 && queries.indexOf(enq) < 0) queries.push(enq);
+        } catch (e) { /* 翻译失败时用原文检索 */ }
+      }
+      if (lang === "en" && queries.length > 1) queries = [queries[1]];
       var sel = "display_name,publication_year,doi,primary_location,cited_by_count,abstract_inverted_index";
-      var d1 = await fetch(OA + "?search=" + encodeURIComponent(q) + "&per-page=" + Math.min(200, c.proj._form.refsN) + "&select=" + sel + mail()).then(function (r) { return r.json(); });
-      var d2 = {};
+      var per = Math.min(200, c.proj._form.refsN);
+      var packs = [];
+      for (var qi = 0; qi < queries.length; qi++) {
+        var dd = { results: [] };
+        try { dd = await fetch(OA + "?search=" + encodeURIComponent(queries[qi]) + "&per-page=" + per + "&select=" + sel + mail()).then(function (r) { return r.json(); }); } catch (e) {}
+        packs.push(dd.results || []);
+      }
       try {
-        d2 = await fetch(OA + "?search=" + encodeURIComponent(q) + "&per-page=" + Math.min(200, c.proj._form.refsN) + "&sort=cited_by_count:desc&select=" + sel + mail()).then(function (r) { return r.json(); });
-      } catch (e) { d2 = { results: [] }; }
+        var d2 = await fetch(OA + "?search=" + encodeURIComponent(queries[0]) + "&per-page=" + per + "&sort=cited_by_count:desc&select=" + sel + mail()).then(function (r) { return r.json(); });
+        packs.push(d2.results || []);
+      } catch (e) {}
       var seen = new Set(), refs = [];
       var push = function (w) {
         if (!w || !w.display_name) return;
@@ -294,8 +338,14 @@
           cited: w.cited_by_count || 0, abs: abstractFromInverted(w.abstract_inverted_index)
         });
       };
-      (d1.results || []).forEach(push);
-      (d2.results || []).forEach(push);
+      /* v1.0.3：轮流配额合并——避免第一个检索词占满名额、其他语言被挤出 */
+      var maxLen = 0;
+      packs.forEach(function (rs) { if (rs.length > maxLen) maxLen = rs.length; });
+      for (var ri = 0; ri < maxLen; ri++) {
+        packs.forEach(function (rs) { if (rs[ri]) push(rs[ri]); });
+      }
+      refs = refs.slice(0, c.proj._form.refsN);
+
       refs = refs.slice(0, c.proj._form.refsN);
       if (refs.length < 10) throw new Error("OpenAlex 命中过少（" + refs.length + " 篇）——题目可能太具体，换个表述重试");
       c.proj.refDraft = c.proj.refDraft || {};
@@ -304,7 +354,7 @@
         return { id: "f" + c.proj.id + "_" + i, title: r0.title, year: String(r0.year || ""), doi: r0.doi, venue: r0.venue, type: "J", author: "", abs: (r0.abs || "").slice(0, 1200) };
       });
       c.save();
-      report("✓ 检索到 " + refs.length + " 篇（含 " + refs.filter(function (x) { return x.abs; }).length + " 篇带摘要）");
+      report("✓ 检索到 " + refs.length + " 篇（含 " + refs.filter(function (x) { return x.abs; }).length + " 篇带摘要）· 检索词：" + queries.join(" ＋ "));
       outPush("文献（前 12）", refs.slice(0, 12).map(function (r0) { return "[" + r0.n + "] " + r0.title + " (" + r0.year + ")"; }).join("\n") + (refs.length > 12 ? "\n… 共 " + refs.length + " 篇" : ""));
     }
 
@@ -488,7 +538,7 @@
         $("qTitle").value = p.topic;
         $("qLevel").value = p._form.level; $("qType").value = p._form.type;
         $("qWords").value = p._form.words; $("qSecs").value = p._form.secs;
-        $("qRefs").value = p._form.refsN; $("qParadigm").value = p._form.paradigm;
+        $("qRefs").value = p._form.refsN; $("qParadigm").value = p._form.paradigm; $("qLang").value = p._form.lang || "both";
         $("qMat").value = p._form.material || "";
         $("qGo").textContent = "▶ 续跑（从断点继续）";
         $("qGo").click();

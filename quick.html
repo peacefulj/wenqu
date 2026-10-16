@@ -54,7 +54,7 @@
   <div class="quickgrid">
     <!-- 左：表单 -->
     <div class="qform">
-      <label>论文题目 / 研究主题（5–80 字）</label>
+      <label>论文题目 / 研究主题或关键词（2–80 字，想不出就点「帮我想题目」）</label>
       <textarea id="qTitle" rows="2" placeholder="例：数字经济对县域城乡收入差距的影响研究"></textarea>
       <div class="row" style="margin-top:4px"><button id="qSuggest" class="btn2 ghost btn-sm">💡 帮我想题目</button><span class="hint" id="qSugMsg"></span></div>
       <div id="qSugList" class="results" style="margin-top:6px"></div>
@@ -70,13 +70,19 @@
         <option value="task">任务书</option>
       </select>
       <div class="row">
-        <div style="flex:1"><label>总字数目标</label>
-          <select id="qWords"><option value="8000">8000 字</option><option value="12000" selected>12000 字</option><option value="15000">15000 字</option><option value="20000">20000 字</option></select></div>
+        <div style="flex:1"><label>总字数目标（2000–80000，可自定义）</label>
+          <input id="qWords" type="number" min="2000" max="80000" step="500" value="12000"></div>
         <div style="flex:1"><label>分节数</label>
           <select id="qSecs"><option>6</option><option>8</option><option selected>10</option><option>12</option><option>14</option></select></div>
       </div>
-      <label>参考文献（OpenAlex 真实检索）</label>
-      <select id="qRefs"><option value="50" selected>50 篇（默认）</option><option value="60">60 篇</option><option value="80">80 篇</option></select>
+      <label>文献语言</label>
+      <select id="qLang">
+        <option value="both" selected>中英文（默认：中文主题自动加英文检索词）</option>
+        <option value="zh">中文优先</option>
+        <option value="en">英文</option>
+      </select>
+      <label>参考文献数量（OpenAlex 真实检索，可自定义 10–200）</label>
+      <input id="qRefs" type="number" min="10" max="200" step="5" value="50">
       <details class="fold" style="margin-top:10px">
         <summary>已有材料 / 高级选项（可选）</summary>
         <div class="body">
