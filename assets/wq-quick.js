@@ -231,6 +231,13 @@
     var proj = (DB.projects || []).find(function (p) {
       return p.mode === "quick" && p.topic === f.title && p.pipeline && p.pipeline.status !== "done" && p._form && p._form.type === f.type;
     });
+    if (!proj) {
+      /* v1.0.5：同主题的未完成项目但表单快照缺失/类型不一致——也复用，避免同题重复建项 */
+      proj = (DB.projects || []).find(function (p) {
+        return p.mode === "quick" && p.topic === f.title && p.pipeline && p.pipeline.status !== "done";
+      });
+      if (proj && !proj._form) proj._form = { type: f.type, words: f.words, secs: f.secs, refsN: f.refsN, level: f.level, material: f.material.slice(0, 2000), paradigm: f.paradigm };
+    }
     var resumed = !!proj;
     if (!proj) {
       proj = {
@@ -260,6 +267,15 @@
       { id: "check", label: "自检：引用编号 / 字数 / 结构", run: stepCheck },
       { id: "finalize", label: "落库 → 进入工作台", run: stepFinalize }
     ];
+    /* v1.0.5（提纲确认暂停点）：提纲未生成 → 先只跑「检索+提纲」，暂停等用户编辑确认；
+       提纲已确认（或续跑到写正文）→ 六步连跑，已完成步骤自动跳过 */
+    var outlineDone = !!(proj.pipeline && (proj.pipeline.steps || []).some(function (x) { return x.id === "outline" && x.status === "done"; }));
+    var writeStarted = !!(proj.pipeline && (proj.pipeline.steps || []).some(function (x) { return x.id === "write" && x.status !== "pending"; }));
+    var isPaused = !!(proj.pipeline && proj.pipeline.status === "paused");
+    var pausedAtOutline = false;
+    var runSteps = steps;
+    if (!outlineDone) { pausedAtOutline = true; runSteps = steps.slice(0, 2); }
+    else if (isPaused && !writeStarted) { pausedAtOutline = true; runSteps = []; }  // 恢复：直接回编辑器，不跑 pipeline
 
     function ctx() {
       return {
@@ -277,14 +293,22 @@
       if (!resumed) saveDB();
       outReset();
       if (!resumed) outPush("题目", f.title);
-      await WQCore.pipeline.run(proj, steps, ctx(), function (msg) {
+      await WQCore.pipeline.run(proj, runSteps, ctx(), function (msg) {
         renderSteps(steps, stateMap());
         if (msg) $("qMsg").textContent = msg;
       });
       renderSteps(steps, stateMap());
-      $("qMsg").textContent = "完成 ✓ 参考稿已存入工作台（共 " + (proj.ref.order || []).length + " 节 / " + (proj.papers || []).length + " 篇文献）";
-      $("qGoStudio").href = "studio.html?p=" + proj.id + "&stage=4";
-      $("qDoneRow").hidden = false;
+      if (pausedAtOutline) {
+        /* 暂停点：展示提纲编辑器，等用户确认后由 oeConfirm 触发续跑 */
+        if (runSteps.length) { proj.pipeline.status = "paused"; proj.status = "提纲已生成（待确认）"; saveDB(); }
+        renderOutlineEditor(proj);
+        $("qMsg").textContent = "提纲已生成（" + (proj.refDraft.outline.sections || []).length + " 节" + (proj._form.secs !== (proj.refDraft.outline.sections || []).length ? "，你设了 " + proj._form.secs + " 节" : "") + "）——请在上方确认/编辑后点「🚀 确认提纲，开始写正文」";
+        $("qGo").textContent = "▶ 续跑（从断点继续）";
+      } else {
+        $("qMsg").textContent = "完成 ✓ 参考稿已存入工作台（共 " + (proj.ref.order || []).length + " 节 / " + (proj.papers || []).length + " 篇文献）";
+        $("qGoStudio").href = "studio.html?p=" + proj.id + "&stage=5";
+        $("qDoneRow").hidden = false;
+      }
     } catch (e) {
       renderSteps(steps, stateMap());
       const __stopped = /已手动停止|已停止/.test(e.message) || (ctl && ctl.signal && ctl.signal.aborted);
@@ -402,7 +426,7 @@
       var done = 0;
       for (var i = 0; i < outline.length; i++) {
         var sec = outline[i];
-        if (c.proj.refDraft.sections[sec.name] && c.proj.refDraft.sections[sec.name].text) { done++; continue; }
+        if (c.proj.refDraft.sections[sec.name] && c.proj.refDraft.sections[sec.name].text && !c.proj.refDraft.sections[sec.name].partial) { done++; continue; }
         report("写作第 " + (done + 1) + "/" + outline.length + " 节：" + sec.name + "（流式输出中）");
         /* 本节文献：优先提纲指定的编号，最多 8 篇，带摘要 */
         var secRefs = (sec.refs || []).map(function (n0) { return refs[n0 - 1]; }).filter(Boolean).slice(0, 8);
@@ -518,6 +542,116 @@
       report("✓ 已存入工作台");
     }
   });
+
+  /* ---------- v1.0.5：提纲确认暂停点 —— 生成提纲后暂停，可编辑/增删节，确认后才开始写正文 ---------- */
+  var oeProj = null;
+  function renderOutlineEditor(proj) {
+    oeProj = proj;
+    var box = $("qOutlineEd");
+    if (!box) return;
+    box.hidden = false;
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+    drawOE(proj.refDraft.outline.sections);
+  }
+  function drawOE(secs) {
+    $("oeRows").innerHTML = secs.map(function (s, i) {
+      return '<div class="oeRow" data-i="' + i + '">'
+        + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">'
+        + '<span class="hint" style="flex:0 0 3.2em">第' + (i + 1) + '节</span>'
+        + '<input class="oeName" value="' + esc(s.name) + '" style="flex:1;padding:6px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;font-weight:600">'
+        + '<button class="pill" data-oedel="' + i + '">删</button></div>'
+        + '<textarea class="oePts" rows="2" style="width:100%;padding:6px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12.5px">' + esc((s.points || []).join("\n")) + '</textarea>'
+        + (s.refs && s.refs.length ? '<div class="hint" style="margin-top:3px">建议引用：[' + s.refs.join("][") + ']</div>' : '')
+        + '</div>';
+    }).join("");
+    $("oeRows").querySelectorAll("[data-oedel]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var i = +btn.dataset.oedel;
+        if ($("oeRows").querySelectorAll(".oeRow").length <= 2) { $("oeMsg").textContent = "至少保留 2 节"; return; }
+        btn.closest(".oeRow").remove();
+        [...$("oeRows").querySelectorAll(".oeRow")].forEach(function (row, k) {
+          row.querySelector(".hint").textContent = "第" + (k + 1) + "节";
+        });
+      });
+    });
+  }
+  function oeCollect() {
+    var secs = [];
+    var names = {};
+    [...$("oeRows").querySelectorAll(".oeRow")].forEach(function (row, idx) {
+      var name = row.querySelector(".oeName").value.trim();
+      if (!name) name = "未命名章节" + (idx + 1);
+      while (names[name]) name = name + "·";
+      names[name] = 1;
+      var pts = row.querySelector(".oePts").value.split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean);
+      var old = (oeProj.refDraft.outline.sections || []).find(function (s) { return s.name === name; });
+      secs.push({ name: name, points: pts, refs: old ? (old.refs || []) : [] });
+    });
+    return secs;
+  }
+  function withProj(fn) {
+    var DB = WQCore.loadLocal();
+    var p2 = DB.projects.find(function (x) { return x.id === oeProj.id; });
+    if (p2) { fn(p2, DB); return true; }
+    $("oeMsg").textContent = "项目已被删除，无法继续"; return false;
+  }
+  $("oeConfirm")?.addEventListener("click", function () {
+    if (!oeProj) return;
+    var secs = oeCollect();
+    if (!withProj(function (p2, DB) {
+      p2.refDraft.outline.sections = secs;
+      p2.refDraft.outline.__edited = true;
+      p2.pipeline.status = "running";   /* v1.0.5：确认后置回 running，qGo 才会进入写正文 */
+      p2.status = "参考稿生成中";
+      WQCore.saveLocal(DB);
+    })) return;
+    $("qOutlineEd").hidden = true;
+    $("qGo").click();   /* 走统一入口：已完成步骤自动跳过，从写正文开始 */
+  });
+  $("oeSkip")?.addEventListener("click", function () {
+    if (!oeProj) return;
+    if (!withProj(function (p2, DB) {
+      p2.pipeline.status = "running";
+      p2.status = "参考稿生成中";
+      WQCore.saveLocal(DB);
+    })) return;
+    $("qOutlineEd").hidden = true;
+    $("qGo").click();
+  });
+  $("oeRegen")?.addEventListener("click", function () {
+    if (!withProj(function (p2, DB) {
+      p2.refDraft.outline = null;
+      p2.refDraft.sections = {};
+      (p2.pipeline.steps || []).forEach(function (st) {
+        if (st.id !== "refs") st.status = "pending";
+      });
+      p2.pipeline.status = "running";
+      p2.status = "参考稿生成中";
+      WQCore.saveLocal(DB);
+    })) return;
+    $("qOutlineEd").hidden = true;
+    $("qGo").textContent = "🚀 开始生成参考稿";
+    $("qGo").click();
+  });
+  $("oeAdd")?.addEventListener("click", function () {
+    var div = document.createElement("div");
+    div.className = "oeRow";
+    var i = $("oeRows").querySelectorAll(".oeRow").length;
+    div.innerHTML = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">'
+      + '<span class="hint" style="flex:0 0 3.2em">新节</span>'
+      + '<input class="oeName" value="新章节" style="flex:1;padding:6px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;font-weight:600">'
+      + '<button class="pill" data-oedel="' + i + '">删</button></div>'
+      + '<textarea class="oePts" rows="2" style="width:100%;padding:6px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12.5px"></textarea>';
+    $("oeRows").appendChild(div);
+    div.querySelector("[data-oedel]").addEventListener("click", function () { div.remove(); });
+    div.querySelector(".oeName").focus();
+  });
+  $("qOutlineEd")?.addEventListener("click", function (e) {
+    /* 行内“删”按钮用事件委托兜底（drawOE 已单独绑定，双保险） */
+    var b = e.target.closest("[data-oedel]");
+    if (b && !b._bound) { b._bound = true; b.addEventListener("click", function () { var r = b.closest(".oeRow"); if (r) r.remove(); }); }
+  });
+
 
   /* ---------- 续跑入口：刷新后列出可续跑的参考稿 ---------- */
   (function listResumable() {

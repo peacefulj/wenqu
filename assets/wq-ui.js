@@ -83,6 +83,7 @@
           </div></div>`).join("")
       : '<p class="hint">本节没有参考稿（可能是自起稿节）——直接在右侧写。</p>';
     bindRefButtons(sec, paras);
+    citeEnhance($("wbRefPane"));   /* v1.0.5（QA二轮 P1-2）：修改过程中 [n] 也可点击跳文末明细 */
     const mineBox = $("wbMine");
     const saved = (p.draft || {})[sec] || "";
     if (forceMine || document.activeElement !== mineBox || mineBox.value === (wbState.lastSaved || "")) mineBox.value = saved;
@@ -166,6 +167,7 @@
     if (!refText || !mineText) { $("wbDiff").innerHTML = '<p class="hint">' + (refText ? "右侧还没有内容：先「采用」或自己写。" : "本节没有参考稿可对比。") + "</p>"; return; }
     const rows = WQCore.diff.paras(refText, mineText);
     const badge = { same: '<span class="badge b-ok">未改</span>', mod: '<span class="badge">已改 ' + '' + "</span>", add: '<span style="color:#0a7a43">➕ 我的新段</span>', del: '<span style="color:#b42318">➖ 未采用</span>' };
+    citeEnhanceLater($("wbDiff"));
     $("wbDiff").innerHTML = rows.map(r => {
       if (r.type === "same") return '<div class="ckitem">' + badge.same + " " + mdInline(r.mine.slice(0, 160)) + (r.mine.length > 160 ? "…" : "") + "</div>";
       if (r.type === "mod") return '<div class="ckitem">' + badge.mod.replace("已改 ", "已改 " + Math.round((1 - r.sim) * 100) + "% ") + WQCore.diff.charsHTML(r.ai, r.mine) + "</div>";
@@ -578,6 +580,10 @@
     };
   })();
 
+  function citeEnhanceLater(el) {
+    if (!el) return;
+    setTimeout(function () { try { citeEnhance(el); } catch (e) {} }, 0);
+  }
   /* ================================================================
    * ⑥ 参考文献附文末（v1.0.4）：[n] 可点击跳到文末明细并可修订题录
    * 挂接点：包装 window.setMD——对 #wOut 的每次渲染自动做引用增强 + 附参考文献表；
@@ -622,7 +628,7 @@
       (f.venue || "出处待补") + ", " + (f.year || "年份待补") + (f.doi ? ". DOI: " + f.doi : "") + ".";
   }
 
-  function refAppendixHTML(p, hlN) {
+  function refAppendixHTML(p, hlN, srcId) {
     const rows = p.papers.map(function (f, i) {
       return '<div class="refrow' + (hlN === i + 1 ? " flash" : "") + '" data-rn="' + (i + 1) + '">'
         + '<span class="rn">[' + (i + 1) + ']</span><span class="rt">' + esc(refTxt(f)) + '</span>'
@@ -630,24 +636,30 @@
         + (f.doi ? ' <a class="pillbtn" href="https://doi.org/' + esc(f.doi) + '" target="_blank" rel="noopener">DOI</a>' : "")
         + '</div>';
     }).join("");
-    return '<div class="refappendix"><b class="rahead">参考文献</b><span class="hint">（References — 编号与正文 [n] 一致；点正文引用可跳到这里，点 ✏️修改 可修订题录，修改会同步到文献库与导出）</span>'
+    return '<div class="refappendix"><b class="rahead">参考文献</b><span class="hint">（编号与正文 [n] 一致；✏️修改 会同步文献库与导出）</span>'
+      + (srcId ? ' <button class="pillbtn" data-reback="' + esc(srcId) + '" title="回到刚才阅读的位置">↑ 返回正文</button>' : "")
       + '<div class="reflist">' + (rows || '<p class="hint">文献库为空</p>') + '</div></div>';
   }
 
+  const REF_SLOTS = [
+    { src: "wOut", apId: "wRefsAppendix" },
+    { src: "selOut", apId: "selRefsAppendix" },
+    { src: "vOut", apId: "vRefsAppendix" },
+    { src: null, apId: "wbRefs", always: true }
+  ];
   function renderRefAppendices(hlN) {
     const p = P();
-    const targets = [];
-    const wOut = document.getElementById("wOut");
-    if (wOut) {
-      let ap = document.getElementById("wRefsAppendix");
-      if (!ap) { ap = document.createElement("div"); ap.id = "wRefsAppendix"; wOut.insertAdjacentElement("afterend", ap); }
-      ap.style.display = p && p.papers.length ? "" : "none";
-      targets.push([ap, p]);
-    }
-    const wb = document.getElementById("wbRefs");
-    if (wb) targets.push([wb, p]);
-    targets.forEach(function (pair) {
-      pair[0].innerHTML = (p && p.papers.length) ? refAppendixHTML(p, hlN) : '<p class="hint">文献库为空</p>';
+    REF_SLOTS.forEach(function (rc) {
+      const srcEl = rc.src ? document.getElementById(rc.src) : null;
+      let ap = document.getElementById(rc.apId);
+      /* wbRefs（always:true）是常驻折叠容器，本身就是附录；其余容器有内容才附 */
+      const hasContent = rc.always ? true : (srcEl && (srcEl.textContent || "").trim().length > 0);
+      if (!hasContent) { if (ap && !rc.always) ap.innerHTML = ""; return; }
+      if (!ap) {
+        ap = document.createElement("div"); ap.id = rc.apId; ap.dataset.src = rc.src || "";
+        if (rc.src) srcEl.insertAdjacentElement("afterend", ap);
+      }
+      ap.innerHTML = (p && p.papers.length) ? refAppendixHTML(p, hlN, rc.src) : '<p class="hint">文献库为空</p>';
     });
   }
 
@@ -712,6 +724,12 @@
     if (sv) { saveRefEdit(sv.closest(".refrow")); return; }
     const cx = e.target.closest("[data-recancel]");
     if (cx) { renderRefAppendices(); return; }
+    const bk = e.target.closest("[data-reback]");
+    if (bk) {
+      const src = document.getElementById(bk.dataset.reback);
+      if (src) src.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
   });
 
   /* 包装 setMD：#wOut 渲染后自动增强引用并附文末参考文献 */
@@ -721,7 +739,7 @@
     window.setMD = function (el, text) {
       orig(el, text);
       try {
-        if (el && el.id === "wOut") {
+        if (el && ["wOut", "selOut", "vOut"].indexOf(el.id) >= 0) {
           citeEnhance(el);
           renderRefAppendices();
         }
@@ -729,6 +747,16 @@
     };
   })();
 
+
+  /* ---- v1.0.5（QA二轮 P3）：有未保存修改时，离开页面前提示 ---- */
+  window.addEventListener("beforeunload", function (e) {
+    try {
+      const m = document.getElementById("wbMine");
+      if (m && m.value.trim() && m.value !== (wbState.lastSaved || "")) {
+        e.preventDefault(); e.returnValue = "";
+      }
+    } catch (err) {}
+  });
 
   /* ================================================================
    * afterRender：studio.renderAll 之后刷新本模块 UI（不打断输入）

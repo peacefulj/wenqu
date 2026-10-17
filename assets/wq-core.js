@@ -30,16 +30,50 @@
 
   /* ================= 1) 存储层 ================= */
   function loadLocal() {
+    var empty = { projects: [], cur: null, _loadedAt: Date.now() };
     try {
       var raw = localStorage.getItem(LS_DB);
-      if (!raw) return { projects: [], cur: null };
+      if (!raw) return empty;
       var d = JSON.parse(raw);
-      if (d && Array.isArray(d.projects)) return d;
+      if (d && Array.isArray(d.projects)) {
+        /* v1.0.5：页面中途被关/刷新会留下 pipeline.status="running" 的僵尸——
+           载入时统一改判为可续跑的中断，否则永远显示"生成中"且状态误导 */
+        d.projects.forEach(function (p0) {
+          if (p0.pipeline && p0.pipeline.status === "running") {
+            p0.pipeline.status = "failed";
+            (p0.pipeline.steps || []).forEach(function (st) { if (st.status === "running") st.status = "failed"; });
+            if (p0.status === "参考稿生成中") p0.status = "参考稿中断（可续跑）";
+          }
+        });
+        d._loadedAt = Date.now();
+        return d;
+      }
     } catch (e) { /* 损坏由 studio.js 统一处理；快速模式读到损坏就当空库 */ }
-    return { projects: [], cur: null };
+    return empty;
   }
   function saveLocal(db) {
+    /* v1.0.5（QA二轮 P1-1）：跨标签保护——磁盘快照比本内存快照新（别的标签页刚保存过）时，
+       按项目合并后再写：以磁盘为底、本快照同 id 项目覆盖、本快照独有项目插到最前。
+       这样 studio 侧的新修改不会被 quick 侧的旧快照整体冲掉。 */
+    var disk = null;
+    try {
+      var raw = localStorage.getItem(LS_DB);
+      if (raw) disk = JSON.parse(raw);
+    } catch (e) { disk = null; }
+    if (disk && Array.isArray(disk.projects) && (db.projects || []).length >= 0 &&
+        (disk.savedAt || 0) > (db._loadedAt || 0) + 1500) {
+      var byId = {};
+      (db.projects || []).forEach(function (p) { byId[p.id] = p; });
+      var merged = [], seen = {};
+      (disk.projects || []).forEach(function (p) { merged.push(byId[p.id] || p); seen[p.id] = 1; });
+      (db.projects || []).forEach(function (p) {
+        if (!seen[p.id]) { merged.unshift(p); seen[p.id] = 1; }
+      });
+      db.projects = merged;
+      if (!db.cur && disk.cur) db.cur = disk.cur;
+    }
     db.savedAt = Date.now();
+    db._loadedAt = db.savedAt;
     try {
       localStorage.setItem(LS_DB, JSON.stringify(db));
       WQStore.mirror(db);           // 异步镜像，失败静默
@@ -325,6 +359,7 @@
       var done = st.steps.filter(function (x) { return x.status === "done"; }).length;
       var total = st.steps.length || 1;
       return st.status === "failed" ? ("中断于第 " + (done + 1) + "/" + total + " 步（可续跑）")
+        : st.status === "paused" ? ("提纲已生成（" + done + "/" + total + " 步），待确认编辑")
         : st.status === "done" ? "已完成" : ("进行中 " + done + "/" + total);
     }
   };

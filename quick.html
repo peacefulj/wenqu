@@ -20,6 +20,7 @@
   .step.done .st{color:var(--ok)}.step.running .st{color:#2456e6}.step.failed .st{color:var(--bad)}
   .cost{font-size:12.5px;color:#5c6675;background:#f6f8fc;border-radius:10px;padding:8px 12px;margin:8px 0}
   .refout{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff}
+.oeRow{border:1px dashed var(--line);border-radius:10px;padding:8px 10px;background:#fafbfd}
   .streampre{white-space:pre-wrap;font-size:13px;line-height:1.55}
 </style>
 </head>
@@ -105,6 +106,21 @@
     <!-- 右：进度与输出 -->
     <div>
       <div class="steps" id="qSteps"><p class="hint">步骤进度会显示在这里。</p></div>
+      <div id="qOutlineEd" hidden style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:10px 0;background:#fff">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <b>📝 提纲确认</b>
+          <span class="hint">直接改章名/要点、删节、加节——确认后才开始写正文（省 token 又贴合你的结构）</span>
+          <span style="flex:1"></span>
+          <button class="btn2 ghost btn-sm" id="oeAdd">＋ 加一节</button>
+          <button class="btn2 ghost btn-sm" id="oeRegen">↻ 重新生成提纲</button>
+        </div>
+        <div id="oeRows" style="margin-top:8px;display:flex;flex-direction:column;gap:10px"></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn2" id="oeConfirm" style="flex:1">🚀 确认提纲，开始写正文</button>
+          <button class="btn2 ghost" id="oeSkip">不做修改，直接写</button>
+        </div>
+        <p class="hint" id="oeMsg"></p>
+      </div>
       <div class="cost" id="qActual">本次实际消耗：—</div>
       <div class="refout" id="qOut" hidden><div class="streampre" id="qStream"></div></div>
       <div class="row" id="qDoneRow" hidden style="margin-top:10px">
