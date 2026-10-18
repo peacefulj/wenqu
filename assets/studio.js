@@ -184,6 +184,8 @@ window.wqTrail = function (type, label, note) {
 document.querySelectorAll(".stage[data-s]").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll(".stage[data-s]").forEach(x => x.classList.toggle("on", x === b));
   document.querySelectorAll(".stagepane").forEach(p => p.hidden = p.id !== "s" + b.dataset.s);
+  if (typeof renderStageBadges === "function") renderStageBadges();
+  if (typeof renderNumBar === "function") renderNumBar();
 }));
 
 /* ---------- 项目栏 ---------- */
@@ -495,7 +497,7 @@ function drawMatrix(rows) {
   $("matrixOut").hidden = false;
   $("matrixOut").innerHTML = `<p class="hint" style="margin:0 0 6px">依据：各文献<b>摘要</b>（摘要级证据）——重要结论请回原文核对；可用「AI 读论文」精读后人工修订。</p><table class="tb"><tr><th>文献</th>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>` +
     rows.map(r => {
-      const cell = (k) => { const m = r.txt.match(new RegExp(k + "[：:]\\s*([^\\n]+)")); return esc((m?.[1] || "—").slice(0, 80)); };
+      const cell = (k) => { const m = (r.txt || "").match(new RegExp(k + "[：:]\\s*([^\\n]+)")); return esc((m?.[1] || "—").slice(0, 80)); };
       return `<tr><td style="min-width:150px">${esc(r.f.title.slice(0, 50))}<br><span class="yr">${esc(r.f.year || "")}</span></td>${cols.map(c => `<td>${cell(c)}</td>`).join("")}</tr>`;
     }).join("") + "</table>";
 }
@@ -927,8 +929,16 @@ function vStamp() {
 function addVersion(p, kind, content, field) {
   if (!p || !content) return;
   p.versions = p.versions || [];
-  p.versions.unshift({ ts: vStamp(), kind: kind, content: String(content).slice(0, 12000), field: field || "" });
-  if (p.versions.length > 40) p.versions.length = 40;
+  p.versions.unshift({ ts: vStamp(), kind: kind, content: String(content).slice(0, 12000), field: field || "", star: false });
+  /* v3.1（E1）：40 条上限，⭐星标豁免淘汰；淘汰发生时明示条数，不再静默 */
+  let vDrop = 0;
+  while (p.versions.length > 40) {
+    let vIdx = -1;
+    for (let vi = p.versions.length - 1; vi >= 0; vi--) { if (!p.versions[vi].star) { vIdx = vi; break; } }
+    if (vIdx < 0) break;
+    p.versions.splice(vIdx, 1); vDrop++;
+  }
+  if (vDrop && typeof wqNotice === "function") wqNotice("较早的 " + vDrop + " 条版本已移出档案（⭐星标版本保留）——重要版本请在版本档案加星标");
   /* v0.8：每次生成/留存自动记入轨迹（附模型·依据·字数） */
   const meta = (String(content).match(/〔生成：([^〕]{0,120})〕/) || [])[1];
   const isTool = (field || "") === "tool";
@@ -1008,13 +1018,200 @@ function renderProcessLog() {
     + "<p class=\"hint\" style=\"margin-top:8px\">版本档案：共 <b>" + vN + "</b> 版 <button class=\"pill\" id=\"procOpenVer\">📜 打开版本档案</button></p>";
   const b = document.getElementById("procOpenVer"); if (b) b.addEventListener("click", verOpen);
 }
+/* ---------- v3.1：易用性五件套（B 对比 / A 总览 / C 中文路径 / D 覆盖率 / E 角标） ---------- */
+const OUT_NAMES = { outline: "大纲", design: "设计审查", internal: "三专家内审", consistency: "一致性检查", aidecl: "AI 使用声明", cover: "投稿信", rebuttal: "回复信" };
+function fieldLabel(f) {
+  f = f || "";
+  if (f.indexOf("draft:") === 0) return "④草稿·" + f.slice(6);
+  if (f.indexOf("sec:") === 0) return "④草稿·" + f.slice(4);
+  if (f.indexOf("outs.") === 0) { const k = f.slice(5); return "⑤" + (OUT_NAMES[k] || k); }
+  const m0 = { selection: "①选题卡", trend: "①选题趋势", matrix: "③文献矩阵", outline: "④大纲", design: "④设计审查", internal: "⑤三专家内审", consistency: "⑤一致性检查", aidecl: "⑤AI 使用声明", cover: "⑤投稿信", rebuttal: "⑤回复信", tool: "工具台产出" };
+  return m0[f] || (f || "—");
+}
+/* B：版本间段落级对照（WQDiff 现成件接入版本档案） */
+function renderVDiff(aText, bText, aLabel, bLabel) {
+  const rows = (window.WQCore ? WQCore.diff.paras(aText, bText) : null);
+  if (!rows) return "<p class='hint'>对比功能需要 wq-core 支持（刷新页面重试）</p>";
+  let html = "", same = 0, adds = 0, dels = 0, mods = 0;
+  const flush = () => { if (same) { html += "<div class='dsame'>··· " + same + " 段未变 ···</div>"; same = 0; } };
+  rows.forEach(r => {
+    if (r.type === "same") { same++; return; }
+    flush();
+    if (r.type === "del") { dels++; html += "<div class='ddel'><b>− " + esc(aLabel) + " 独有</b>" + esc(r.ai) + "</div>"; }
+    else if (r.type === "add") { adds++; html += "<div class='dadd'><b>+ " + esc(bLabel) + " 独有</b>" + esc(r.mine) + "</div>"; }
+    else { mods++; html += "<div class='dmod'><div class='do'><b>" + esc(aLabel) + " 旧</b>" + esc(r.ai) + "</div><div class='dn'><b>" + esc(bLabel) + " 新</b>" + esc(r.mine) + "</div></div>"; }
+  });
+  flush();
+  const ca = String(aText).replace(/\s+/g, "").length, cb = String(bText).replace(/\s+/g, "").length;
+  const dd = cb - ca;
+  return "<div class='dsum'>" + esc(aLabel) + " " + ca + " 字 → " + esc(bLabel) + " " + cb + " 字（" + (dd >= 0 ? "+" : "") + dd + "）· 删 " + dels + " 段 · 增 " + adds + " 段 · 改 " + mods + " 段</div>" + (html || "<div class='dsame'>两个版本段落级一致</div>");
+}
+function verDiffRun() {
+  const p = cur(); const vs = p && p.versions || [];
+  const sa = document.getElementById("verDiffA"), sb = document.getElementById("verDiffB"), ck = document.getElementById("verDiffCur");
+  if (!sa || !sb || !vs.length) return;
+  const va = vs[+sa.value]; if (!va) return;
+  const out0 = document.getElementById("verDiffOut");
+  const run = (bT, bL) => { out0.innerHTML = renderVDiff(va.content, bT, "A·" + va.kind, bL); };
+  if (ck && ck.checked) {
+    if ((va.field || "").indexOf("draft:") !== 0) { out0.innerHTML = "<p class='hint'>「当前稿」仅适用于草稿类版本（该版本：" + esc(fieldLabel(va.field)) + "）</p>"; return; }
+    run((p.draft || {})[va.field.slice(6)] || "", "当前稿");
+  } else {
+    const vb = vs[+sb.value];
+    if (!vb || vb === va) { out0.innerHTML = "<p class='hint'>请选择两个不同的版本</p>"; return; }
+    if (vb.archived && window.WQStore) { out0.innerHTML = "<p class='hint'>B 为归档版本，回取中…</p>"; window.WQStore.getVersion(p.id, +sb.value).then(c => run(c || vb.content, "B·" + vb.kind)); return; }
+    run(vb.content, "B·" + vb.kind);
+  }
+}
+function verFillCmp() {
+  const p = cur(); const vs = p && p.versions || [];
+  const sa = document.getElementById("verDiffA"), sb = document.getElementById("verDiffB");
+  if (!sa || !sb) return;
+  const opts = vs.map((v, i) => "<option value='" + i + "'>" + i + " · " + esc(String(v.kind).slice(0, 14)) + " · " + esc(fieldLabel(v.field)) + "</option>").join("");
+  sa.innerHTML = opts; sb.innerHTML = opts;
+  sa.value = "0"; sb.value = vs.length > 1 ? "1" : "0";
+  const out0 = document.getElementById("verDiffOut"); if (out0) out0.innerHTML = "";
+}
+/* A：项目资产总览（治"创建了什么不知道哪里找"） */
+function invOpen() {
+  const p = cur(); if (!p) { wqNotice("先新建项目"); return; }
+  document.getElementById("invProj").textContent = p.name;
+  const starred = (p.versions || []).filter(v => v.star).length;
+  const rows = [];
+  const row = (name, meta, content, field) => rows.push({ name, meta, content, field });
+  row("① 选题卡", p.selection ? "已生成" : "未生成", p.selection || "", "selection");
+  row("① 选题趋势", p.trend && p.trend.length ? p.trend.length + " 个方向" : "未生成", "", "");
+  row("② 文献库", (p.papers.length || 0) + " 篇", "", "");
+  row("③ 文献矩阵", p.matrix ? "已生成" : "未生成", p.matrix || "", "matrix");
+  row("④ 大纲", p.outline ? "已生成" : "未生成", p.outline || "", "outline");
+  row("④ 设计审查", p.design ? "已生成" : "未生成", p.design || "", "design");
+  const secs = Object.keys(p.draft || {});
+  if (secs.length) secs.forEach(s => {
+    const len = (p.draft[s] || "").replace(/\s+/g, "").length;
+    const lv = (p.versions || []).find(v => v.field === "draft:" + s);
+    row("④ 草稿·" + s, len + " 字" + (lv ? " · " + lv.ts : ""), p.draft[s] || "", "draft:" + s);
+  });
+  else row("④ 草稿", "未生成", "", "");
+  [["⑤ 三专家内审", "internal"], ["⑤ 一致性检查", "consistency"], ["⑤ AI 使用声明", "aidecl"]].forEach(pair => {
+    row(pair[0], p.outs && p.outs[pair[1]] ? "已生成" : "未生成", (p.outs && p.outs[pair[1]]) || "", "outs." + pair[1]);
+  });
+  row("⑤ 校验记录", (p.checks || []).length + " 条", "", "");
+  row("🕓 版本档案", (p.versions || []).length + " 条（⭐ " + starred + " 星标）", "", "");
+  let html = "<h3 style='margin:4px 0 8px;font-size:14px'>🕒 最近动态</h3>";
+  const tr = (p.trail || []).slice(0, 5);
+  html += tr.length ? tr.map(t0 => "<div class='irow' style='cursor:default'><span class='iname' style='min-width:0;flex:1;font-weight:400'>" + esc((t0.label || "") + (t0.note ? "（" + t0.note + "）" : "")) + "</span><span class='imeta'>" + esc(t0.ts || "") + "</span></div>").join("") : "<p class='hint'>还没有动态</p>";
+  html += "<h3 style='margin:14px 0 8px;font-size:14px'>📦 项目资产（点击「查看」看全文）</h3>";
+  rows.forEach((r0, i) => {
+    const missing = r0.meta === "未生成";
+    html += "<div class='irow" + (missing ? " imiss" : "") + "'><span class='iname'>" + esc(r0.name) + "</span><span class='imeta'>" + esc(r0.meta) + "</span>" +
+      (missing ? "" : "<button class='pill' data-invv='" + i + "'>查看</button>") + "</div>";
+  });
+  const list = document.getElementById("invList");
+  list.innerHTML = html;
+  window.__invRows = rows;
+  list.querySelectorAll("[data-invv]").forEach(b => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const r0 = (window.__invRows || [])[+b.dataset.invv]; if (!r0) return;
+    invShow(r0.name, r0.content);
+  }));
+  document.getElementById("invDrawer").classList.add("open");
+  document.getElementById("mask").classList.add("open");
+}
+function invShow(title, content) {
+  let ov = document.getElementById("invShowBox");
+  if (ov) ov.remove();
+  ov = document.createElement("div");
+  ov.id = "invShowBox";
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(27,42,74,.4);z-index:120;display:flex;align-items:center;justify-content:center";
+  document.body.appendChild(ov);
+  ov.innerHTML = "<div style='background:#fff;border-radius:14px;width:min(760px,94vw);max-height:86vh;display:flex;flex-direction:column;padding:16px 18px;box-shadow:0 18px 50px rgba(2,6,23,.25)'>" +
+    "<div style='display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:8px'><b>" + esc(title) + "</b><span style='flex:1'></span>" +
+    "<button class='pill' id='invShowDl'>⤓ .md</button><button class='pill' id='invShowX'>关闭</button></div>" +
+    "<div id='invShowBody' style='overflow:auto;font-size:13px;line-height:1.7'></div></div>";
+  const body = ov.querySelector("#invShowBody");
+  if (typeof setMD === "function") setMD(body, content || "（空）"); else body.textContent = content || "";
+  ov.querySelector("#invShowX").addEventListener("click", () => { ov.remove(); });
+  ov.addEventListener("click", (e) => { if (e.target === ov) ov.remove(); });
+  ov.querySelector("#invShowDl").addEventListener("click", () => {
+    const b0 = new Blob([content || ""], { type: "text/markdown;charset=utf-8" });
+    const a0 = document.createElement("a"); a0.href = URL.createObjectURL(b0);
+    a0.download = String(title).replace(/[\\/:*?"<>|]/g, "_").slice(0, 40) + ".md"; a0.click();
+  });
+}
+/* E2：阶段页签产出角标 */
+function renderStageBadges() {
+  const p = cur();
+  const counts = p ? {
+    "1": (p.selection ? 1 : 0) + ((p.trend && p.trend.length) ? 1 : 0),
+    "2": (p.papers || []).length,
+    "3": (p.matrix ? 1 : 0) + (p.datacards || []).length,
+    "4": (p.outline ? 1 : 0) + (p.design ? 1 : 0) + Object.keys(p.draft || {}).length,
+    "5": (p.checks || []).length + Object.keys(p.outs || {}).filter(k => ["internal", "consistency", "aidecl", "cover", "rebuttal"].indexOf(k) >= 0).length,
+    "6": 0
+  } : {};
+  document.querySelectorAll(".stage[data-s]").forEach(b => {
+    const n = counts[b.dataset.s] || 0;
+    let s0 = b.querySelector(".sbadge");
+    if (!n) { if (s0) s0.remove(); return; }
+    if (!s0) { s0 = document.createElement("span"); s0.className = "sbadge"; b.appendChild(s0); }
+    s0.textContent = n;
+  });
+}
+/* D：数据关联覆盖率常显条（④草稿区顶部；点击跳质检中心绑定面板） */
+function renderNumBar() {
+  const p = cur(); const pane = document.getElementById("s4");
+  if (!pane || !p) return;
+  let bar = document.getElementById("numBar");
+  if (!bar) {
+    bar = document.createElement("div"); bar.id = "numBar"; bar.className = "callout c-info"; bar.style.margin = "8px 0";
+    const anchor = pane.querySelector(".stagecard");
+    pane.insertBefore(bar, anchor ? anchor.nextSibling : pane.firstChild);
+  }
+  const secs = Object.keys(p.draft || {});
+  const re = /(?:^|[^\d\[（(]?)(\d+(?:\.\d+)?(?:%|万|千|亿|个百分点)?)/g;
+  let hits = 0, bound = 0; const seen = {};
+  secs.forEach(s0 => {
+    const t = p.draft[s0] || ""; let m;
+    while ((m = re.exec(t)) && hits < 500) {
+      const num = m[1];
+      const pre = m.index > 0 ? t.charAt(m.index - 1) : "";
+      const after = t.charAt(m.index + m[0].length);
+      if (pre === "（" || pre === "(") continue;
+      if ((pre === "[" || pre === "［") && after === "]" && num.indexOf(".") < 0) continue;
+      if (/^\d{4}$/.test(num) && +num >= 1900 && +num <= 2100) {
+        const around = t.slice(Math.max(0, m.index - 6), m.index + m[0].length + 6);
+        if (/年|年份|年度|—|–|至|到/.test(around)) continue;
+      }
+      const ctx = t.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\s+/g, " ");
+      const key = (s0 + "|" + ctx).slice(0, 100);
+      if (seen[key]) continue; seen[key] = 1; hits++;
+      const b0 = (p.nummap || {})[key];
+      if (b0 && b0.src) bound++;
+    }
+  });
+  const pct = hits ? Math.round(bound / hits * 100) : 100;
+  bar.innerHTML = "<b>🔢 数据关联</b>　正文数字 <b>" + hits + "</b> 处 · 已绑定来源 <b>" + bound + "</b> 处" + (hits ? "（覆盖 " + pct + "%）" : "") +
+    "　<button class='pill' id='numBarGo'>去绑定 →</button><span class='hint'>重要数字都应能指回来源（文献 / 数据卡 / 本人测算）</span>";
+  const go = document.getElementById("numBarGo");
+  if (go && !go.dataset.bound) {
+    go.dataset.bound = "1";
+    go.addEventListener("click", () => {
+      const st6 = document.querySelector('.stage[data-s="6"]');
+      if (st6) st6.click();
+      setTimeout(() => { const c = document.getElementById("ckNums"); if (c) c.click(); }, 120);
+    });
+  }
+}
 function verOpen() {
+  window.renderStageBadges = renderStageBadges;
+  window.renderNumBar = renderNumBar;
   const p = cur(); if (!p) { wqNotice("先新建项目"); return; }
   $("verProj").textContent = p.name;
   const list = $("verList");
   const vs = p.versions || [];
+  verFillCmp();
   list.innerHTML = vs.length ? vs.map((v, i) =>
-    "<div class=\"vitem\" data-vi=\"" + i + "\"><b style=\"font-size:13px\">" + esc(v.kind) + "</b><div class=\"vmeta\">" + esc(v.ts) + " · " + (v.archived ? "已归档 · 点开回取" : v.content.length + " 字") + " · 点击展开</div><div class=\"vdetail\"></div></div>").join("")
+    "<div class=\"vitem\" data-vi=\"" + i + "\"><b style=\"font-size:13px\">" + esc(v.kind) + (v.star ? " ⭐" : "") + "</b><div class=\"vmeta\">" + esc(v.ts) + " · " + esc(fieldLabel(v.field)) + " · " + (v.archived ? "已归档 · 点开回取" : v.content.length + " 字") + " · 点击展开</div><div class=\"vdetail\"></div></div>").join("")
     : "<p class=\"hint\">还没有版本记录：每次 AI 生成（选题评估 / 矩阵 / 大纲 / 草稿 / 内审 / 一致性 / 声明 / 投稿材料）都会自动存档，按分秒保留最近 40 版。</p>";
   list.querySelectorAll("[data-vi]").forEach(el => el.addEventListener("click", async () => {
     const i = +el.dataset.vi, p2 = cur(), v = (p2?.versions || [])[i]; if (!v) return;
@@ -1026,7 +1223,7 @@ function verOpen() {
       dt.innerHTML = '<p class="hint">从 IndexedDB 回取正文中…</p>';
       content = (await window.WQStore.getVersion(p2.id, i)) || v.content;
     }
-    dt.innerHTML = mdRender(content) + "<div style=\"margin-top:8px\"><button class=\"pill\" data-vdl=\"" + i + "\">⤓ .md</button> <button class=\"pill\" data-vdw=\"" + i + "\">⤓ Word</button>" + (v.field && v.field !== "tool" ? " <button class=\"pill\" data-vld=\"" + i + "\">↻ 载入回项目（迭代）</button>" : "") + "</div>";
+    dt.innerHTML = mdRender(content) + "<div style=\"margin-top:8px\"><button class=\"pill\" data-vdl=\"" + i + "\">⤓ .md</button> <button class=\"pill\" data-vdw=\"" + i + "\">⤓ Word</button>" + (v.field && v.field !== "tool" ? " <button class=\"pill\" data-vld=\"" + i + "\">↻ 载入回项目（迭代）</button>" : "") + " <button class=\"pill\" data-vstar=\"" + i + "\">" + (v.star ? "⭐ 取消星标" : "☆ 加星标") + "</button></div>";
     el.classList.add("open");
     dt.dataset.rawmd = content;
     const dl = dt.querySelector("[data-vdl]");
@@ -1035,11 +1232,23 @@ function verOpen() {
     if (dw) dw.addEventListener("click", (e) => { e.stopPropagation(); verDl({ ...v, content }, "doc"); });
     const ld = dt.querySelector("[data-vld]");
     if (ld) ld.addEventListener("click", (e) => { e.stopPropagation(); verLoad(i); });
+    const vstar = dt.querySelector("[data-vstar]");
+    if (vstar) vstar.addEventListener("click", (e) => { e.stopPropagation(); const p3 = cur(); const v3 = (p3 && p3.versions || [])[i]; if (!v3) return; v3.star = !v3.star; save(); renderVerCount(); verOpen(); });
   }));
   $("verDrawer").classList.add("open"); $("mask").classList.add("open");
 }
 $("btnVer").addEventListener("click", verOpen);
 $("verClose").addEventListener("click", () => { $("verDrawer").classList.remove("open"); $("mask").classList.remove("open"); });
+(function () {
+  const vdb = document.getElementById("verDiffBtn");
+  if (vdb) vdb.addEventListener("click", verDiffRun);
+  const bi = document.getElementById("btnInv");
+  if (bi) bi.addEventListener("click", invOpen);
+  const ic = document.getElementById("invClose");
+  if (ic) ic.addEventListener("click", () => { document.getElementById("invDrawer").classList.remove("open"); document.getElementById("mask").classList.remove("open"); });
+  const mk = document.getElementById("mask");
+  if (mk) mk.addEventListener("click", () => { document.getElementById("invDrawer").classList.remove("open"); });
+})();
 $("mask").addEventListener("click", () => $("verDrawer").classList.remove("open"));
 
 /* v0.8：轨迹手动笔记 + 导出（.md，便于日后追溯与随稿归档） */
@@ -1090,7 +1299,7 @@ function renderAll() {
   if (p?.trend?.length) drawTrend(p.trend, p.topic);
   else { $("trendBox").hidden = true; }
   if (p?.selection) { $("selOut").hidden = false; $("selOut").textContent = p.selection; }
-  const rows = (p?.matrix || "").split("\n====\n").filter(Boolean).map(r => { const [t, txt] = r.split("||"); return { f: { title: t, year: "" }, txt }; });
+  const rows = (p?.matrix || "").split("\n====\n").filter(Boolean).map(r => { const pp = r.split("||"); return { f: { title: pp[0] || "", year: "" }, txt: pp[1] || "" }; });
   if (rows.length) drawMatrix(rows); else { $("matrixOut").hidden = true; $("matrixOut").innerHTML = ""; }
   let wTxt = "";
   if (p) {
@@ -1104,7 +1313,7 @@ function renderAll() {
   $("projStatus").value = p?.status || "选题中";
   if (p) { $("cfgParadigm").value = p.paradigm; $("cfgLevel").value = p.level; }
   window.__renderErrs = [];
-  [["renderSecBtns",0],["renderDefense",0],["renderPapers",0],["renderStageCards",0],["renderOnboard",0],["renderBackupHint",0],["renderVerCount",0],["renderProcessLog",0],["refreshAIButtons",0]].forEach(([f]) => { try { window[f](); } catch (e) { window.__renderErrs.push(f + ": " + e.message); } });
+  [["renderSecBtns",0],["renderDefense",0],["renderPapers",0],["renderStageCards",0],["renderOnboard",0],["renderBackupHint",0],["renderVerCount",0],["renderProcessLog",0],["refreshAIButtons",0],["renderStageBadges",0],["renderNumBar",0]].forEach(([f]) => { try { window[f](); } catch (e) { window.__renderErrs.push(f + ": " + e.message); } });
 }
 /* v0.7：多标签一致性——其他标签页写入时同步刷新，防止旧标签的内存快照覆盖版本档案 */
 window.addEventListener("storage", (e) => {

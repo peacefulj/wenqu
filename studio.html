@@ -98,6 +98,7 @@
       <div id="projList" class="projlist"></div>
       <div class="row" style="margin-top:12px">
         <button id="btnExportAll" class="toolbtn" style="flex:1">⤓ 备份全部</button>
+        <button id="btnInv" class="toolbtn" style="flex:1">🏠 总览</button>
         <button id="btnVer" class="toolbtn" style="flex:1">📜 版本 (<span id="verCount">0</span>)</button>
         <label class="toolbtn" style="flex:1;cursor:pointer;text-align:center">⤒ 导入备份<input id="importFile" type="file" accept=".json" hidden></label>
       </div>
@@ -675,7 +676,18 @@
 
 <aside id="verDrawer">
   <div class="vhead"><b>📜 版本档案</b><span class="hint" id="verProj"></span><span style="flex:1"></span><button class="toolbtn" id="verClose">关闭</button></div>
+  <div style="padding:8px 18px;border-bottom:1px dashed var(--line);font-size:12.5px">
+    <button class="pill" id="verDiffBtn">⚖ 对比</button>
+    <select id="verDiffA" style="max-width:38%;padding:3px 5px"></select>
+    <select id="verDiffB" style="max-width:38%;padding:3px 5px"></select>
+    <label class="hint" style="white-space:nowrap"><input type="checkbox" id="verDiffCur"> B=当前稿</label>
+    <div id="verDiffOut" style="margin-top:8px"></div>
+  </div>
   <div class="vlist" id="verList"></div>
+</aside>
+<aside id="invDrawer">
+  <div class="vhead"><b>🏠 项目总览</b><span class="hint" id="invProj"></span><span style="flex:1"></span><button class="toolbtn" id="invClose">关闭</button></div>
+  <div class="vlist" id="invList"></div>
 </aside>
 
 <div id="toast"></div>
