@@ -677,7 +677,7 @@
   function fieldOf(d) {
     var pid = ST.p.id;
     if (d.kind === "draft") return "draft:" + d.meta.name;
-    if (d.kind === "refdraft") return "ref";
+    if (d.kind === "refdraft") return "ref:" + (d.meta.name || "");
     if (d.kind === "outline" && d.meta.main) return "outline";
     if (d.kind === "selection") return "selection";
     if (d.kind === "topic") return "topic";
@@ -784,43 +784,16 @@
     }
   }
 
-  /* 把文本写回原数据结构（按节点 kind 分派）；返回迁移的数字绑定条数 */
-  function writeBack(d, txt, verKind, aiMeta) {
-    var p = ST.p, pid = p.id, now = WQCore.stamp();
-    var sec = d.meta.name, moved = 0;
-    if (d.kind === "draft") {
-      var oldText = p.draft[sec] || "";
-      p.draft[sec] = txt;
-      if (p.draftRich) delete p.draftRich[sec];      /* 纯文本为真相，富文本缓存作废（同工作台口径） */
-      ledger(p, sec, verKind, txt);
-      moved = remapBinds(p, sec, oldText, txt);      /* QA-P1-2：绑定随文本迁移，死 key 一并清理 */
-    } else if (d.kind === "refdraft") {
-      var tgt = (p.refDraft && p.refDraft.sections && p.refDraft.sections[sec]) || (p.ref && p.ref.sections && p.ref.sections[sec]);
-      if (typeof tgt === "string") { if (p.refDraft.sections) p.refDraft.sections[sec] = txt; else if (p.ref.sections) p.ref.sections[sec] = txt; }
-      else if (tgt && typeof tgt === "object") tgt.text = txt;
-      ledger(p, sec, verKind, txt);
-    } else if (d.kind === "outline" && d.meta.main) {
-      p.outline = txt; p.outs = p.outs || {}; p.outs.outline = p.outline;
-      ledger(p, "outline", verKind, txt);
-    } else if (d.kind === "selection") {
-      p.selection = txt; ledger(p, "selection", verKind, txt);
-    } else if (d.kind === "topic") {
-      p.topic = txt;
-    } else if (d.kind === "out") {
-      var K = d.meta.K;
-      if (K === "matrix") p.matrix = txt;
-      else if (K === "design") p.design = txt;
-      else { p.outs = p.outs || {}; p.outs[K] = txt; }
-    }
-    p.versions.unshift({ ts: now, kind: verKind, content: String(txt).slice(0, 12000), field: fieldOf(d) });
-    capVersions(p);
-    p.trail.unshift({
-      ts: now, type: aiMeta ? "ai" : "act",
-      label: (aiMeta ? "AI" + aiMeta.verb : "编辑") + "「" + d.t + "」（导图）",
-      note: aiMeta ? ("模型 " + aiMeta.model + " · " + aiMeta.cost) : ""
+  /* 把文本写回原数据结构：S1 起统一走 WQCore.commit（字段读写/覆盖存档/绑定迁移/版本/账本/轨迹一次走完） */
+  function writeBack(d, txt, verKind, aiMeta, noAutoSave) {
+    var res = WQCore.commit(ST.p, {
+      field: fieldOf(d), content: txt, kind: verKind,
+      actor: aiMeta ? "ai" : "user",
+      model: aiMeta ? aiMeta.model : "", cost: aiMeta ? aiMeta.cost : "",
+      note: aiMeta ? "AI 产出，经用户采纳（导图）" : "导图编辑",
+      autoSaveCurrent: !noAutoSave
     });
-    if (p.trail.length > 200) p.trail.length = 200;        /* 与工作台 trailAdd 同上限 */
-    return moved;
+    return res.migrated || 0;
   }
   function ledger(p, sec, action, txt) {
     p.ledger = p.ledger || {};
@@ -1085,11 +1058,6 @@
       });
       if (!ok) return;
       var p = reloadDB();
-      var cur0 = d.body || "";
-      if (cur0.trim() && cur0 !== draft0.text) {
-        p.versions.unshift({ ts: WQCore.stamp(), kind: "整稿采纳前自动存档", content: String(cur0).slice(0, 12000), field: fieldOf(d) });
-        capVersions(p);
-      }
       var moved = writeBack(d, draft0.text, "回流整稿采纳·外部批注", null);
       var t0 = p.trail[0];
       if (t0) t0.note = "来源：" + draft0.source + "（声明制）· 整稿采纳，混合来源";
@@ -1163,29 +1131,16 @@
     });
     if (!ok) return;
     var sec = r0.baseField;
-    /* A2 不变量：覆盖前为当前稿自动存版 */
-    var cur0 = "";
-    if (r0.baseKind === "refdraft") {
-      var tg0 = (p.refDraft && p.refDraft.sections && p.refDraft.sections[sec]) || (p.ref && p.ref.sections && p.ref.sections[sec]);
-      cur0 = typeof tg0 === "string" ? tg0 : ((tg0 || {}).text || "");
-    } else {
-      cur0 = (p.draft || {})[sec] || "";
-    }
-    if (cur0.trim() && cur0 !== r0.text) {
-      p.versions.unshift({ ts: WQCore.stamp(), kind: "回流整稿前自动存档", content: String(cur0).slice(0, 12000), field: (r0.baseKind === "refdraft" ? "ref" : "draft:" + sec) });
-      capVersions(p);
-    }
     if (r0.baseKind === "refdraft") {
       var tgt = (p.refDraft && p.refDraft.sections && p.refDraft.sections[sec]) || (p.ref && p.ref.sections && p.ref.sections[sec]);
       if (typeof tgt === "string") { if (p.refDraft.sections) p.refDraft.sections[sec] = r0.text; }
       else if (tgt && typeof tgt === "object") tgt.text = r0.text;
     } else {
-      p.draft = p.draft || {}; p.draft[sec] = r0.text;
-      if (p.draftRich) delete p.draftRich[sec];
-      ledger(p, sec, "回流整稿采纳", r0.text);
+      writeBack({ kind: "draft", meta: { name: sec }, t: "✍️ " + sec }, r0.text, "回流整稿采纳·外部批注", null);
     }
-    p.versions.unshift({ ts: WQCore.stamp(), kind: "回流整稿采纳·外部批注", content: String(r0.text).slice(0, 12000), field: (r0.baseKind === "refdraft" ? "ref" : "draft:" + sec) });
-    capVersions(p);
+    if (r0.baseKind === "refdraft") {
+      writeBack({ kind: "refdraft", meta: { name: sec }, t: "📋 " + sec }, r0.text, "回流整稿采纳·外部批注", null);
+    }
     p.trail.unshift({ ts: WQCore.stamp(), type: "act", label: "整稿采纳「" + d.t + "」", note: "来源：" + (r0.source || "导师") + "（声明制）· 混合来源" });
     saveDB();
     rebuild(false, true);

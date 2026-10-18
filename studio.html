@@ -112,7 +112,8 @@
         <div id="onboard" class="callout c-info" hidden></div>
         <div class="stages">
           <div id="progressLine" class="hint" style="width:100%;margin:-4px 0 6px"></div>
-          <button class="stage on" data-s="1">① 选题与定位</button>
+          <button class="stage on" data-s="0">🏠 项目主页</button>
+          <button class="stage" data-s="1">① 选题与定位</button>
           <button class="stage" data-s="2">② 文献获取与管理</button>
           <button class="stage" data-s="3">③ 阅读与综合</button>
           <button class="stage" data-s="4">④ 设计与写作（从零开始）</button>
@@ -121,7 +122,11 @@
         </div>
 
         <!-- 阶段1 选题 -->
-        <div id="s1" class="stagepane">
+        <div id="s0" class="stagepane">
+          <div id="sc0" class="stagecard"></div>
+          <div id="homeBody"></div>
+        </div>
+        <div id="s1" class="stagepane" hidden>
           <div id="sc1" class="stagecard"></div>
           <section class="block">
             <h2>项目配置<small>范式与层级影响全部 AI 生成（选题/矩阵/设计审查/写作/内审）</small></h2>
@@ -675,7 +680,10 @@
 
 <aside id="verDrawer">
   <div class="vhead"><b>📜 版本档案</b><span class="hint" id="verProj"></span><span style="flex:1"></span><button class="toolbtn" id="verClose">关闭</button></div>
-  <div style="padding:8px 18px;border-bottom:1px dashed var(--line);font-size:12.5px">
+  <div class="vtabs" id="verTabs">
+    <button class="vt on" data-t="versions">📜 版本</button><button class="vt" data-t="trail">🧭 轨迹</button><button class="vt" data-t="checks">🔍 校验</button><button class="vt" data-t="reflows">📥 回流</button>
+  </div>
+  <div style="padding:8px 18px;border-bottom:1px dashed var(--line);font-size:12.5px" id="verCmpRow">
     <button class="pill" id="verDiffBtn">⚖ 对比</button>
     <select id="verDiffA" style="max-width:38%;padding:3px 5px"></select>
     <select id="verDiffB" style="max-width:38%;padding:3px 5px"></select>

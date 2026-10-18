@@ -516,6 +516,223 @@
     return hits;
   }
 
+  /* ================= v3.3（S1）：同步SHA-256 / 账本(哈希链) / 统一提交管线 ================= */
+  /* 同步 SHA-256（纯 JS，无依赖；账本哈希链需要同步计算，crypto.subtle 是异步的） */
+  var SHA_K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  function sha256Sync(str) {
+    function utf8(s0) {
+      var out = [];
+      for (var i = 0; i < s0.length; i++) {
+        var c = s0.charCodeAt(i);
+        if (c < 0x80) out.push(c);
+        else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+        else if (c >= 0xd800 && c < 0xdc00 && i + 1 < s0.length) {
+          var c2 = s0.charCodeAt(++i);
+          c = 0x10000 + ((c & 0x3ff) << 10) + (c2 & 0x3ff);
+          out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+        } else out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      }
+      return out;
+    }
+    var msg = utf8(String(str || ""));
+    var bitLen = msg.length * 8;
+    msg.push(0x80);
+    while (msg.length % 64 !== 56) msg.push(0);
+    var hi = Math.floor(bitLen / 0x100000000), lo = bitLen >>> 0;
+    msg.push((hi >>> 24) & 255, (hi >>> 16) & 255, (hi >>> 8) & 255, hi & 255, (lo >>> 24) & 255, (lo >>> 16) & 255, (lo >>> 8) & 255, lo & 255);
+    function rotr(x, n) { return (x >>> n) | (x << (32 - n)); }
+    var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+    for (var i0 = 0; i0 < msg.length; i0 += 64) {
+      var w = new Array(64);
+      for (var tA = 0; tA < 16; tA++) w[tA] = (msg[i0 + 4 * tA] << 24) | (msg[i0 + 4 * tA + 1] << 16) | (msg[i0 + 4 * tA + 2] << 8) | msg[i0 + 4 * tA + 3];
+      for (var tB = 16; tB < 64; tB++) {
+        var S0 = rotr(w[tB - 15], 7) ^ rotr(w[tB - 15], 18) ^ (w[tB - 15] >>> 3);
+        var S1 = rotr(w[tB - 2], 17) ^ rotr(w[tB - 2], 19) ^ (w[tB - 2] >>> 10);
+        w[tB] = (w[tB - 16] + S0 + w[tB - 7] + S1) | 0;
+      }
+      var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+      for (var tC = 0; tC < 64; tC++) {
+        var S1c = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+        var ch = (e & f) ^ (~e & g);
+        var t1 = (h + S1c + ch + SHA_K[tC] + w[tC]) | 0;
+        var S0c = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+        var mj = (a & b) ^ (a & c) ^ (b & c);
+        var t2 = (S0c + mj) | 0;
+        h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+      }
+      H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;
+      H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+    }
+    return H.map(function (x) { return ("00000000" + (x >>> 0).toString(16)).slice(-8); }).join("");
+  }
+
+  /* 字段统一读写（工作台与导图共用；S1 起所有写入走 commit） */
+  function fieldLabelCore(f) {
+    f = f || "";
+    if (f.indexOf("draft:") === 0) return "④草稿·" + f.slice(6);
+    if (f.indexOf("sec:") === 0) return "④草稿·" + f.slice(4);
+    if (f.indexOf("ref:") === 0) return "③参考稿·" + f.slice(4);
+    if (f.indexOf("outs.") === 0) { var k = f.slice(5); var ON = { internal: "三专家内审", consistency: "一致性检查", aidecl: "AI 使用声明", cover: "投稿信", rebuttal: "回复信" }; return "⑤" + (ON[k] || k); }
+    var M = { selection: "①选题卡", trend: "①选题趋势", matrix: "③文献矩阵", outline: "④大纲", design: "④设计审查", topic: "主题" };
+    return M[f] || f;
+  }
+  function readField(p, f) {
+    p = p || {}; f = f || "";
+    if (f === "selection") return p.selection || "";
+    if (f === "matrix") return p.matrix || "";
+    if (f === "design") return p.design || "";
+    if (f === "outline") return p.outline || "";
+    if (f === "topic") return p.topic || "";
+    if (f.indexOf("draft:") === 0) return (p.draft || {})[f.slice(6)] || "";
+    if (f.indexOf("outs.") === 0) return (p.outs || {})[f.slice(5)] || "";
+    if (f.indexOf("ref:") === 0) {
+      var sec = f.slice(4);
+      var a = ((p.refDraft || {}).sections || {})[sec];
+      if (typeof a === "string") return a;
+      if (a && typeof a === "object") return a.text || "";
+      var b = ((p.ref || {}).sections || {})[sec];
+      if (typeof b === "string") return b;
+      if (b && typeof b === "object") return b.text || "";
+      return "";
+    }
+    return "";
+  }
+  function applyField(p, f, txt) {
+    p = p || {}; txt = String(txt || "");
+    if (f === "selection") { p.selection = txt; return; }
+    if (f === "matrix") { p.matrix = txt; return; }
+    if (f === "design") { p.design = txt; return; }
+    if (f === "outline") { p.outline = txt; p.outs = p.outs || {}; p.outs.outline = txt; return; }
+    if (f === "topic") { p.topic = txt; return; }
+    if (f.indexOf("draft:") === 0) {
+      var sec = f.slice(6);
+      p.draft = p.draft || {}; p.draft[sec] = txt;
+      if (p.draftRich) delete p.draftRich[sec];   /* 纯文本为真相，富文本缓存作废（与工作台同口径） */
+      return;
+    }
+    if (f.indexOf("outs.") === 0) { p.outs = p.outs || {}; p.outs[f.slice(5)] = txt; return; }
+    if (f.indexOf("ref:") === 0) {
+      var s0 = f.slice(4);
+      var t0 = ((p.refDraft || {}).sections || {})[s0];
+      if (typeof t0 === "string" && p.refDraft && p.refDraft.sections) { p.refDraft.sections[s0] = txt; return; }
+      if (t0 && typeof t0 === "object") { t0.text = txt; return; }
+      var t1 = ((p.ref || {}).sections || {})[s0];
+      if (typeof t1 === "string" && p.ref && p.ref.sections) { p.ref.sections[s0] = txt; return; }
+      if (t1 && typeof t1 === "object") { t1.text = txt; return; }
+      p.refDraft = p.refDraft || {}; p.refDraft.sections = p.refDraft.sections || {};
+      p.refDraft.sections[s0] = { text: txt };
+    }
+  }
+  /* 版本推送（⭐星标豁免容量淘汰；淘汰明示） */
+  function versionPush(p, entry) {
+    p.versions = p.versions || [];
+    entry.star = !!entry.star;
+    p.versions.unshift(entry);
+    var dropped = 0;
+    while (p.versions.length > 40) {
+      var idx = -1;
+      for (var i = p.versions.length - 1; i >= 0; i--) { if (!p.versions[i].star) { idx = i; break; } }
+      if (idx < 0) break;
+      p.versions.splice(idx, 1); dropped++;
+    }
+    return dropped;
+  }
+  /* 引用编号集合差（X2/A1：AI 产出与原文 [n] 不一致时禁止直接采纳） */
+  function citeSet(t) {
+    var s0 = {}, re = /\[(\d{1,3})\]/g, m;
+    while ((m = re.exec(String(t || "")))) s0[m[1]] = 1;
+    return s0;
+  }
+  function citeDiff(a, b) {
+    var A = citeSet(a), B = citeSet(b), lost = [], gained = [];
+    Object.keys(A).forEach(function (k) { if (!B[k]) lost.push(k); });
+    Object.keys(B).forEach(function (k) { if (!A[k]) gained.push(k); });
+    return { lost: lost, gained: gained };
+  }
+  /* 数字绑定按值迁移（迁移件一律标 review 待复核——专家评审 X1：错链比断链危险） */
+  function nummapRemap(p, sec, oldText, newText) {
+    if (!p.nummap) return 0;
+    var oldB = [];
+    scanNumHits(oldText).forEach(function (h) {
+      var b = p.nummap[(sec + "|" + h.ctx).slice(0, 100)];
+      if (b && b.src) oldB.push({ num: h.num, src: b.src });
+    });
+    var newHits = scanNumHits(newText), newKeys = {}, moved = 0, used = {};
+    newHits.forEach(function (h) {
+      var k = (sec + "|" + h.ctx).slice(0, 100);
+      newKeys[k] = 1;
+      if (p.nummap[k] && p.nummap[k].src) return;
+      for (var i = 0; i < oldB.length; i++) {
+        if (!used[i] && oldB[i].num === h.num) { used[i] = 1; p.nummap[k] = { src: oldB[i].src, ts: stamp(), review: true }; moved++; break; }
+      }
+    });
+    Object.keys(p.nummap).forEach(function (k) {
+      if (k.indexOf(sec + "|") === 0 && !newKeys[k]) delete p.nummap[k];
+    });
+    return moved;
+  }
+  /* 账本：事件溯源 + 哈希链（新在前）。verify() 从最旧重算，任何篡改断链 */
+  function journalAppend(p, ev) {
+    p.journal = p.journal || [];
+    var prev = p.journal[0];
+    var rec = {
+      seq: prev ? prev.seq + 1 : 1,
+      ts: stamp(),
+      actor: ev.actor === "ai" ? "ai" : ev.actor === "external" ? "external" : "user",
+      action: String(ev.action || "更新").slice(0, 60),
+      target: String(ev.target || "").slice(0, 60),
+      model: String(ev.model || "").slice(0, 60),
+      cost: String(ev.cost || "").slice(0, 40),
+      note: String(ev.note || "").slice(0, 300)
+    };
+    var base = JSON.stringify({ seq: rec.seq, ts: rec.ts, actor: rec.actor, action: rec.action, target: rec.target, model: rec.model, cost: rec.cost, note: rec.note });
+    rec.prev = prev ? prev.hash : "";
+    rec.hash = sha256Sync(base + rec.prev);   /* 规范化串=基础字段 JSON + prev（与 journalVerify 同一口径） */
+    p.journal.unshift(rec);
+    return rec;
+  }
+  function journalVerify(p) {
+    var arr = (p.journal || []).slice().reverse();   /* 最旧在前 */
+    var prev = "";
+    for (var i = 0; i < arr.length; i++) {
+      var e = arr[i];
+      var check = sha256Sync(JSON.stringify({ seq: e.seq, ts: e.ts, actor: e.actor, action: e.action, target: e.target, model: e.model, cost: e.cost, note: e.note }) + prev);
+      if (check !== e.hash || e.prev !== prev) return { ok: false, brokenAt: e.seq, total: arr.length };
+      prev = e.hash;
+    }
+    return { ok: true, total: arr.length };
+  }
+  /* 统一提交管线：读旧 → 自动存档 → 写入 → 绑定迁移 → 版本 → 账本 → 轨迹（一次走完） */
+  function commit(p, o) {
+    o = o || {};
+    var f = o.field || "";
+    var txt = String(o.content || "");
+    var old = readField(p, f);
+    var res = { changed: old !== txt, cite: citeDiff(old, txt), migrated: 0, autoSaved: false };
+    if (!res.changed) return res;
+    if (o.autoSaveCurrent !== false && String(old || "").trim()) {
+      versionPush(p, { ts: stamp(), kind: o.autoSaveKind || "覆盖前自动存档", content: String(old).slice(0, 12000), field: f });
+      res.autoSaved = true;
+    }
+    applyField(p, f, txt);
+    if (f.indexOf("draft:") === 0) {
+      res.migrated = nummapRemap(p, f.slice(6), old, txt);
+      p.ledger = p.ledger || {};
+      p.ledger[f.slice(6)] = p.ledger[f.slice(6)] || [];
+      p.ledger[f.slice(6)].unshift({ ts: stamp(), action: o.kind || "更新", chars: txt.replace(/\s+/g, "").length });
+      if (p.ledger[f.slice(6)].length > 100) p.ledger[f.slice(6)].length = 100;
+    }
+    if (!o.skipVersion) {
+      var dropped = versionPush(p, { ts: stamp(), kind: o.kind || "更新", content: txt.slice(0, 12000), field: f });
+      if (dropped && typeof wqNotice === "function") wqNotice("较早的 " + dropped + " 条版本已移出档案（⭐星标版本保留）");
+    }
+    journalAppend(p, { actor: o.actor, action: o.kind || "更新", target: fieldLabelCore(f), model: o.model || "", cost: o.cost || "", note: o.note || (o.actor === "ai" ? "AI 产出，经用户采纳" : "") });
+    p.trail = p.trail || [];
+    p.trail.unshift({ ts: stamp(), type: o.actor === "ai" ? "ai" : o.actor === "external" ? "doc" : "act", label: (o.kind || "更新") + "（" + fieldLabelCore(f) + "）", note: [o.model ? "模型 " + o.model : "", o.cost || "", o.note || ""].filter(Boolean).join(" · ").slice(0, 300) });
+    if (p.trail.length > 200) p.trail.length = 200;
+    return res;
+  }
+
   /* ================= 导出到 window ================= */
   window.WQCore = {
     version: "1.0.0",
@@ -530,7 +747,18 @@
     pipeline: WQPipeline,
     diff: { paras: parasDiff, chars: chars, charsHTML: charsHTML, sim: sim },
     ledger: { analyzeText: analyzeText, analyzeProject: analyzeProject, contributionHTML: contributionHTML },
-    scanNumHits: scanNumHits
+    scanNumHits: scanNumHits,
+    sha256Hex: sha256Sync,
+    fieldLabel: fieldLabelCore,
+    readField: readField,
+    applyField: applyField,
+    versionPush: versionPush,
+    citeSet: citeSet,
+    citeDiff: citeDiff,
+    nummapRemap: nummapRemap,
+    journalAppend: journalAppend,
+    journalVerify: journalVerify,
+    commit: commit
   };
   window.WQStore = WQStore;
 })();

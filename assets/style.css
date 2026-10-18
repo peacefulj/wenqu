@@ -265,3 +265,14 @@ body.tools-mode .studio{grid-template-columns:1fr}
 .dmod .do b,.dmod .dn b{display:block;font-size:11px;margin-bottom:2px;color:#64748b}
 .dmod .do{background:#fdecea;text-decoration:line-through;color:#7f2d28}
 .dmod .dn{background:#eaf7ef;margin-top:4px;color:#14532d}
+
+/* v3.3（S1）：项目主页 / 档案抽屉标签 */
+.vtabs{display:flex;gap:6px;padding:10px 18px 6px;border-bottom:1px solid var(--line)}
+.vtabs .vt{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 14px;font-size:12.5px;cursor:pointer}
+.vtabs .vt.on{background:#2456e6;border-color:#2456e6;color:#fff;font-weight:700}
+.hgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:10px 0}
+.hcard{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff}
+.hcard b{font-size:20px;display:block;margin-bottom:2px}
+.hcard .hl{font-size:12px;color:#64748b}
+.hcard.warn b{color:var(--bad)}
+.hcard.ok b{color:#0a7a43}

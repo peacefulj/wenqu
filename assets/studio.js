@@ -600,6 +600,7 @@ async function draftSection(sec, btn) {
 大纲：${(p0.outline || "（未生成大纲，建议先点「生成大纲」按钮）").slice(0, 2000)}
 ${outlineCtx(p0)}${designCtx}`;
     let txt = "";
+    let __usage = null;
     if (window.WQCore && WQCore.ai.stream) {
       out.hidden = false;
       let __lastPaint = 0;
@@ -607,7 +608,7 @@ ${outlineCtx(p0)}${designCtx}`;
         const now = Date.now();
         if (now - __lastPaint > 250) { __lastPaint = now; out.textContent = full; out.scrollTop = out.scrollHeight; }
       });
-      txt = r.text;
+      txt = r.text; __usage = r.usage || null;
     } else {
       txt = await callAI(__prompt, 6000);
     }
@@ -617,11 +618,67 @@ ${outlineCtx(p0)}${designCtx}`;
       prog.textContent = "⚠ 检测到 AI 未成稿（输入不足的说明而非草稿）——未存入草稿。请先补齐主题/文献矩阵后重试。";
       return;
     }
-    p.draft = p.draft || {}; p.draft[sec] = withMeta(txt, "文献矩阵 + 大纲"); p.showW = "sec:" + sec; addVersion(p, "草稿·" + sec, p.draft[sec], "draft:" + sec); save();
-    out.hidden = false; setMD(out, txt); $("btnWCopy").hidden = false;
-    const citeWarn = checkCites(txt, p.papers.length);
-    prog.textContent = `「${sec}」草稿完成 ✓ 已存入项目` + (citeWarn ? " ⚠ " + citeWarn : "（引用编号已过校验）");
+    /* S1：建议态——AI 成稿先出 diff 预览，采纳才写入正文（与导图同一 commit 管线） */
+    const gate = WQCore.citeDiff((p.draft || {})[sec] || "", txt);
+    const usage = __usage;
+    const model = (WQCore.ai.conf().model || "默认");
+    const cost = WQCore.ai.estCostText(usage ? usage.prompt_tokens : 0, usage ? usage.completion_tokens : 0);
+    openSuggest4({ pid, sec, txt, gate, prog, out, model, cost, baseText: (p.draft || {})[sec] || "" });
   } catch (e) { prog.textContent = "失败：" + e.message; }
+}
+
+/* S1：④分节写作的建议态预览（与导图共用 commit 管线；X2/诚信#1 的写入口收紧） */
+function openSuggest4(o) {
+  const rows = WQCore.diff.paras(o.baseText, o.txt);
+  let html = "", same = 0;
+  const flush = () => { if (same) { html += `<div class="dsame">··· ${same} 段未变 ···</div>`; same = 0; } };
+  rows.forEach(r => {
+    if (r.type === "same") { same++; return; }
+    flush();
+    if (r.type === "del") html += `<div class="ddel"><b>− 当前稿独有</b>${esc(r.ai)}</div>`;
+    else if (r.type === "add") html += `<div class="dadd"><b>+ AI 新增</b>${esc(r.mine)}</div>`;
+    else html += `<div class="dmod"><div class="do"><b>当前稿</b>${esc(r.ai)}</div><div class="dn"><b>AI 建议</b>${esc(r.mine)}</div></div>`;
+  });
+  flush();
+  if (!html) html = '<div class="dsame">与当前稿段落级一致</div>';
+  const gated = o.gate.lost.length || o.gate.gained.length;
+  const gateLine = gated
+    ? `<span class="bad">⚠ 引用编号有变化${o.gate.lost.length ? "：丢失 [" + o.gate.lost.join("][") + "]" : ""}${o.gate.gained.length ? (o.gate.lost.length ? "，" : "：新增 [") + o.gate.gained.join("][") + "]" : ""} —— 可能丢引/错引，已锁定直接采纳</span>`
+    : '<span class="ok">✓ 引用编号与当前稿一致</span>';
+  const levelId = cur()?.level;
+  const bscLine = levelId === "bsc" ? '<div class="dbsc">⚠ 本科层级：多数高校禁止 AI 直接生成/改写正文——本预览仅作对照学习，建议逐段手动改写后再采纳</div>' : "";
+  let m = document.getElementById("sg4Box");
+  if (m) m.remove();
+  m = document.createElement("div");
+  m.id = "sg4Box";
+  m.style.cssText = "position:fixed;inset:0;background:rgba(27,42,74,.4);z-index:120;display:flex;align-items:center;justify-content:center";
+  m.innerHTML = `<div style="background:#fff;border-radius:14px;width:min(860px,94vw);max-height:88vh;display:flex;flex-direction:column;padding:16px 18px;box-shadow:0 18px 50px rgba(2,6,23,.25)">
+    <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:8px">
+      <b>🤖 AI 建议态预览 · ${esc(o.sec)}（采纳才写入正文）</b><span class="hint">模型 ${esc(o.model)} · ${esc(o.cost)}</span>
+      <span style="flex:1"></span><button class="pill" id="sg4X">✕</button></div>
+    <div class="callout c-info" style="font-size:12.5px">${gateLine}${bscLine}</div>
+    <div style="flex:1;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.7">${html}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn2" id="sg4Adopt" ${gated ? "disabled title='引用编号有变化，不允许直接采纳'" : ""} style="background:#2456e6;color:#fff">✅ 采纳并写入草稿</button>
+      <button class="btn2" id="sg4Drop">✕ 放弃（不写入）</button>
+      <span class="hint">采纳后自动存版本；放弃不退 token。引用-论断抽查建议采纳后到⑥再跑一次。</span></div></div>`;
+  document.body.appendChild(m);
+  const closeM = () => m.remove();
+  m.querySelector("#sg4X").addEventListener("click", () => { closeM(); o.prog.textContent = "已放弃本次建议（未写入草稿）"; });
+  m.querySelector("#sg4Drop").addEventListener("click", () => { closeM(); o.prog.textContent = "已放弃本次建议（未写入草稿）"; });
+  m.querySelector("#sg4Adopt").addEventListener("click", () => {
+    if (gated) { wqNotice("引用编号有变化，已锁定直接采纳——请放弃后手动编辑"); return; }
+    const p = liveProj(o.pid); if (!p) { closeM(); return; }
+    const content = withMeta(o.txt, "文献矩阵 + 大纲");
+    const res = WQCore.commit(p, { field: "draft:" + o.sec, content, kind: "草稿·" + o.sec, actor: "ai", model: o.model, cost: o.cost, note: "AI 成稿，经采纳" });
+    save();
+    p.showW = "sec:" + o.sec;
+    closeM();
+    o.out.hidden = false; setMD(o.out, o.txt); $("btnWCopy").hidden = false;
+    const citeWarn = checkCites(o.txt, p.papers.length);
+    o.prog.textContent = `「${o.sec}」已采纳写入 ✓` + (res.migrated ? `（迁移 ${res.migrated} 处数字绑定，已标待复核）` : "") + (citeWarn ? " ⚠ " + citeWarn : "（引用编号已过校验）");
+    renderStageBadges();
+  });
 }
 
 /* 引用编号机械校验：[n] 必须落在文献库范围内，防幻觉引用 */
@@ -1073,9 +1130,7 @@ function verFillCmp() {
   const out0 = document.getElementById("verDiffOut"); if (out0) out0.innerHTML = "";
 }
 /* A：项目资产总览（治"创建了什么不知道哪里找"） */
-function invOpen() {
-  const p = cur(); if (!p) { wqNotice("先新建项目"); return; }
-  document.getElementById("invProj").textContent = p.name;
+function buildInvRows(p) {
   const starred = (p.versions || []).filter(v => v.star).length;
   const rows = [];
   const row = (name, meta, content, field) => rows.push({ name, meta, content, field });
@@ -1097,6 +1152,12 @@ function invOpen() {
   });
   row("⑤ 校验记录", (p.checks || []).length + " 条", "", "");
   row("🕓 版本档案", (p.versions || []).length + " 条（⭐ " + starred + " 星标）", "", "");
+  return rows;
+}
+function invOpen() {
+  const p = cur(); if (!p) { wqNotice("先新建项目"); return; }
+  document.getElementById("invProj").textContent = p.name;
+  const rows = buildInvRows(p);
   let html = "<h3 style='margin:4px 0 8px;font-size:14px'>🕒 最近动态</h3>";
   const tr = (p.trail || []).slice(0, 5);
   html += tr.length ? tr.map(t0 => "<div class='irow' style='cursor:default'><span class='iname' style='min-width:0;flex:1;font-weight:400'>" + esc((t0.label || "") + (t0.note ? "（" + t0.note + "）" : "")) + "</span><span class='imeta'>" + esc(t0.ts || "") + "</span></div>").join("") : "<p class='hint'>还没有动态</p>";
@@ -1139,6 +1200,46 @@ function invShow(title, content) {
   });
 }
 /* E2：阶段页签产出角标 */
+
+/* ---------- v3.3（S1）：🏠 项目主页（默认落地页；健康卡+资产+最近动态） ---------- */
+function renderHome() {
+  const p = cur();
+  const body = document.getElementById("homeBody");
+  if (!body) return;
+  if (!p) { body.innerHTML = '<p class="hint">先在左侧新建项目</p>'; return; }
+  const rows = buildInvRows(p);
+  let hits = 0, bound = 0, reviewN = 0;
+  if (window.WQCore && WQCore.scanNumHits) Object.keys(p.draft || {}).forEach(s0 => {
+    WQCore.scanNumHits(p.draft[s0]).forEach(h => {
+      const k = (s0 + "|" + h.ctx).slice(0, 100);
+      hits++;
+      const b0 = (p.nummap || {})[k];
+      if (b0 && b0.src) { bound++; if (b0.review) reviewN++; }
+    });
+  });
+  const jv = (window.WQCore && WQCore.journalVerify) ? WQCore.journalVerify(p) : { ok: true, total: 0 };
+  const bk = backupInfo();
+  const missing = rows.filter(r0 => r0.meta === "未生成");
+  const cards = '<div class="hgrid">' +
+    '<div class="hcard ' + (hits && bound < hits ? "warn" : "ok") + '"><b>' + bound + '/' + (hits || 0) + '</b><span class="hl">数字已绑定来源 · 待复核 ' + reviewN + ' 处</span></div>' +
+    '<div class="hcard ' + (jv.ok ? "ok" : "warn") + '"><b>' + (jv.ok ? "✓" : "✗") + '</b><span class="hl">证据账本 ' + jv.total + ' 条 · 哈希链' + (jv.ok ? "完整" : "已断！") + '</span></div>' +
+    '<div class="hcard ' + (bk.stale ? "warn" : "") + '"><b>' + (bk.last ? esc(bk.last.slice(0, 10)) : "未备份") + '</b><span class="hl">' + (bk.stale ? "距上次备份已超 7 天" : "最近备份") + '</span></div>' +
+    '<div class="hcard"><b>' + (p.versions || []).length + '</b><span class="hl">版本档案 · ⭐ ' + (p.versions || []).filter(v => v.star).length + '</span></div>' +
+    '</div>';
+  const missingHtml = missing.length
+    ? '<div class="callout" style="margin:8px 0"><b>待生成 ' + missing.length + ' 项：</b>' + missing.map(r0 => esc(r0.name)).join("、") + '</div>'
+    : '<div class="callout c-info" style="margin:8px 0">✓ 清单内产出均已生成——可在「📜 版本」里对比演进，或到导图看全貌</div>';
+  const tr = (p.trail || []).slice(0, 5);
+  body.innerHTML = cards + missingHtml +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0"><button class="btn2" id="homeInv">📋 打开资产总览</button><button class="btn2" id="homeVer">📜 打开档案</button><a class="btn2" href="map.html">🗺 项目导图</a></div>' +
+    '<h3 style="margin:10px 0 6px;font-size:14px">🕒 最近动态</h3>' +
+    (tr.length ? tr.map(t0 => '<div class="irow" style="cursor:default"><span class="iname" style="min-width:0;flex:1;font-weight:400">' + esc((t0.label || "") + (t0.note ? "（" + t0.note + "）" : "")) + '</span><span class="imeta">' + esc(t0.ts || "") + "</span></div>").join("") : '<p class="hint">还没有动态</p>');
+  const bi = document.getElementById("homeInv");
+  if (bi) bi.addEventListener("click", invOpen);
+  const bv = document.getElementById("homeVer");
+  if (bv) bv.addEventListener("click", verOpen);
+}
+
 function renderStageBadges() {
   const p = cur();
   const counts = p ? {
@@ -1237,6 +1338,7 @@ $("verClose").addEventListener("click", () => { $("verDrawer").classList.remove(
   if (ic) ic.addEventListener("click", () => { document.getElementById("invDrawer").classList.remove("open"); document.getElementById("mask").classList.remove("open"); });
   const mk = document.getElementById("mask");
   if (mk) mk.addEventListener("click", () => { document.getElementById("invDrawer").classList.remove("open"); });
+  document.querySelectorAll("#verTabs .vt").forEach(b => b.addEventListener("click", () => verSetTab(b.dataset.t)));
 })();
 $("mask").addEventListener("click", () => $("verDrawer").classList.remove("open"));
 
@@ -1271,6 +1373,38 @@ function renderOnboard() {
   const d = document.getElementById("obDismiss");
   if (d) d.addEventListener("click", () => { try { localStorage.setItem("wenqu_onboarded", "1"); } catch {} el.hidden = true; });
 }
+
+/* v3.3：档案抽屉四合一（版本/轨迹/校验/回流） */
+let verTabCur = "versions";
+function verSetTab(t) {
+  verTabCur = t;
+  document.querySelectorAll("#verTabs .vt").forEach(b => b.classList.toggle("on", b.dataset.t === t));
+  const cmpRow = document.getElementById("verCmpRow");
+  if (cmpRow) cmpRow.style.display = t === "versions" ? "" : "none";
+  const p = cur();
+  const list = document.getElementById("verList");
+  if (!p) { list.innerHTML = '<p class="hint">先新建项目</p>'; return; }
+  if (t === "versions") { verOpen(); return; }
+  if (t === "trail") {
+    const tr = p.trail || [];
+    list.innerHTML = tr.length ? tr.map(t0 => '<div class="irow"><span class="iname" style="min-width:0;flex:1;font-weight:400">' + esc((t0.label || "") + (t0.note ? "（" + t0.note + "）" : "")) + '</span><span class="imeta">' + esc(t0.ts || "") + "</span></div>").join("") : "<p class='hint'>还没有轨迹</p>";
+  } else if (t === "checks") {
+    const ck = p.checks || [];
+    list.innerHTML = ck.length ? ck.map(c0 => '<div class="vitem"><b style="font-size:13px">🔍 ' + esc(c0.label || c0.kind) + '</b><div class="vmeta">' + esc(c0.ts) + " · " + (c0.items || []).length + " 条明细" + (c0.stats && c0.stats.total != null ? " · 问题 " + (c0.stats.problem || 0) + "/" + c0.stats.total : "") + '</div><div class="vdetail" style="display:none">' + esc((c0.items || []).join("\n")) + "</div></div>").join("") : "<p class='hint'>还没有校验记录</p>";
+    list.querySelectorAll(".vitem").forEach(el => el.addEventListener("click", () => {
+      const d0 = el.querySelector(".vdetail");
+      if (d0) d0.style.display = d0.style.display === "none" ? "block" : "none";
+    }));
+  } else if (t === "reflows") {
+    const rf = p.reflows || [];
+    list.innerHTML = rf.length ? rf.map(r0 => '<div class="vitem"><b style="font-size:13px">📥 导师稿·' + esc(r0.baseField) + (r0.keepHidden ? " 👻" : "") + '</b><div class="vmeta">' + esc(r0.ts) + " · 来源：" + esc(r0.source || "导师") + "（声明制） · 改动 " + (r0.items || []).length + " 条 · hash " + esc((r0.hash || "").slice(0, 8)) + '</div><div class="vdetail" style="display:none">' + esc(r0.comments ? "💬 " + r0.comments : "") + "</div></div>").join("") : "<p class='hint'>还没有 Word 回流记录——在导图的草稿节点卡点「📥 Word 回流」</p>";
+    list.querySelectorAll(".vitem").forEach(el => el.addEventListener("click", () => {
+      const d0 = el.querySelector(".vdetail");
+      if (d0) d0.style.display = d0.style.display === "none" ? "block" : "none";
+    }));
+  }
+}
+
 function renderBackupHint() {
   const { last, stale } = backupInfo();
   const row = document.querySelector(".projbar .row");
@@ -1302,7 +1436,7 @@ function renderAll() {
   $("projStatus").value = p?.status || "选题中";
   if (p) { $("cfgParadigm").value = p.paradigm; $("cfgLevel").value = p.level; }
   window.__renderErrs = [];
-  [["renderSecBtns",0],["renderDefense",0],["renderPapers",0],["renderStageCards",0],["renderOnboard",0],["renderBackupHint",0],["renderVerCount",0],["renderProcessLog",0],["refreshAIButtons",0],["renderStageBadges",0],["renderNumBar",0]].forEach(([f]) => { try { window[f](); } catch (e) { window.__renderErrs.push(f + ": " + e.message); } });
+  [["renderSecBtns",0],["renderDefense",0],["renderPapers",0],["renderStageCards",0],["renderOnboard",0],["renderBackupHint",0],["renderVerCount",0],["renderProcessLog",0],["refreshAIButtons",0],["renderStageBadges",0],["renderNumBar",0],["renderHome",0]].forEach(([f]) => { try { window[f](); } catch (e) { window.__renderErrs.push(f + ": " + e.message); } });
 }
 /* v0.7：多标签一致性——其他标签页写入时同步刷新，防止旧标签的内存快照覆盖版本档案 */
 window.addEventListener("storage", (e) => {
