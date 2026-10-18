@@ -352,6 +352,7 @@
   /* ================= 渲染 ================= */
   var ST = { cy: null, p: null, db: null, selId: null, busy: false, prevIds: null, tapTs: {}, flowTimer: null, flowEdges: null, fullFetched: {} };
   var FX = { on: true };   /* 动效总开关（链路流动/新节点飞入；AI 脉冲属状态提示不随此关） */
+  var EVI = { on: false }; /* 证据模式（方案 X）：默认收起证据层（数字绑定/数据卡节点+证据连线），健康卡覆盖率常显 */
 
   function focusNeighborhood(id) {
     if (!ST.cy) return;
@@ -1284,6 +1285,7 @@
     g.nodes.forEach(function (n) { ST.prevIds[n.id] = 1; });
     ST.cy = buildCy(ST.p, g, dyn);
     applyChainFilter();
+    applyEvidenceMode();
     document.getElementById("stCount").textContent = g.nodes.length + " 节点 · " + g.edges.length + " 条链路";
     renderTrail(ST.p);
     var cve = document.getElementById("cvEmpty");
@@ -1310,8 +1312,15 @@
     if (!ST.cy) return;
     ["logic", "academic", "evidence", "revision", "review"].forEach(function (c) {
       var on = document.getElementById("chk_" + c) ? document.getElementById("chk_" + c).checked : true;
-      ST.cy.edges("[chain='" + c + "']").style("display", on ? "element" : "none");
+      var eff = on && (c !== "evidence" || EVI.on);   /* 方案 X：证据边还受证据模式总闸 */
+      ST.cy.edges("[chain='" + c + "']").style("display", eff ? "element" : "none");
     });
+  }
+  /* 方案 X：证据模式——数字绑定/数据卡节点随开关显隐 */
+  function applyEvidenceMode() {
+    if (!ST.cy) return;
+    ST.cy.nodes("[kind='numbind'],[kind='datacard']").style("display", EVI.on ? "element" : "none");
+    applyChainFilter();
   }
 
   function init() {
@@ -1415,6 +1424,18 @@
     ["logic", "academic", "evidence", "revision", "review"].forEach(function (c) {
       var el = document.getElementById("chk_" + c);
       if (el) el.addEventListener("change", applyChainFilter);
+    });
+    /* 方案 X：证据模式开关（记住偏好；默认收起） */
+    var eviChk = document.getElementById("chk_evi");
+    var eviPref = null;
+    try { eviPref = localStorage.getItem("wenqu_map_evi"); } catch (e) {}
+    EVI.on = eviPref === "on";
+    eviChk.checked = EVI.on;
+    eviChk.addEventListener("change", function () {
+      EVI.on = eviChk.checked;
+      try { localStorage.setItem("wenqu_map_evi", EVI.on ? "on" : "off"); } catch (e) {}
+      applyEvidenceMode();
+      toast(EVI.on ? "证据模式已开启：数字绑定与数据卡上图，可一跳核对来源" : "证据模式已收起（主页健康卡仍显示覆盖率）");
     });
     document.getElementById("btnFit").addEventListener("click", function () { if (ST.cy) ST.cy.fit(undefined, 50); });
     document.getElementById("btnReset").addEventListener("click", async function () {
