@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>萤算科研 — 参考稿 · 修改 · 核验 · 复现（工作台内部名：文渠）</title>
-<meta name="description" content="面向学生与科研人员的一站式科研平台：项目工作流（选题→文献→阅读综合→设计写作→质检投稿）+ 免建项目的工具台。免费检索，AI 需自配 Key，数据只存你的浏览器。">
+<title>萤算科研导图 — 把科研的每一步产出画成一张图</title>
+<meta name="description" content="把科研项目的全部产出画成一张导图：主题、提纲、草稿、文献、版本、校验，六种链条串起生成与迭代的每一步；配套参考稿 Agent 与五阶段工作台。免费检索，AI 需自配 Key，数据只存你的浏览器。">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#2456e6">
@@ -13,14 +13,14 @@
 <body>
 
 <header class="site"><div class="container bar">
-  <a class="brand" href="index.html">萤算科研<small>文渠工作台</small></a>
+  <a class="brand" href="index.html">萤算科研导图<small>科研一站平台</small></a>
 </div></header>
 
 <main class="container">
   <div class="hero">
-    <div class="num">3 步</div>
-    <h1>生成之后，才是研究开始的地方</h1>
-    <p class="lead">① 生成参考稿（免费 Agent，50 篇真实文献）→ ② 逐段修改成你自己的东西（归属账本自动记账）→ ③ 校验、回测与数据复现。每一步的产出都留在项目里；AI 只按 token 计费，没有套餐。</p>
+    <div class="num">1 张图</div>
+    <h1>生成之后，才是研究开始的地方——现在它是一张导图</h1>
+    <p class="lead">① 生成参考稿（免费 Agent，50 篇真实文献）→ ② 逐段修改成你自己的东西（归属账本自动记账）→ ③ 校验、回测与数据复现。所有产出都在一张导图上：节点可改写、链条可追溯；AI 只按 token 计费，没有套餐。</p>
     <div class="trust">
       <span>✔ 免费检索，只指向合法开放版本</span>
       <span>✔ 数据只存你的浏览器，可一键备份</span>
@@ -29,6 +29,12 @@
   </div>
 
   <div class="grid">
+    <a class="card" href="map.html" style="border-color:#f1d8ab;background:linear-gradient(180deg,#fffaf0,#ffffff)">
+      <div class="ico">🗺</div>
+      <h3>我要看项目导图</h3>
+      <p>主题、提纲、草稿、文献、版本、校验全部上图：点开节点直接改写、存版本、查引用；六种链条随时开关。</p>
+      <span class="more">打开项目导图 →</span>
+    </a>
     <a class="card" href="quick.html" style="border-color:#b9e6c9;background:linear-gradient(180deg,#f4fbf6,#ffffff)">
       <div class="ico">⚡</div>
       <h3>我想要一份参考稿</h3>
@@ -54,7 +60,7 @@
     <div class="scen"><span>🔍 找文献</span><a href="studio.html?tab=search">聚合检索+免费PDF标注</a><a href="studio.html?tab=radar">新论文雷达</a><a href="studio.html?tab=db">科研数据库导航</a></div>
     <div class="scen"><span>📖 精读</span><a href="studio.html?tab=read">AI 读论文（摘要/审稿/带引用追问）</a></div>
     <div class="scen"><span>🔗 整理</span><a href="studio.html?tab=cite">引用引擎（乱格式→GB/APA/BibTeX）</a></div>
-    <div class="scen"><span>📝 写作</span><a href="quick.html">参考稿 Agent</a><a href="studio.html?tab=storm">综述素材</a><a href="studio.html">项目工作流④（大纲/分节/导出）</a></div>
+    <div class="scen"><span>📝 写作</span><a href="quick.html">参考稿 Agent</a><a href="studio.html?tab=storm">综述素材</a><a href="studio.html">项目工作流④（大纲/分节/导出）</a><a href="map.html">🗺 项目导图</a></div>
     <p class="hint">毕业论文：建项目选「本科毕设」层级——开题报告初稿、答辩材料与投稿检查清单会按层级自动出现。</p>
   </section>
 
@@ -69,9 +75,9 @@
 </main>
 
 <footer class="site"><div class="container">
-  <div class="links"><a href="studio.html?tab=search">工具台</a> · <a href="studio.html">科研工作台</a> · <a href="quick.html">参考稿</a> · 发现问题？<a href="mailto:feedback@example.com">邮件告诉我们</a></div>
-  <div class="disc">文渠只指向官方机构与合法开放版本，不提供文献代下、代写、代查服务。AI 产出均可能出错，使用前请人工核对；学术润色仅做语言优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器，请定期备份。</div>
-  <div>© 2026 萤算科研 · 文渠工作台</div>
+  <div class="links"><a href="map.html">项目导图</a> · <a href="studio.html?tab=search">工具台</a> · <a href="studio.html">科研工作台</a> · <a href="quick.html">参考稿</a> · 发现问题？<a href="mailto:feedback@example.com">邮件告诉我们</a></div>
+  <div class="disc">萤算科研导图只指向官方机构与合法开放版本，不提供文献代下、代写、代查服务。AI 产出均可能出错，使用前请人工核对；学术润色仅做语言优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器，请定期备份。</div>
+  <div>© 2026 萤算科研导图</div>
 </div></footer>
 <script>
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

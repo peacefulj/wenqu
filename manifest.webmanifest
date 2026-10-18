@@ -1,9 +1,9 @@
 {
-  "name": "文渠科研平台",
-  "short_name": "文渠",
-  "description": "一站式科研平台：找文献、AI读论文、引用引擎、综述工坊、新论文雷达、项目工作流（选题→文献→分析→写作→投稿）。",
+  "name": "萤算科研导图",
+  "short_name": "萤算导图",
+  "description": "把科研项目的全部产出画成一张图：主题、提纲、草稿、文献、版本、校验，六种链条串起生成与迭代的每一步；配套工作台与参考稿 Agent。",
   "lang": "zh-CN",
-  "start_url": "./studio.html",
+  "start_url": "./map.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

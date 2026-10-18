@@ -4,7 +4,7 @@
  * 更新方式：改代码后把 CACHE 版本号 +1，旧缓存自动清理；用户刷新即得新版。
  */
 "use strict";
-const CACHE = "wenqu-v31";
+const CACHE = "wenqu-v32";
 const SHELL = [
   "./",
   "index.html",
@@ -12,8 +12,12 @@ const SHELL = [
   "studio.html",
   "tools.html",
   "workbench.html",
+  "map.html",
   "manifest.webmanifest",
   "assets/style.css",
+  "assets/map.css",
+  "assets/wq-map.js",
+  "assets/vendor/cytoscape.min.js",
   "assets/wb.css",
   "assets/studio.js",
   "assets/wq-core.js",

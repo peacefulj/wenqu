@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>项目导图 · 萤算科研导图</title>
+<meta name="description" content="把科研项目的全部产出画成一张图：主题、提纲、草稿、文献、版本、校验，六种链条串起生成与迭代的每一步。数据只存浏览器。">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icons/icon-192.png">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/map.css">
+</head>
+<body class="mbody-page">
+
+<header class="mtop">
+  <a class="mbrand" href="index.html">萤算科研导图<small>全部产出 · 一图可视</small></a>
+  <select id="projSel" title="切换项目"></select>
+  <span id="stCount" class="mstcount"></span>
+  <span class="mspacer"></span>
+  <nav class="mnav">
+    <a href="studio.html" target="_blank" rel="noopener">📄 文档视图</a>
+    <a href="quick.html" target="_blank" rel="noopener">⚡ 快速参考稿</a>
+  </nav>
+</header>
+
+<div class="mtools">
+  <input id="mSearch" placeholder="🔍 搜节点（回车定位）" autocomplete="off">
+  <span class="mgrouplabel">链条：</span>
+  <label class="mchk"><input type="checkbox" id="chk_logic" checked><span id="lbl_logic">逻辑链</span></label>
+  <label class="mchk"><input type="checkbox" id="chk_academic" checked><span id="lbl_academic">学术链</span></label>
+  <label class="mchk"><input type="checkbox" id="chk_evidence" checked><span id="lbl_evidence">证据链</span></label>
+  <label class="mchk"><input type="checkbox" id="chk_revision" checked><span id="lbl_revision">修改链</span></label>
+  <label class="mchk"><input type="checkbox" id="chk_review" checked><span id="lbl_review">质检链</span></label>
+  <label class="mchk" title="关闭后：链路不流动、新节点不飞入（AI 脉冲保留）"><input type="checkbox" id="chk_fx" checked><span>🎬 动效</span></label>
+  <span class="mspacer"></span>
+  <button class="pillbtn" id="btnFit">⤢ 适应窗口</button>
+  <button class="pillbtn" id="btnReset">↺ 重置布局</button>
+  <button class="pillbtn" id="btnPng">📷 导出PNG</button>
+  <button class="pillbtn" id="btnBak">⤓ 备份全部</button>
+  <button class="pillbtn" id="btnCard">🧭 轨迹</button>
+</div>
+
+<main class="mmain">
+  <div id="cv" class="mcanvas"></div>
+
+  <div id="cvEmpty" class="cvempty hidden">
+    <h3 id="cveTitle">这里还没有图</h3>
+    <p id="cveSub"></p>
+    <div id="cveBtns">
+      <a class="mbtn pri" href="quick.html">⚡ 生成参考稿</a>
+      <a class="mbtn" href="studio.html">🧭 新建项目</a>
+    </div>
+  </div>
+
+  <div id="legend" class="mlegend"></div>
+
+  <aside id="side" class="mside">
+    <div id="card" class="mcardbox">
+      <div class="mcardhead">
+        <span id="cardKind" class="mkind"></span>
+        <button id="cardClose" class="mclose" title="关闭">✕</button>
+      </div>
+      <h3 id="cardTitle"></h3>
+      <div id="cardMeta" class="mmeta"></div>
+      <div id="cardBody"></div>
+      <div id="cardBtns" class="mbtnrow"></div>
+    </div>
+
+    <div id="trailPane" class="mtrail">
+      <h4>🧭 思维链 · 项目轨迹<small>每个动作都是一步思考</small></h4>
+      <div id="trailList" class="mtraillist"></div>
+    </div>
+  </aside>
+</main>
+
+<footer class="mfoot">
+  导图是项目数据的可视化投影，编辑写回原项目（与工作台/快速稿同一份数据）。AI 产出均为学习参考，使用前请人工核对；数据只存本机浏览器，请定期到工作台备份。
+</footer>
+
+<script src="assets/vendor/marked.min.js"></script>
+<script src="assets/vendor/purify.min.js"></script>
+<script src="assets/wq-core.js"></script>
+<script src="assets/vendor/cytoscape.min.js"></script>
+<script src="assets/wq-map.js"></script>
+<script>
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>
