@@ -88,6 +88,11 @@
     const saved = (p.draft || {})[sec] || "";
     if (forceMine || document.activeElement !== mineBox || mineBox.value === (wbState.lastSaved || "")) mineBox.value = saved;
     wbState.lastSaved = saved;
+    /* v1.0.6：富文本容器内容与当前节同步（切项目/切节/恢复） */
+    if (typeof editorRich === "function" && editorRich()) {
+      const sr = (p.draftRich || {})[sec];
+      editorRich().innerHTML = sr || plainToRich(saved);
+    }
     renderContrib();
     renderWbDiff(sec, refText, mineBox.value);
   }
@@ -345,32 +350,62 @@
         renderChecks();
       } catch (e) { $("ckProg").textContent = "失败：" + e.message; }
     }));
-    /* ③ 数字来源绑定（本地） */
+    /* ③ 数字来源绑定（本地，v1.0.6 交互版：每处数字可选来源并保存） */
     $("ckNums").addEventListener("click", () => {
       const p = P(); if (!p) return toast("先新建项目");
       const secs = Object.keys(p.draft || {});
       const hits = [];
-      const re = /(?:^|[^\d\[][（(]?)(\d+(?:\.\d+)?(?:%|万|千|亿|个百分点)?)/g;
-      secs.forEach(s => {
-        const t = p.draft[s] || "";
+      const re = /(?:^|[^\d\[（(]?)(\d+(?:\.\d+)?(?:%|万|千|亿|个百分点)?)/g;
+      secs.forEach(s0 => {
+        const t = p.draft[s0] || "";
         let m;
-        while ((m = re.exec(t)) && hits.length < 60) {
-          const ctx = t.slice(Math.max(0, m.index - 24), m.index + m[0].length + 24).replace(/\s+/g, " ");
+        while ((m = re.exec(t)) && hits.length < 80) {
+          const ctxFull = t.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\s+/g, " ");
           const num = m[1];
-          if (/^\d{4}$/.test(num)) continue;                    // 年份跳过
-          if (/\[\d+\]$/.test(m[0].trim())) continue;           // 引用编号跳过
-          hits.push({ sec: s, num, ctx, key: (s + "|" + ctx).slice(0, 80) });
+          if (/^\d{4}$/.test(num)) continue;
+          hits.push({ sec: s0, num, ctx: ctxFull, key: (s0 + "|" + ctxFull).slice(0, 100) });
         }
       });
-      p.nummap = p.nummap || {};
       const uniq = []; const seen = new Set();
       hits.forEach(h => { if (!seen.has(h.key)) { seen.add(h.key); uniq.push(h); } });
+      p.nummap = p.nummap || {};
       const bound = uniq.filter(h => p.nummap[h.key] && p.nummap[h.key].src).length;
-      const items = uniq.slice(0, 40).map(h => (p.nummap[h.key] && p.nummap[h.key].src ? "✅" : "🔴") + " 「" + h.sec + "」…" + h.ctx + "…" + (p.nummap[h.key] ? "（" + p.nummap[h.key].src + "）" : "（未绑定）"));
-      pushCheck(p, "nums", "数字来源绑定（" + uniq.length + " 处）", items, { problem: uniq.length - bound, total: uniq.length, bound });
-      $("ckProg").textContent = "完成：数字类表述 " + uniq.length + " 处，已绑定 " + bound + " 处——重要数字务必逐个补来源（文献[n]/数据卡/本人测算）";
-      renderChecks();
+      const rows = uniq.slice(0, 40).map(function (h) {
+        const cur0 = p.nummap[h.key] || {};
+        return '<div class="refrow"><span class="rn">' + (cur0.src ? "✅" : "🔴") + '</span><span class="rt">…' + esc(h.ctx) + '…</span>' +
+          '<select class="nmSel" data-nmkey="' + esc(h.key) + '">' +
+          '<option value="">未绑定</option>' +
+          p.papers.map((f, i) => '<option value="文献[' + (i + 1) + ']"' + (cur0.src === "文献[" + (i + 1) + "]" ? " selected" : "") + '>文献[' + (i + 1) + '] ' + esc(f.title.slice(0, 14)) + '</option>').join("") +
+          (p.datacards || []).map(c => '<option value="数据卡：' + esc(c.name) + '"' + (cur0.src === "数据卡：" + c.name ? " selected" : "") + '>数据卡：' + esc(c.name.slice(0, 12)) + '</option>').join("") +
+          '<option value="本人测算"' + (cur0.src === "本人测算" ? " selected" : "") + '>本人测算</option>' +
+          '</select></div>';
+      }).join("");
+      pushCheck(p, "nums", "数字来源绑定（" + uniq.length + " 处，可交互）", [],
+        { problem: uniq.length - bound, total: uniq.length, bound: bound });
+      const anchorBox = document.getElementById("ckRetestBox") || document.getElementById("ckOut");
+      const div = document.createElement("div");
+      div.className = "callout c-info";
+      div.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>🔢 逐处绑定来源</b>' +
+        '<span class="hint" id="nmCount">已绑定 ' + bound + ' / ' + uniq.length + '</span><span style="flex:1"></span>' +
+        '<button class="pillbtn" id="nmSave">💾 保存绑定</button><span class="hint">改完下拉点保存；正文重要数字都应能指回来源</span></div>' +
+        (rows || '<p class="hint">草稿里没有检测到数字类表述</p>');
+      anchorBox.before(div);
+      div.querySelectorAll(".nmSel").forEach(sel => sel.addEventListener("change", function () {
+        const key = sel.dataset.nmkey;
+        if (sel.value) { p.nummap[key] = { src: sel.value, ts: WQCore.stamp() }; } else { delete p.nummap[key]; }
+        save();
+        const b = uniq.filter(h => p.nummap[h.key] && p.nummap[h.key].src).length;
+        const cnt = document.getElementById("nmCount");
+        if (cnt) cnt.textContent = "已绑定 " + b + " / " + uniq.length;
+      }));
+      document.getElementById("nmSave").addEventListener("click", function () {
+        pushCheck(p, "nums", "数字来源绑定（" + uniq.length + " 处）",
+          uniq.map(h => (p.nummap[h.key] && p.nummap[h.key].src ? "✅" : "🔴") + "「" + h.sec + "」…" + h.ctx + "…" + (p.nummap[h.key] ? "（" + p.nummap[h.key].src + "）" : "（未绑定）")),
+          { problem: uniq.length - bound, total: uniq.length, bound: bound });
+        renderChecks(); toast("绑定结果已存入校验记录 ✓");
+      });
     });
+
     /* ④ 格式规范（本地） */
     $("ckFormat").addEventListener("click", () => {
       const p = P(); if (!p) return toast("先新建项目");
@@ -512,9 +547,11 @@
       if (!drafted.length) { toast("还没有「我的稿」内容：先在④修改工作台采用/写作，再导出"); return; }
       const esc2 = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const parts = secList.map(s => {
+        const rich = (p.draftRich || {})[s];
         let t = p.draft?.[s] || "";
+        const richClean = rich ? rich.replace(/〔生成：[^〕]*〕/g, "") : "";
         if (t) t = t.replace(/〔生成：[^〕]*〕/g, "").trim();
-        return `<h2>${esc2(s)}</h2>` + (t ? t.split(/\n+/).map(x => `<p>${esc2(x)}</p>`).join("") : "<p>〔本节未写〕</p>");
+        return `<h2>${esc2(s)}</h2>` + (richClean ? richClean : (t ? t.split(/\n+/).map(x => `<p>${esc2(x)}</p>`).join("") : "<p>〔本节未写〕</p>"));
       }).join("\n");
       /* 归属说明：按账本，不再只看〔生成：〕标记 */
       const led = WQCore.ledger.analyzeProject(p);
@@ -535,7 +572,7 @@
       const ckDecl = ckLines.length ? '<h2>校验记录（最近）</h2><p style="font-size:10.5pt;color:#555">' + ckLines.map(esc2).join("<br>") + "</p>" : "";
       const refs = p.papers.length ? "<h2>参考文献</h2><p style=\"font-size:10.5pt;line-height:1.4\">" +
         p.papers.map((f, i) => "[" + (i + 1) + "] " + esc2(f.author || "作者待补") + ". " + esc2(f.title) + "[" + (f.type || "J") + "]. " + esc2(f.venue || "出处待补") + ", " + esc2(f.year || "年份待补") + (f.doi ? ". DOI:" + esc2(f.doi) : "") + ".").join("<br>") + "</p>" : "";
-      const css = EXP_CSS[$("expFmt") ? $("expFmt").value : "plain"] || EXP_CSS.plain;
+      const css = (window.WQTemplate && WQTemplate.activeCss()) || EXP_CSS[$("expFmt") ? $("expFmt").value : "plain"] || EXP_CSS.plain;
       const html = `<html><head><meta charset="utf-8"><style>${css}table{border-collapse:collapse}th,td{border:1px solid #999;padding:4px 8px}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}${aiDecl}${ckDecl}<p style="color:#888">—— 由萤算科研·文渠工作台辅助完成（${WQCore.stamp()}）；引用与数据请人工核对 ——</p></body></html>`;
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" }));
@@ -633,6 +670,7 @@
       return '<div class="refrow' + (hlN === i + 1 ? " flash" : "") + '" data-rn="' + (i + 1) + '">'
         + '<span class="rn">[' + (i + 1) + ']</span><span class="rt">' + esc(refTxt(f)) + '</span>'
         + '<button class="pillbtn" data-redit="' + (i + 1) + '" title="修订题录（作者/标题/年份/出处/DOI）">✏️修改</button>'
+        + '<button class="pillbtn" data-rtrace="' + (i + 1) + '" title="全文溯源：引用位置 + 摘要 + AI 支撑判断">🔍溯源</button>'
         + (f.doi ? ' <a class="pillbtn" href="https://doi.org/' + esc(f.doi) + '" target="_blank" rel="noopener">DOI</a>' : "")
         + '</div>';
     }).join("");
@@ -730,6 +768,17 @@
       if (src) src.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
+    const tr = e.target.closest("[data-rtrace]");
+    if (tr) {
+      const row = tr.closest(".refrow");
+      const n = parseInt(tr.dataset.rtrace, 10);
+      const exist = row.querySelector(".reftrace");
+      if (exist) { exist.remove(); return; }
+      row.insertAdjacentHTML("beforeend", traceHTML(P(), n));
+      return;
+    }
+    const jd = e.target.closest("[data-rjudge]");
+    if (jd) { runJudge(jd.closest(".refrow"), parseInt(jd.dataset.rjudge, 10)); return; }
   });
 
   /* 包装 setMD：#wOut 渲染后自动增强引用并附文末参考文献 */
@@ -757,6 +806,377 @@
       }
     } catch (err) {}
   });
+
+  /* ================================================================
+   * ⑦ 在线富文本编辑器 + 一键排版（v1.0.6）
+   * 双模式：所见即所得（contentEditable）↔ 纯文本；富文本存 p.draftRich[sec]，
+   * 纯文本派生存 p.draft[sec]（diff/账本/校验逻辑不变）。导出优先用富文本。
+   * ================================================================ */
+  function htmlToPlain(html) {
+    const ta = document.createElement("textarea");
+    let s = String(html || "")
+      .replace(/<\s*(br|\/p|\/div|\/h[1-6]|\/li|\/blockquote)[^>]*>/gi, "\n")
+      .replace(/<li[^>]*>/gi, "• ");
+    ta.innerHTML = s;
+    s = ta.value.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    return s;
+  }
+  function plainToRich(text) {
+    return String(text || "").split(/\n{2,}|\n/).map(x => x.trim()).filter(Boolean)
+      .map(x => "<p>" + esc(x) + "</p>").join("");
+  }
+  const RICH_TOOLBAR = [
+    { cmd: "formatBlock", arg: "h2", label: "H2" }, { cmd: "formatBlock", arg: "h3", label: "H3" },
+    { cmd: "formatBlock", arg: "p", label: "正文" }, { cmd: "bold", label: "B" },
+    { cmd: "italic", label: "I" }, { cmd: "insertUnorderedList", label: "• 列表" },
+    { cmd: "formatBlock", arg: "blockquote", label: "引用" }, { cmd: "removeFormat", label: "清除格式" },
+    { cmd: "undo", label: "↶" }, { cmd: "redo", label: "↷" }
+  ];
+  function editorRich() { return document.getElementById("wbMineRich"); }
+  function editorIsRich() { return localStorage.getItem("wenqu_editmode") === "rich"; }
+  function setEditorMode(rich, sec) {
+    const p = P(); if (!p) return;
+    const mine = $("wbMine"), box = editorRich();
+    if (!mine || !box) return;
+    if (rich) {
+      const saved = (p.draftRich || {})[sec];
+      box.innerHTML = saved || plainToRich(mine.value);
+      box.style.display = ""; mine.style.display = "none";
+    } else {
+      if (box.innerHTML && !mine.value.trim()) mine.value = htmlToPlain(box.innerHTML);
+      box.style.display = "none"; mine.style.display = "";
+    }
+    localStorage.setItem("wenqu_editmode", rich ? "rich" : "plain");
+    $("wbModeBtn").textContent = rich ? "☑ 所见即所得" : "✍️ 富文本";
+    document.getElementById("wbToolbar").style.display = rich ? "" : "none";
+  }
+  function editorPlainValue() {
+    /* 保存时取值：富文本 → 派生纯文本 */
+    if (editorIsRich()) {
+      const rich = editorRich().innerHTML;
+      return { rich: rich, plain: htmlToPlain(rich) };
+    }
+    return { rich: null, plain: $("wbMine").value };
+  }
+  (function bindEditor() {
+    if (!has("wbMine")) return;
+    /* 工具栏 */
+    const bar = document.getElementById("wbToolbar");
+    if (bar && !bar.childElementCount) {
+      RICH_TOOLBAR.forEach(function (t) {
+        const b = document.createElement("button");
+        b.className = "pillbtn"; b.type = "button"; b.innerHTML = esc(t.label);
+        b.addEventListener("mousedown", function (e) { e.preventDefault(); });
+        b.addEventListener("click", function () {
+          editorRich().focus();
+          document.execCommand(t.cmd, false, t.arg || null);
+        });
+        bar.appendChild(b);
+      });
+      const mode = document.createElement("button");
+      mode.className = "pillbtn"; mode.id = "wbModeBtn"; mode.style.marginLeft = "auto";
+      bar.appendChild(mode);
+      mode.addEventListener("click", function () { setEditorMode(!editorIsRich(), $("wbSec").value); });
+    }
+    /* contentEditable 容器插到 textarea 前面 */
+    const box = document.createElement("div");
+    box.id = "wbMineRich";
+    box.contentEditable = "true";
+    box.style.cssText = "border:1px solid var(--line);border-radius:10px;padding:10px;min-height:280px;max-height:520px;overflow:auto;font-size:13px;line-height:1.7;background:#fff";
+    $("wbMine").before(box);
+    $("wbMine").style.display = "none";
+    setEditorMode(editorIsRich(), $("wbSec").value);
+    /* 保存：富文本派生纯文本 */
+    const origSave = saveDraft;
+    saveDraft = function (sec, silent) {
+      const p = P(); if (!p) return;
+      const v = editorIsRich() ? htmlToPlain(editorRich().innerHTML) : $("wbMine").value;
+      p.draft = p.draft || {};
+      if ((p.draft[sec] || "") === v) { if (!silent) toast("内容未变化"); return; }
+      p.draft[sec] = v;
+      if (editorIsRich()) {
+        p.draftRich = p.draftRich || {};
+        p.draftRich[sec] = editorRich().innerHTML;
+      } else {
+        p.draftRich = p.draftRich || {};
+        delete p.draftRich[sec];
+      }
+      save();
+      if (v.length > 120) { addVersion(p, "我的稿·" + sec, v, "draft:" + sec); save(); }
+      trailAdd(p, "act", "保存我的稿·" + sec, plainLen(v) + " 字");
+      save(); renderProjects(); renderWbPanes(false);
+      if (!silent) toast("已保存 ✓（归属账本已更新）");
+    };
+    /* 整节改写（wbRewrite）结果写回富文本容器 */
+    const origRewrite = $("wbRewrite").onclick;
+  })();
+
+  /* ================================================================
+   * ⑧ 高校格式模板库（v1.0.6 闭环方案）
+   * 内置通用模板 + AI 按校生成草稿 + 从格式要求文本提取 + 用户模板管理
+   * + 导出/导入 JSON（社区分享闭环）。不依赖任何私有模板数据。
+   * ================================================================ */
+  const TPL_KEY = "wenqu_templates", TPL_ACTIVE = "wenqu_tpl_active";
+  const EXP_TPL_BUILTIN = function () {
+    return [
+      { id: "b-thesis-cn", name: "学位论文·通用（宋体小四/1.5倍行距）", css: EXP_CSS["thesis-cn"], source: "内置" },
+      { id: "b-thesis-fs", name: "学位论文·仿宋（仿宋四号）", css: EXP_CSS["thesis-fs"], source: "内置" },
+      { id: "b-journal-en", name: "期刊英文·Times 12pt 双倍行距", css: EXP_CSS["journal-en"], source: "内置" },
+      { id: "b-plain", name: "朴素（默认宋体 12pt）", css: EXP_CSS["plain"], source: "内置" }
+    ];
+  };
+  function tplAll() {
+    let mine = [];
+    try { mine = JSON.parse(localStorage.getItem(TPL_KEY) || "[]"); } catch (e) {}
+    return EXP_TPL_BUILTIN().concat(mine);
+  }
+  function tplActiveCss() {
+    const act = localStorage.getItem(TPL_ACTIVE);
+    if (act) { const t = tplAll().find(x => x.id === act); if (t) return t.css; }
+    return null;
+  }
+  function tplCssFromParams(j) {
+    /* AI 返回结构化参数 → Word 可用的 style 块 */
+    const g = (k, d) => (j[k] || d);
+    return "body{font-family:" + g("bodyFont", "SimSun,serif") + ";font-size:" + g("bodySize", "12pt") +
+      ";line-height:" + g("lineHeight", "1.5") + ";margin:" + g("margin", "2.54cm 3.17cm") + "}" +
+      "h1{font-size:" + g("h1Size", "16pt") + ";text-align:center}" +
+      "h2{font-size:" + g("h2Size", "14pt") + "}" +
+      "h3{font-size:" + g("h3Size", "13pt") + "}" +
+      "p{text-indent:" + g("indent", "2em") + ";margin:0.3em 0}" +
+      "table{border-collapse:collapse}th,td{border:1px solid #999;padding:4px 8px}";
+  }
+  /* ---------- v1.0.6：模板弹窗（事件委托版——所有交互走 m 上的单一委托，杜绝逐元素绑定时序问题） ---------- */
+  function tplModal(open) {
+    let m = document.getElementById("tplModal");
+    if (!open) { if (m) m.remove(); return; }
+    if (m) m.remove();
+    m = document.createElement("div");
+    m.id = "tplModal";
+    m.style.cssText = "position:fixed;inset:0;background:rgba(20,28,44,.4);z-index:210;display:flex;align-items:flex-start;justify-content:center;overflow:auto";
+    m.innerHTML = '<div style="background:#fff;border-radius:14px;width:min(680px,94vw);margin:40px 12px;padding:18px 20px;box-shadow:0 12px 40px rgba(27,42,74,.25)">' +
+      '<div style="display:flex;align-items:center;gap:8px"><b style="font-size:15.5px">📑 排版模板库</b>' +
+      '<span class="hint">闭环：AI 生成草稿 → 对照官方规范修订 → 存为我的模板 → 导出 JSON 分享</span>' +
+      '<span style="flex:1"></span><button class="pillbtn" data-act="close">关闭</button></div>' +
+      '<h3 style="margin:10px 0 4px;font-size:13.5px">模板列表</h3><div id="tplList"></div>' +
+      '<h3 style="margin:12px 0 4px;font-size:13.5px">＋ AI 按学校生成草稿<small class="hint">（AI 草稿务必对照学校官方规范核对后使用）</small></h3>' +
+      '<div class="row" style="margin-top:0"><input id="tplSchool" placeholder="学校全名（如：青岛大学）" style="flex:1">' +
+      '<select id="tplDegree" style="flex:0 0 120px"><option>本科</option><option>硕士</option><option>博士</option></select>' +
+      '<button class="btn2 btn-sm" id="tplGen">生成草稿</button></div>' +
+      '<h3 style="margin:12px 0 4px;font-size:13.5px">＋ 从格式要求文本提取<small class="hint">（粘贴学校发布的格式要求/规范原文，AI 提取参数）</small></h3>' +
+      '<textarea id="tplSpec" rows="3" placeholder="例：正文宋体小四、1.5倍行距；一级标题黑体三号居中；页边距上2.5下2.5左3右2.5…"></textarea>' +
+      '<div class="row" style="margin-top:4px"><button class="btn2 btn-sm" id="tplExtract">提取参数</button>' +
+      '<button class="btn2 ghost btn-sm" id="tplExport">⤓ 导出我的模板 JSON</button>' +
+      '<label class="btn2 ghost btn-sm" style="cursor:pointer">⤒ 导入 JSON<input id="tplImportFile" type="file" accept=".json" hidden></label>' +
+      '<span class="hint" id="tplMsg"></span></div></div>';
+    document.body.appendChild(m);
+    const $m = (id) => m.querySelector("#" + id);
+    const drawList = function () {
+      const act = localStorage.getItem(TPL_ACTIVE);
+      $m("tplList").innerHTML = tplAll().map(function (t) {
+        const isMine = t.source !== "内置";
+        return '<div class="refrow" data-tid="' + esc(t.id) + '"><b>' + esc(t.name) + '</b> <span class="hint">' + esc(t.source || "") + '</span>' +
+          '<span style="flex:1"></span>' +
+          (act === t.id ? '<span class="badge b-ok">使用中</span>' : '<button class="pillbtn" data-act="use" data-id="' + esc(t.id) + '">应用</button>') +
+          (isMine ? ' <button class="pillbtn" data-act="edit" data-id="' + esc(t.id) + '">编辑CSS</button> <button class="pillbtn" data-act="del" data-id="' + esc(t.id) + '">删</button> <button class="pillbtn" data-act="exp" data-id="' + esc(t.id) + '">⤓</button>' : "") +
+          '</div>';
+      }).join("");
+    };
+    const tplMineList = function () {
+      try { return JSON.parse(localStorage.getItem(TPL_KEY) || "[]"); } catch (e) { return []; }
+    };
+    const aiToTemplate = function (prompt, namePrefix) {
+      $m("tplMsg").textContent = "AI 生成中…";
+      WQCore.ai.call(prompt, 3000, { temperature: 0.2 }).then(function (txt) {
+        /* tplParseAI：宽容解析；8 参数格式 → tplCssFromParams 转 CSS */
+        const j = (function () {
+          const s0 = String(txt || "").replace(/```(?:json)?/g, "").trim();
+          const a = s0.indexOf("{"), b = s0.lastIndexOf("}");
+          if (a < 0 || b <= a) return null;
+          try {
+            const j0 = JSON.parse(s0.slice(a, b + 1));
+            if (j0 && j0.css) return j0;
+            if (j0 && (j0.bodyFont || j0.bodySize || j0.lineHeight || j0.margin || j0.h1Size)) {
+              return { name: j0.name || "", css: WQTemplate.tplCssFromParams(j0) };
+            }
+            return j0;
+          } catch (e) { return null; }
+        })();
+        if (!j || !j.css) { $m("tplMsg").textContent = "AI 返回格式异常，请重试"; return; }
+        const list = tplMineList();
+        const t = { id: "t" + Date.now(), name: (j.name || namePrefix).slice(0, 40), css: j.css, source: "AI草稿·以官方规范为准", ts: WQCore.stamp() };
+        list.unshift(t);
+        localStorage.setItem(TPL_KEY, JSON.stringify(list));
+        $m("tplMsg").textContent = "✓ 已存入「我的模板」（务必对照官方规范核对）";
+        drawList();
+      }).catch(function (e) { $m("tplMsg").textContent = "失败：" + e.message.slice(0, 50); });
+    };
+    /* 单一委托：弹窗内所有按钮/输入统一处理（v1.0.6 根治逐元素绑定时序问题） */
+    m.addEventListener("click", function (e) {
+      const act = e.target.closest("[data-act]");
+      if (!act) return;
+      const a = act.dataset.act, id = act.dataset.id || "";
+      if (a === "close") { tplModal(false); }
+      else if (a === "use") { localStorage.setItem(TPL_ACTIVE, id); drawList(); toast("已应用该模板（导出与预览生效）"); }
+      else if (a === "del") {
+        const rest = tplMineList().filter(x => x.id !== id);
+        localStorage.setItem(TPL_KEY, JSON.stringify(rest));
+        if (localStorage.getItem(TPL_ACTIVE) === id) localStorage.removeItem(TPL_ACTIVE);
+        drawList();
+      }
+      else if (a === "exp") {
+        const t = tplMineList().find(x => x.id === id);
+        if (t) dlText("模板-" + t.name + ".json", JSON.stringify([t], null, 2), "application/json");
+      }
+      else if (a === "edit") {
+        const t = tplMineList().find(x => x.id === id); if (!t) return;
+        const row = $m("tplList").querySelector('[data-tid="' + id + '"]');
+        row.innerHTML = '<textarea class="tplCssEd" data-tplcss="' + esc(id) + '" rows="5" style="width:100%;font-family:monospace;font-size:12px">' + esc(t.css) + '</textarea>' +
+          '<div style="text-align:right;margin-top:4px"><button class="pillbtn" data-act="savecss" data-id="' + esc(id) + '" style="background:#0a7a43;color:#fff">💾 保存CSS</button></div>';
+      }
+      else if (a === "savecss") {
+        const list = tplMineList();
+        const t = list.find(x => x.id === id);
+        const ta = $m("tplList").querySelector('[data-tplcss="' + id + '"]');
+        if (t && ta) { t.css = ta.value; localStorage.setItem(TPL_KEY, JSON.stringify(list)); toast("已保存"); }
+        drawList();
+      }
+    });
+    $m("tplGen").addEventListener("click", function () {
+      const school = $m("tplSchool").value.trim();
+      if (!school) { $m("tplMsg").textContent = "先填学校名"; return; }
+      const deg = $m("tplDegree").value;
+      aiToTemplate("你是学位论文排版顾问。为「" + school + "」的" + deg + "学位论文生成 Word 排版 CSS（占位草稿，用户会对照官方规范核对）。" +
+        "只输出 JSON：{\"name\":\"模板名\",\"bodyFont\":\"…\",\"bodySize\":\"…\",\"lineHeight\":\"…\",\"margin\":\"…\",\"h1Size\":\"…\",\"h2Size\":\"…\",\"h3Size\":\"…\",\"indent\":\"…\"}。" +
+        "按国内高校通行规范给出常见值（如正文宋体小四、1.5倍行距、页边距上下2.5cm左右3cm）；不确定的用通行值。", school + deg + "模板");
+    });
+    $m("tplExtract").addEventListener("click", function () {
+      const spec = $m("tplSpec").value.trim();
+      if (!spec) { $m("tplMsg").textContent = "先粘贴格式要求原文"; return; }
+      aiToTemplate("你是学位论文排版顾问。从下面的格式要求原文中提取排版参数，转成 Word 排版 CSS。" +
+        "只输出 JSON：{\"name\":\"模板名\",\"bodyFont\":\"…\",\"bodySize\":\"…\",\"lineHeight\":\"…\",\"margin\":\"…\",\"h1Size\":\"…\",\"h2Size\":\"…\",\"h3Size\":\"…\",\"indent\":\"…\"}；原文没提到的参数用国内通行值补齐。\n【格式要求原文】\n" + spec.slice(0, 1200), "提取模板");
+    });
+    $m("tplExport").addEventListener("click", function () {
+      dlText("萤算科研-排版模板.json", JSON.stringify(tplMineList(), null, 2), "application/json");
+    });
+    $m("tplImportFile").addEventListener("change", function (e) {
+      const f = e.target.files[0]; if (!f) return;
+      f.text().then(function (txt) {
+        const arr = JSON.parse(txt);
+        if (!Array.isArray(arr)) throw new Error("格式不对");
+        const list = tplMineList();
+        arr.forEach(function (t) { if (t && t.name && t.css) { t.id = t.id || "t" + Date.now() + Math.floor(Math.random() * 999); list.unshift(t); } });
+        localStorage.setItem(TPL_KEY, JSON.stringify(list));
+        drawList(); toast("导入完成");
+      }).catch(function (e) { toast("导入失败：" + e.message); });
+    });
+    drawList();
+  }
+
+  /* v1.0.6 恢复：looseJsonArr（重构 tplModal 时误删）——JSON 数组宽容解析 */
+  function looseJsonArr(txt) {
+    let s = String(txt || "").replace(/```(?:json)?/g, "").trim();
+    const a = s.indexOf("["), b = s.lastIndexOf("]");
+    if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch (e) {} }
+    throw new Error("AI 返回的不是合法 JSON 数组");
+  }
+  $("btnPPT") && $("btnPPT").addEventListener("click", () => withBusy($("btnPPT"), async () => {
+
+    const p0 = P(); if (!p0) return toast("先新建项目");
+    const pid = p0.id;
+    const secs = Object.keys(p0.draft || {}).filter(k => (p0.draft[k] || "").length > 60);
+    if (!secs.length && !p0.outline) { toast("先在④写草稿或⑤采用参考稿，再生成 PPT"); return; }
+    if (!(await askAI("生成答辩 PPT（.pptx 文件）？", ["AI 拆页 1 次 + 本地组装（约 10-14 页）", "同时下载「演讲稿.md」"], "开始生成"))) return;
+    const prog = $("vProg"); prog.textContent = "AI 拆页中…";
+    try {
+      const brief = secs.map(s => "【" + s + "】" + (p0.draft[s] || "").replace(/〔生成：[^〕]*〕/g, "").slice(0, 260)).join("\n").slice(0, 5000);
+      const txt = await WQCore.ai.call(
+        "你是答辩 PPT 设计师。基于以下论文材料，产出答辩演示的分页内容（10-13 页）。" +
+        "第1页固定：{t:论文题目,b:[\"答辩人：____\",\"指导教师：____\"],cover:true}；最后一页固定：{t:\"谢谢各位专家\",b:[\"恳请批评指正\"]}；中间页每页一个主题：{t:页标题(≤16字),b:[要点3-5条,每条≤22字,来自材料原文概括,禁止编造数据]}。\n" +
+        "只输出 JSON 数组，不要任何其他文字。\n\n【论文材料】\n题目：" + (p0.topic || p0.name) + "\n" + brief, 4000, { temperature: 0.3 });
+      const arr = looseJsonArr(txt).filter(s0 => s0 && s0.t);
+      const slides = arr.map(function (s0, i) {
+        return { t: String(s0.t).slice(0, 40), b: (s0.b || []).slice(0, 5).map(x => String(x).slice(0, 60)), cover: i === 0 };
+      });
+      prog.textContent = "组装 .pptx 中…";
+      const blob = await window.WQPptx.build(slides, { title: p0.topic || p0.name });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "答辩PPT-" + String(p0.topic || p0.name).replace(/[\\/:*?"<>|]/g, "_") + ".pptx";
+      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      /* 演讲稿 md */
+      const md = "# 答辩演讲稿 — " + (p0.topic || p0.name) + "\n\n" + slides.map(function (s0, i) {
+        return "## 第" + (i + 1) + "页 · " + s0.t + "\n" + (s0.b || []).map(x => "- " + x).join("\n") + "\n";
+      }).join("\n");
+      dlText("演讲稿-" + String(p0.topic || p0.name).replace(/[\\/:*?"<>|]/g, "_") + ".md", md, "text/markdown");
+      (function () { const p = liveProj(pid); if (p) { p.outs = p.outs || {}; p.outs.pptx = withMeta(JSON.stringify(slides, null, 2), "大纲+草稿要点"); addVersion(p, "答辩PPT结构", p.outs.pptx, "outs.pptx"); save(); } })();
+      prog.textContent = "完成 ✓ .pptx 与演讲稿已下载（页数：" + slides.length + "）";
+    } catch (e) { prog.textContent = "失败：" + e.message; }
+  }));
+
+  /* ================================================================
+   * ⑩ [n] 全文级溯源：明细行展开 → 全文引用位置 + 摘要节选 + AI 支撑判断
+   * ================================================================ */
+  function traceCitations(p, n) {
+    const out = [];
+    const scan = function (label, text) {
+      const re = new RegExp("\\[" + n + "\\]", "g");
+      let m;
+      while ((m = re.exec(text || "")) && out.length < 12) {
+        out.push({ label: label, ctx: (text || "").slice(Math.max(0, m.index - 46), m.index + m[0].length + 46).replace(/\s+/g, " ") });
+      }
+    };
+    Object.keys(p.draft || {}).forEach(function (s) { scan("我的稿·" + s, p.draft[s]); });
+    ((p.ref && p.ref.order) || Object.keys((p.ref && p.ref.sections) || {})).forEach(function (s) {
+      const ent = p.ref.sections[s];
+      scan("参考稿·" + s, typeof ent === "string" ? ent : (ent && ent.text) || "");
+    });
+    return out;
+  }
+  function traceHTML(p, n) {
+    const f = p.papers[n - 1]; if (!f) return "";
+    const locs = traceCitations(p, n);
+    return '<div class="reftrace" data-trace="' + n + '">' +
+      '<div class="hint" style="margin:4px 0"><b>全文溯源：</b>共 ' + locs.length + ' 处引用</div>' +
+      (locs.length ? locs.map(l => '<div class="ckitem">【' + esc(l.label) + '】…' + esc(l.ctx) + '…</div>').join("") : '<div class="hint">正文中还没有引用该文献</div>') +
+      '<div class="hint" style="margin-top:4px"><b>该文献摘要节选：</b>' + esc((f.abs || f.title).slice(0, 220)) + '…</div>' +
+      (locs.length ? '<button class="pillbtn" data-rjudge="' + n + '" style="margin-top:5px">🧠 AI 支撑判断</button> <span class="hint" id="rjudge' + n + '"></span>' : "") +
+      '</div>';
+  }
+  async function runJudge(row, n) {
+    const p = P(); if (!p) return;
+    const f = p.papers[n - 1]; if (!f) return;
+    const box = row.querySelector("#rjudge" + n);
+    if (!box) return;
+    if (!has("wOut") && true) { /* noop */ }
+    box.textContent = "AI 判断中…";
+    try {
+      const locs = traceCitations(p, n);
+      if (!locs.length) { box.textContent = "正文中没有引用该文献"; return; }
+      const r = await WQCore.ai.call(
+        "你是引用核查员。下面是论文中引用文献[" + n + "]的全部位置的上下文，以及该文献的题录与摘要。判断这些引用是否得到文献支持。输出：第一行「总体：支持/部分支持/不支持」，然后每处一行简短理由。禁止编造。\n" +
+        "【文献 " + n + "】" + f.title + "\n摘要：" + (f.abs || "无").slice(0, 400) + "\n【引用位置】\n" +
+        locs.map(l => "- " + l.ctx).join("\n").slice(0, 1800), 1200, { temperature: 0.1 });
+      box.innerHTML = '<div class="callout c-info" style="margin-top:4px;white-space:pre-wrap">' + esc(r) + '</div>';
+      const pp = liveProj(P().id);
+      if (pp) { trailAdd(pp, "ai", "AI 支撑判断 [" + n + "]", String(r).slice(0, 60)); save(); }
+    } catch (e) { box.textContent = "失败：" + e.message; }
+  }
+
+
+  /* ---- v1.0.5：有未保存修改时，离开页面前提示 ---- */
+  window.addEventListener("beforeunload", function (e) {
+    try {
+      const m = document.getElementById("wbMine");
+      if (m && m.value.trim() && m.value !== (wbState.lastSaved || "")) {
+        e.preventDefault(); e.returnValue = "";
+      }
+    } catch (err) {}
+  });
+
+  /* v1.0.6：暴露模板接口 + 模板库按钮 */
+  window.WQTemplate = { activeCss: tplActiveCss, all: tplAll, tplCssFromParams: tplCssFromParams };
+  $("btnTplLib")?.addEventListener("click", function () { tplModal(true); });
 
   /* ================================================================
    * afterRender：studio.renderAll 之后刷新本模块 UI（不打断输入）

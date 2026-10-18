@@ -191,6 +191,7 @@
 
   /* ---------- 主流程 ---------- */
   var busy = false, ctl = null;
+  var TABID = "tab" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); /* v1.0.6 多标签锁 */
   $("qStop").addEventListener("click", function () { if (ctl) ctl.abort(); $("qMsg").textContent = "正在停止…（已完成的分节已保存，可点续跑）"; });
 
   function collectForm() {
@@ -222,6 +223,8 @@
     if (!hasKey()) { renderKeyState(); return; }
     if (f.title.length < 2) { $("qMsg").textContent = "主题/关键词至少 2 个字"; $("qTitle").focus(); return; }
     busy = true; ctl = new AbortController();
+    proj.runLock = { tab: TABID, ts: Date.now() };
+    var lockTimer = setInterval(function () { if (proj.runLock) proj.runLock.ts = Date.now(); }, 20000);
     $("qGo").disabled = true; $("qStop").hidden = false; $("qDoneRow").hidden = true; $("qMsg").textContent = "";
     usageStart = WQCore.ai.usageToday();
     var actualTimer = setInterval(function () { $("qActual").textContent = actualText(); }, 1500);
@@ -229,6 +232,8 @@
     var DB = WQCore.loadLocal();
     /* 找可续跑的项目：同题目且流水线未完成 */
     var proj = (DB.projects || []).find(function (p) {
+      /* v1.0.6：跳过其他标签页正在生成的项目（心跳 2 分钟内活跃） */
+      if (p.runLock && p.runLock.tab !== TABID && Date.now() - (p.runLock.ts || 0) < 120000) return false;
       return p.mode === "quick" && p.topic === f.title && p.pipeline && p.pipeline.status !== "done" && p._form && p._form.type === f.type;
     });
     if (!proj) {
@@ -317,6 +322,8 @@
       $("qGo").textContent = "▶ 续跑（从断点继续）";
     } finally {
       clearInterval(actualTimer);
+      clearInterval(lockTimer);
+      delete proj.runLock; saveDB();
       $("qActual").textContent = actualText();
       busy = false; ctl = null;
       $("qStop").hidden = true; $("qGo").disabled = !hasKey();

@@ -34,6 +34,13 @@
 @keyframes refflash{0%{background:#fff3c4}100%{background:transparent}}
 .refrow.editing{flex-direction:column;align-items:stretch;background:#fafbfd;border-radius:9px;padding:8px}
 .refrow input,.refrow select{padding:4px 7px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;font:inherit}
+#wbToolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;padding:6px 8px;border:1px solid var(--line);border-radius:9px;background:#fafbfd}
+#wbMineRich p{margin:0.35em 0}
+#wbMineRich h2{font-size:15px;margin:8px 0 4px}
+#wbMineRich h3{font-size:13.5px;margin:6px 0 3px}
+#wbMineRich blockquote{border-left:3px solid var(--line);margin:4px 0;padding:2px 10px;color:#5c6675}
+.reftrace{background:#f6f8fc;border-radius:9px;padding:6px 10px;margin-top:5px;width:100%}
+#tplModal h3{margin:10px 0 4px;font-size:13.5px}
 </style>
 </head>
 <body>
@@ -251,6 +258,7 @@
             </div>
             <div class="tmpl" style="width:100%">
               <button id="btnExportDoc2" class="btn2" style="background:#0a7a43">⤓ 导出全文 + 归属说明（推荐）</button>
+              <button id="btnTplLib" class="btn2 ghost">📑 排版模板库</button>
               <label class="hint">排版预设
                 <select id="expFmt" style="max-width:220px">
                   <option value="thesis-cn">学位论文·通用（宋体小四/1.5倍行距）</option>
@@ -312,6 +320,7 @@
                 </div>
                 <div>
                   <div class="wbhead">✍️ 我的稿（这一节，可编辑）</div>
+                  <div id="wbToolbar" style="display:none"></div>
                   <textarea id="wbMine" rows="14" placeholder="把左侧参考稿的段落「采用」过来改，或直接自己写。保存后自动对比、计入归属账本。"></textarea>
                   <div class="row" style="margin-top:6px">
                     <button id="wbSaveDraft" class="btn2 btn-sm">💾 保存本节</button>
@@ -356,6 +365,7 @@
             <h2>答辩 / 投稿材料<small>按项目层级自动出现对应材料按钮</small></h2>
             <div class="row" id="defenseBtns" hidden></div>
             <h3 style="margin:14px 0 0">期刊投稿</h3>
+            <button id="btnPPT" class="btn2" style="background:#37465c">🎓 生成答辩 PPT（.pptx 文件）</button>
             <button id="btnVenue" class="btn2">分析投稿去向</button>
             <button id="btnStrategy" data-ai class="btn2">AI 投稿策略（冲/稳/保）</button>
             <button id="btnCover" data-ai class="btn2">✉️ Cover Letter 生成</button>
@@ -711,6 +721,7 @@ document.addEventListener("click", e => {
 <script src="assets/wb.js"></script>
 <script src="assets/wq-core.js"></script>
 <script src="assets/wq-ui.js"></script>
+<script src="assets/wq-pptx.js"></script>
 <script>
 /* PWA：SW 注册 + 安装按钮（Chromium localhost/HTTPS 下出现） */
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
