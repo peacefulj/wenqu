@@ -31,8 +31,9 @@
   <label class="mchk"><input type="checkbox" id="chk_revision" checked><span id="lbl_revision">修改链</span></label>
   <label class="mchk"><input type="checkbox" id="chk_review" checked><span id="lbl_review">质检链</span></label>
   <label class="mchk" title="收起时隐藏数字绑定/数据卡节点与证据连线，图更清爽；打开后一跳核对每个数字的来源"><input type="checkbox" id="chk_evi"><span style="color:#d97706">🛡 证据模式</span></label>
-  <label class="mchk" title="收起时隐藏数字绑定/数据卡节点与证据连线，图更清爽；打开后一跳核对每个数字的来源"><input type="checkbox" id="chk_evi"><span style="color:#d97706">🛡 证据模式</span></label>
   <label class="mchk" title="关闭后：链路不流动、新节点不飞入（AI 脉冲保留）"><input type="checkbox" id="chk_fx" checked><span>🎬 动效</span></label>
+  <label class="mchk" title="只显示当前节点及其一跳邻居（写作时不被全图干扰）"><input type="checkbox" id="chk_focus"><span style="color:#0369a1">🎯 焦点</span></label>
+  <label class="mchk" style="gap:5px" title="版本柱显示上限；更早版本折叠为一个节点（档案里仍可查）"><span style="color:#64748b;font-weight:400">版本显示</span><select id="verLimit" style="padding:2px 4px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px"><option value="8">8</option><option value="12" selected>12</option><option value="25">25</option><option value="999">全部</option></select></label>
   <span class="mspacer"></span>
   <button class="pillbtn" id="btnFit">⤢ 适应窗口</button>
   <button class="pillbtn" id="btnReset">↺ 重置布局</button>

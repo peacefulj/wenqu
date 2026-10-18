@@ -229,8 +229,11 @@
       });
     });
 
-    /* --- 版本（新在前；链 = 旧→新；并从来源节点拉一条 revision 边） --- */
-    var vers = p.versions || [];
+    /* --- 版本（新在前；链 = 旧→新；并从来源节点拉一条 revision 边） ---
+       S2：按 ST.verLimit 折叠，更早版本聚合成一个「更早版本」节点（档案里仍全量可查） */
+    var verAll = p.versions || [];
+    var vlim = (typeof ST !== "undefined" && ST.verLimit) ? ST.verLimit : 12;
+    var vers = verAll.slice(0, vlim);
     for (var vi = vers.length - 1; vi > 0; vi--) {
       var older = vers[vi], newer = vers[vi - 1];
       node("ver:" + pid + ":" + older.ts, "version", "🕓 " + older.kind, older.content, { ts: older.ts, field: older.field || "", kind: older.kind, star: !!older.star });
@@ -252,6 +255,15 @@
       else if (f === "tool") src = "t:" + pid;
       if (src && have[src]) edge(src, "ver:" + pid + ":" + v.ts, "revision");
     });
+
+    if (verAll.length > vers.length) {
+      var hid = verAll.slice(vers.length);
+      node("ver:" + pid + ":more", "version", "🕓 更早版本 +" + hid.length,
+        hid.map(function (v0) { return "· " + v0.ts + "　" + (v0.kind || ""); }).join("\n"),
+        { ts: "", more: true, n: hid.length });
+      if (vers.length) edge("ver:" + pid + ":" + vers[vers.length - 1].ts, "ver:" + pid + ":more", "revision");
+      else edge("t:" + pid, "ver:" + pid + ":more", "revision");
+    }
 
     /* --- Word 回流（M3：外部批注层——导师稿不混入正文版本链，独立 reflows 字段） --- */
     (p.reflows || []).forEach(function (rf) {
@@ -279,7 +291,7 @@
     var pid = p.id || "p", pos = (p.mapState && p.mapState.pos) || {};
     var cols = { ver: [], out: [], mid: [], ol: [], dr: [], rf: [], rw: [], pp: [], nm: [], dc: [], ck: [] };
     g.nodes.forEach(function (n) {
-      if (n.id.indexOf("ver:" + pid + ":") === 0) cols.ver.push(n);
+      if (n.id.indexOf("ver:" + pid + ":") === 0) { if (!(n.meta && n.meta.more)) cols.ver.push(n); else cols.verMore = n; }
       else if (n.id.indexOf("out:" + pid + ":") === 0) cols.out.push(n);
       else if (n.kind === "topic" || n.kind === "selection") cols.mid.push(n);
       else if (n.kind === "outline") cols.ol.push(n);
@@ -298,6 +310,10 @@
     /* 版本按 ts 升序自上而下（与 revision 链方向一致） */
     cols.ver.sort(function (a, b) { return String(a.meta.ts).localeCompare(String(b.meta.ts)); });
     stack(cols.ver, -1150, 84);
+    if (cols.verMore) {
+      var lastY = cols.ver.length ? cols.ver[cols.ver.length - 1]._y : 0;
+      cols.verMore._x = -1150; cols.verMore._y = lastY + 84;
+    }
     stack(cols.out, -800, 88);
     /* 主题居中，选题卡在其上 */
     cols.mid.forEach(function (n) {
@@ -350,9 +366,10 @@
   }
 
   /* ================= 渲染 ================= */
-  var ST = { cy: null, p: null, db: null, selId: null, busy: false, prevIds: null, tapTs: {}, flowTimer: null, flowEdges: null, fullFetched: {} };
+  var ST = { cy: null, p: null, db: null, selId: null, busy: false, prevIds: null, tapTs: {}, flowTimer: null, flowEdges: null, fullFetched: {}, verLimit: 12 };
   var FX = { on: true };   /* 动效总开关（链路流动/新节点飞入；AI 脉冲属状态提示不随此关） */
   var EVI = { on: false }; /* 证据模式（方案 X）：默认收起证据层（数字绑定/数据卡节点+证据连线），健康卡覆盖率常显 */
+  var FOC = { on: false };  /* 焦点模式（S2）：只显示选中节点+一跳邻居 */
 
   function focusNeighborhood(id) {
     if (!ST.cy) return;
@@ -455,6 +472,7 @@
       ST.tapTs[id] = now;
       showCard(id);
       focusNeighborhood(id);
+      applyView();
     });
     cy.on("tap", function (evt) {
       if (evt.target === cy) {
@@ -1244,11 +1262,40 @@
     var box = document.getElementById("trailList");
     var items = (p.trail || []).slice(0, 200);
     if (!items.length) { box.innerHTML = "<p class='mhint'>还没有轨迹记录</p>"; return; }
-    box.innerHTML = items.map(function (t0) {
-      return "<div class='trow'><span class='tico'>" + (TRAIL_ICON[t0.type] || "•") + "</span>" +
+    box.innerHTML = items.map(function (t0, i) {
+      return "<div class='trow' data-ti='" + i + "' title='点击在图上定位'><span class='tico'>" + (TRAIL_ICON[t0.type] || "•") + "</span>" +
         "<div><div class='ttl'>" + WQCore.esc(t0.label || "") + "</div>" +
         "<div class='tts'>" + WQCore.esc(t0.ts || "") + (t0.note ? " · " + WQCore.esc(t0.note) : "") + "</div></div></div>";
     }).join("");
+    box.querySelectorAll("[data-ti]").forEach(function (row) {
+      row.addEventListener("click", function () {
+        var t0 = items[+row.dataset.ti]; if (!t0 || !ST.cy) return;
+        var target = null;
+        /* 1) 版本类：按时间戳精确匹配 */
+        if (t0.ts) {
+          var cand = ST.cy.nodes("[kind='version']").filter(function (n) { return (n.data("meta") || {}).ts === t0.ts; });
+          if (cand.nonempty()) target = cand.first();
+        }
+        /* 2) 标签「…」里是节名/标题：按标题包含匹配 */
+        if (!target) {
+          var mm = /[「『]([^」』]{1,24})[」』]/.exec(t0.label || "");
+          if (mm) {
+            var kw = mm[1].replace(/^[✍️📋🧱🕓🔢📥\s]+/, "");
+            var hits = ST.cy.nodes().filter(function (n) { return String(n.data("t") || "").indexOf(kw) >= 0; });
+            if (hits.nonempty()) target = hits.filter(function (n) { return n.data("kind") !== "version"; }).first();
+            if (!target || !target.nonempty()) target = hits.first();
+          }
+        }
+        if (!target || !target.nonempty()) { toast("这条轨迹没有对应的图上节点（可能是导入/导出类操作）"); return; }
+        ST.cy.animate({ center: { eles: target } }, { duration: 300 });
+        target.select();
+        showCard(target.id());
+        focusNeighborhood(target.id());
+        applyView();
+        target.addClass("hit");
+        setTimeout(function () { try { target.removeClass("hit"); } catch (e) {} }, 1600);
+      });
+    });
   }
 
   /* ================= 装配 ================= */
@@ -1308,20 +1355,38 @@
       saveDB();
     }, 1200);
   }
-  function applyChainFilter() {
+  /* S2：统一视图合成——链开关 × 证据模式 × 焦点模式，一次算出哪些元素可见 */
+  function applyView() {
     if (!ST.cy) return;
+    var cy = ST.cy;
+    var keep = null;
+    if (FOC.on && ST.selId) {
+      var sel = cy.getElementById(ST.selId);
+      if (sel.nonempty()) {
+        keep = {};
+        keep[ST.selId] = 1;
+        sel.neighborhood().forEach(function (x) { keep[x.id()] = 1; });
+      }
+    }
+    var chainOn = {};
     ["logic", "academic", "evidence", "revision", "review"].forEach(function (c) {
-      var on = document.getElementById("chk_" + c) ? document.getElementById("chk_" + c).checked : true;
-      var eff = on && (c !== "evidence" || EVI.on);   /* 方案 X：证据边还受证据模式总闸 */
-      ST.cy.edges("[chain='" + c + "']").style("display", eff ? "element" : "none");
+      var el = document.getElementById("chk_" + c);
+      chainOn[c] = (el ? el.checked : true) && (c !== "evidence" || EVI.on);
+    });
+    cy.edges().forEach(function (e) {
+      var vis = chainOn[e.data("chain")] !== false;
+      if (vis && keep) vis = !!(keep[e.source().id()] && keep[e.target().id()]);
+      e.style("display", vis ? "element" : "none");
+    });
+    cy.nodes().forEach(function (n) {
+      var k = n.data("kind");
+      var vis = (k !== "numbind" && k !== "datacard") || EVI.on;
+      if (vis && keep) vis = !!keep[n.id()];
+      n.style("display", vis ? "element" : "none");
     });
   }
-  /* 方案 X：证据模式——数字绑定/数据卡节点随开关显隐 */
-  function applyEvidenceMode() {
-    if (!ST.cy) return;
-    ST.cy.nodes("[kind='numbind'],[kind='datacard']").style("display", EVI.on ? "element" : "none");
-    applyChainFilter();
-  }
+  function applyChainFilter() { applyView(); }
+  function applyEvidenceMode() { applyView(); }
 
   function init() {
     ST.db = WQCore.loadLocal();
@@ -1425,6 +1490,33 @@
       var el = document.getElementById("chk_" + c);
       if (el) el.addEventListener("change", applyChainFilter);
     });
+    /* S2：焦点模式 + 版本柱上限 */
+    var focChk = document.getElementById("chk_focus");
+    var focPref = null;
+    try { focPref = localStorage.getItem("wenqu_map_focus"); } catch (e) {}
+    FOC.on = focPref === "on";
+    if (focChk) {
+      focChk.checked = FOC.on;
+      focChk.addEventListener("change", function () {
+        FOC.on = focChk.checked;
+        try { localStorage.setItem("wenqu_map_focus", FOC.on ? "on" : "off"); } catch (e) {}
+        applyView();
+        toast(FOC.on ? "焦点模式：只显示选中节点与一跳邻居（点空白处恢复）" : "焦点模式已关闭");
+      });
+    }
+    var vlSel = document.getElementById("verLimit");
+    var vlPref = null;
+    try { vlPref = localStorage.getItem("wenqu_map_verlimit"); } catch (e) {}
+    ST.verLimit = vlPref ? parseInt(vlPref, 10) : 12;
+    if (!isFinite(ST.verLimit) || ST.verLimit < 1) ST.verLimit = 12;
+    if (vlSel) {
+      vlSel.value = String(ST.verLimit > 25 ? 999 : ST.verLimit);
+      vlSel.addEventListener("change", function () {
+        ST.verLimit = parseInt(vlSel.value, 10) || 12;
+        try { localStorage.setItem("wenqu_map_verlimit", String(ST.verLimit)); } catch (e) {}
+        rebuild(false, true);
+      });
+    }
     /* 方案 X：证据模式开关（记住偏好；默认收起） */
     var eviChk = document.getElementById("chk_evi");
     var eviPref = null;
@@ -1460,6 +1552,7 @@
       if (ST.cy) { ST.cy.elements().removeClass("dimmed hot"); ST.cy.nodes().unselect(); }
       stopFlow();
       ST.selId = null;
+      applyView();
     });
     if (ST.p) rebuild(false);
   }
