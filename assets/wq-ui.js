@@ -101,8 +101,7 @@
     $("wbRefPane").querySelectorAll("[data-adopt]").forEach(b => b.addEventListener("click", () => {
       const para = paras[+b.dataset.adopt]; if (!para) return;
       const p = P(); if (!p) return;
-      const box = $("wbMine");
-      box.value = box.value ? box.value.replace(/\s+$/, "") + "\n\n" + para : para;
+      setMineText(para, true);   /* v1.0.7：富文本/纯文本统一写入 */
       logLedger(p, sec, "adopt", para.length);
       saveDraft(sec, true);
     }));
@@ -116,8 +115,7 @@
         const r = await WQCore.ai.stream(
           "把下面这段学术文字改写成作者自己的表达：保持论点、引用编号[n]与术语不变；按写作档案调整句式、衔接与用词；不增删事实；不做规避检测处理，只做语言层面的重写。\n" + styleBlock() + "\n\n【原文】\n" + para, 3000, { temperature: 0.4 });
         const p = liveProj(pid); if (!p) return;
-        const box = $("wbMine");
-        box.value = box.value ? box.value.replace(/\s+$/, "") + "\n\n" + r.text : r.text;
+        setMineText(r.text, true);   /* v1.0.7：富文本/纯文本统一写入 */
         logLedger(p, sec, "rewrite", para.length);
         saveDraft(sec, true);
         $("wbProg").textContent = "✓ 已改写并采用（" + r.usage.inTok + "+" + r.usage.outTok + " tok）";
@@ -147,6 +145,23 @@
     p.ledger[sec] = p.ledger[sec] || [];
     p.ledger[sec].unshift({ ts: WQCore.stamp(), action, chars: chars || 0 });
     if (p.ledger[sec].length > 100) p.ledger[sec].length = 100;
+  }
+
+  /* v1.0.7（QA三轮 P0-1）：正文统一写入口——富文本/纯文本双模式都正确落位 */
+  function setMineText(text, append) {
+    const t = String(text || "");
+    if (!t) return;
+    if (editorIsRich()) {
+      const box = editorRich();
+      if (!box) return;
+      box.innerHTML = (append && box.innerHTML.trim()) ? (box.innerHTML + plainToRich(t)) : plainToRich(t);
+      box.scrollTop = box.scrollHeight;
+    } else {
+      const ta = $("wbMine");
+      if (!ta) return;
+      ta.value = (append && ta.value.trim()) ? (ta.value.replace(/\s+$/, "") + "\n\n" + t) : t;
+      ta.scrollTop = ta.scrollHeight;
+    }
   }
 
   function saveDraft(sec, silent) {
@@ -238,7 +253,7 @@
         const r = await WQCore.ai.stream(
           "把下面这一节学术论文文字改写成作者自己的表达：保持论点结构、引用编号[n]、术语与数据不变；按写作档案调整句式、衔接与用词；分段保持清晰；只做语言层面重写，不做规避检测处理。" + styleBlock() + "\n\n【本节原文】\n" + mine, 6000, { temperature: 0.4 });
         const p = liveProj(pid); if (!p) return;
-        $("wbMine").value = r.text;
+        setMineText(r.text, false);   /* v1.0.7：富文本/纯文本统一写入（整节替换） */
         logLedger(p, sec, "rewrite_full", plainLen(mine));
         saveDraft(sec, true);
         $("wbProg").textContent = "✓ 已改写保存";
@@ -362,7 +377,11 @@
         while ((m = re.exec(t)) && hits.length < 80) {
           const ctxFull = t.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\s+/g, " ");
           const num = m[1];
-          if (/^\d{4}$/.test(num)) continue;
+          /* v1.0.7（QA三轮 P2-4）：只把"1900-2100 且上下文像年份"的 4 位数当成年份跳过；样本量 1863 等不再误伤 */
+          if (/^\d{4}$/.test(num) && +num >= 1900 && +num <= 2100) {
+            const around = t.slice(Math.max(0, m.index - 6), m.index + m[0].length + 6);
+            if (/年|年份|年度|—|–|至|到/.test(around)) continue;
+          }
           hits.push({ sec: s0, num, ctx: ctxFull, key: (s0 + "|" + ctxFull).slice(0, 100) });
         }
       });
@@ -383,7 +402,10 @@
       pushCheck(p, "nums", "数字来源绑定（" + uniq.length + " 处，可交互）", [],
         { problem: uniq.length - bound, total: uniq.length, bound: bound });
       const anchorBox = document.getElementById("ckRetestBox") || document.getElementById("ckOut");
+      const oldP = document.getElementById("nmPanel");
+      if (oldP) oldP.remove();   /* v1.0.7：重复点击不再堆积面板 */
       const div = document.createElement("div");
+      div.id = "nmPanel";
       div.className = "callout c-info";
       div.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>🔢 逐处绑定来源</b>' +
         '<span class="hint" id="nmCount">已绑定 ' + bound + ' / ' + uniq.length + '</span><span style="flex:1"></span>' +
@@ -406,35 +428,41 @@
       });
     });
 
-    /* ④ 格式规范（本地） */
+    /* ④ 格式规范（本地，v1.0.7：按类别归组，缺字段给一键修复入口） */
     $("ckFormat").addEventListener("click", () => {
       const p = P(); if (!p) return toast("先新建项目");
       const items = [];
       let problem = 0;
-      p.papers.forEach((f, i) => {
-        const miss = [];
-        if (!f.author) miss.push("作者");
-        if (!f.year) miss.push("年份");
-        if (!f.venue) miss.push("出处");
-        if (miss.length) { items.push("[" + (i + 1) + "] 题录缺 " + miss.join("/") + "：" + f.title.slice(0, 40)); problem++; }
-      });
-      const allText = Object.keys(p.draft || {}).map(s => p.draft[s]).join("\n");
+      /* 1. 题录完整性：按字段归组（不再逐篇刷屏） */
+      const missAuth = p.papers.map((f, i) => ({ f, i })).filter(x => !x.f.author);
+      const missVenue = p.papers.map((f, i) => ({ f, i })).filter(x => !x.f.venue);
+      const missYear = p.papers.map((f, i) => ({ f, i })).filter(x => !x.f.year);
+      if (missAuth.length) {
+        items.push("题录缺作者 " + missAuth.length + "/" + p.papers.length + " 篇（如：" + missAuth.slice(0, 3).map(x => "[" + (x.i + 1) + "] " + x.f.title.slice(0, 20)).join("；") + "）—— 点文献库「补作者」可批量补");
+        problem++;
+      }
+      if (missVenue.length) { items.push("题录缺出处 " + missVenue.length + " 篇"); problem++; }
+      if (missYear.length) { items.push("题录缺年份 " + missYear.length + " 篇"); problem++; }
+      /* 2. 图表编号连续性 */
+      const allText = Object.keys(p.draft || {}).map(s0 => p.draft[s0]).join("\n");
       const figs = [...allText.matchAll(/(图|表)\s*(\d+)/g)].map(m => m[1] + m[2]);
       const seq = {};
       figs.forEach(x => { const t = x[0], n = +x.slice(1); seq[t] = seq[t] || []; if (!seq[t].includes(n)) seq[t].push(n); });
       Object.keys(seq).forEach(t => {
         const arr = seq[t].sort((a, b) => a - b);
-        for (let i = 0; i < arr.length; i++) if (arr[i] !== i + 1) { items.push(t + "编号不连续：出现 " + arr.join(",") + "（缺 " + (i + 1) + " 或顺序错）"); problem++; break; }
+        for (let i = 0; i < arr.length; i++) if (arr[i] !== i + 1) { items.push(t + "编号不连续：出现 " + arr.join(",") + "（缺 " + (i + 1) + "）"); problem++; break; }
       });
+      /* 3. 引用覆盖 */
       const secs = Object.keys(p.draft || {});
       if (secs.length) {
-        const noCite = secs.filter(s => !/\[\d+\]/.test(p.draft[s] || ""));
+        const noCite = secs.filter(s0 => !/\[\d+\]/.test(p.draft[s0] || ""));
         if (noCite.length && p.papers.length) { items.push("以下节没有任何引用标注：" + noCite.join("、")); problem++; }
-      } else { items.push("还没有「我的稿」内容：先在④修改工作台采用/写作"); problem++; }
+      } else { items.push("还没有「我的稿」内容：先在⑤修改工作台采用/写作"); problem++; }
       pushCheck(p, "format", "格式规范检查", items, { problem });
-      $("ckProg").textContent = problem ? "发现 " + problem + " 处待处理（展开查看）" : "✓ 格式检查通过";
+      $("ckProg").textContent = problem ? "发现 " + problem + " 类问题（展开查看；题录缺失可点「补作者」批量修复）" : "✓ 格式检查通过";
       renderChecks();
     });
+
     /* 🔁 回测：与上次同项对比 */
     $("ckRetest").addEventListener("click", () => {
       const p = P(); if (!p) return toast("先新建项目");
@@ -813,13 +841,15 @@
    * 纯文本派生存 p.draft[sec]（diff/账本/校验逻辑不变）。导出优先用富文本。
    * ================================================================ */
   function htmlToPlain(html) {
-    const ta = document.createElement("textarea");
-    let s = String(html || "")
-      .replace(/<\s*(br|\/p|\/div|\/h[1-6]|\/li|\/blockquote)[^>]*>/gi, "\n")
+    /* v1.0.7：用 div 真正解析 HTML（textarea.innerHTML 不解析标签，会把 <p> 漏进纯文本）；
+       段落闭合转双换行，保证 diff/归属账本的段落切分准确 */
+    const d = document.createElement("div");
+    d.innerHTML = String(html || "")
+      .replace(/<\s*(\/p|\/div|\/h[1-6]|\/blockquote)[^>]*>/gi, "\n\n")
+      .replace(/<\s*br[^>]*>/gi, "\n")
+      .replace(/<\s*\/li[^>]*>/gi, "\n")
       .replace(/<li[^>]*>/gi, "• ");
-    ta.innerHTML = s;
-    s = ta.value.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-    return s;
+    return (d.textContent || "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   }
   function plainToRich(text) {
     return String(text || "").split(/\n{2,}|\n/).map(x => x.trim()).filter(Boolean)
@@ -956,6 +986,7 @@
     m.style.cssText = "position:fixed;inset:0;background:rgba(20,28,44,.4);z-index:210;display:flex;align-items:flex-start;justify-content:center;overflow:auto";
     m.innerHTML = '<div style="background:#fff;border-radius:14px;width:min(680px,94vw);margin:40px 12px;padding:18px 20px;box-shadow:0 12px 40px rgba(27,42,74,.25)">' +
       '<div style="display:flex;align-items:center;gap:8px"><b style="font-size:15.5px">📑 排版模板库</b>' +
+      '<button class="pillbtn" data-act="unset">切回预设排版</button>' +
       '<span class="hint">闭环：AI 生成草稿 → 对照官方规范修订 → 存为我的模板 → 导出 JSON 分享</span>' +
       '<span style="flex:1"></span><button class="pillbtn" data-act="close">关闭</button></div>' +
       '<h3 style="margin:10px 0 4px;font-size:13.5px">模板列表</h3><div id="tplList"></div>' +
@@ -1017,7 +1048,8 @@
       if (!act) return;
       const a = act.dataset.act, id = act.dataset.id || "";
       if (a === "close") { tplModal(false); }
-      else if (a === "use") { localStorage.setItem(TPL_ACTIVE, id); drawList(); toast("已应用该模板（导出与预览生效）"); }
+      else if (a === "unset") { localStorage.removeItem(TPL_ACTIVE); drawList(); try { window.__wqSyncTplHint && window.__wqSyncTplHint(); } catch (e) {} toast("已切回预设排版"); }
+      else if (a === "use") { localStorage.setItem(TPL_ACTIVE, id); drawList(); try { window.__wqSyncTplHint && window.__wqSyncTplHint(); } catch (e) {} toast("已应用该模板（导出与预览生效；预设下拉已停用）"); }
       else if (a === "del") {
         const rest = tplMineList().filter(x => x.id !== id);
         localStorage.setItem(TPL_KEY, JSON.stringify(rest));
@@ -1174,9 +1206,65 @@
     } catch (err) {}
   });
 
+  /* v1.0.7（QA三轮 P1-2）：存量项目批量补作者（Crossref 按 DOI，一次 ≤25 篇） */
+  $("btnFillAuthors") && $("btnFillAuthors").addEventListener("click", () => withBusy($("btnFillAuthors"), async () => {
+    const p0 = P(); if (!p0) return toast("先新建项目");
+    const pid = p0.id;
+    const todo = p0.papers.filter(f => !f.author && f.doi).slice(0, 25);
+    if (!todo.length) { toast(p0.papers.some(f => !f.author && !f.doi) ? "缺作者的条目没有 DOI，需手工补录" : "所有条目都已有作者"); return; }
+    if (!(await askAI("按 DOI 批量补作者？", [todo.length + " 篇将查询 Crossref（逐条限速，约 " + Math.ceil(todo.length * 0.45) + " 秒）", "只补作者/出处/年份，不覆盖已有内容"], "开始补全"))) return;
+    let ok = 0, fail = 0;
+    const prog = document.getElementById("paperProg");
+    for (let i = 0; i < todo.length; i++) {
+      if (prog) prog.textContent = "补作者 " + (i + 1) + "/" + todo.length + "…";
+      try {
+        const cr = await fetchJSON("https://api.crossref.org/works/" + encodeURIComponent(todo[i].doi)).catch(() => null);
+        const m0 = cr && cr.message;
+        if (m0) {
+          const p = liveProj(pid); if (!p) return;
+          const f = p.papers.find(x => x.id === todo[i].id);
+          if (f) {
+            const au = (m0.author || []).slice(0, 3).map(a => (a.family || a.name || "") + (a.given ? " " + a.given : "")).join("，") + ((m0.author || []).length > 3 ? "，等" : "");
+            if (au) f.author = au;
+            if (!f.venue) f.venue = (Array.isArray(m0["container-title"]) ? m0["container-title"][0] : m0["container-title"]) || "";
+            if (!f.year) f.year = String((m0.issued && m0.issued["date-parts"] && m0.issued["date-parts"][0] && m0.issued["date-parts"][0][0]) || "");
+            ok++;
+          }
+        } else fail++;
+      } catch (e) { fail++; }
+      await sleep(400);
+      if (i % 5 === 0) { const p = liveProj(pid); if (p) { save(); } }
+    }
+    save(); renderPapers();
+    if (prog) prog.textContent = "补作者完成：成功 " + ok + " · 失败 " + fail;
+    const p = liveProj(pid);
+    if (p) { addVersion(p, "批量补作者（" + ok + " 篇）", p.papers.map((f, i) => "[" + (i + 1) + "] " + (f.author || "（缺）") + " " + f.title.slice(0, 40)).join("\n"), "tool"); trailAdd(p, "act", "批量补作者", ok + " 篇"); save(); }
+    toast("补作者完成：成功 " + ok + " 篇" + (fail ? "，失败 " + fail : ""));
+  }));
+
   /* v1.0.6：暴露模板接口 + 模板库按钮 */
   window.WQTemplate = { activeCss: tplActiveCss, all: tplAll, tplCssFromParams: tplCssFromParams };
   $("btnTplLib")?.addEventListener("click", function () { tplModal(true); });
+  /* v1.0.7（QA三轮 P1-3）：模板库与「排版预设」互斥联动——应用模板时预设置灰并显示当前模板；改预设则自动切回 */
+  (function tplLinkage() {
+    const sel = $("expFmt");
+    if (!sel) return;
+    const sync = function () {
+      const act = localStorage.getItem(TPL_ACTIVE);
+      const t = act ? tplAll().find(function (x) { return x.id === act; }) : null;
+      sel.disabled = !!t;
+      sel.title = t ? "当前使用模板库模板：" + t.name : "";
+      let hint = document.getElementById("tplActiveHint");
+      if (!hint) { hint = document.createElement("span"); hint.id = "tplActiveHint"; hint.className = "hint"; sel.insertAdjacentElement("afterend", hint); }
+      hint.textContent = t ? "（模板库生效：" + t.name + "；点「📑 排版模板库」可切回预设）" : "";
+    };
+    sel.addEventListener("change", function () {
+      if (localStorage.getItem(TPL_ACTIVE)) { localStorage.removeItem(TPL_ACTIVE); toast("已切回预设排版（模板库模板已停用）"); }
+      sync();
+    });
+    window.__wqSyncTplHint = sync;
+    sync();
+  })();
 
   /* ================================================================
    * afterRender：studio.renderAll 之后刷新本模块 UI（不打断输入）
@@ -1187,6 +1275,7 @@
       try { renderChecks(); } catch (e) {}
       try { renderDatacards(); } catch (e) {}
       try { if (window.__wqRestoreChecklist) window.__wqRestoreChecklist(); } catch (e) {}
+      try { if (window.__wqSyncTplHint) window.__wqSyncTplHint(); } catch (e) {}
       try { renderRefAppendices(); } catch (e) {}
       try { if (window.wqRenderUsage) window.wqRenderUsage(); } catch (e) {}
     }

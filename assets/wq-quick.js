@@ -363,10 +363,13 @@
         var doi = (w.doi || "").replace("https://doi.org/", "");
         var key = (doi || w.display_name).toLowerCase();
         if (seen.has(key)) return; seen.add(key);
+        /* v1.0.7（QA三轮 P1-2）：抓作者，参考文献表才合规（此前只存题名/年份/DOI/出处） */
+        var au0 = (w.authorships || []).map(function (a) { return (a.author && (a.author.display_name || a.author.raw_author_name)) || ""; }).filter(Boolean);
+        var authorStr = au0.slice(0, 3).join("，") + (au0.length > 3 ? "，等" : "");
         refs.push({
           n: refs.length + 1, title: w.display_name, year: w.publication_year || "", doi: doi,
           venue: (w.primary_location && w.primary_location.source && w.primary_location.source.display_name) || "",
-          cited: w.cited_by_count || 0, abs: abstractFromInverted(w.abstract_inverted_index)
+          cited: w.cited_by_count || 0, author: authorStr, abs: abstractFromInverted(w.abstract_inverted_index)
         });
       };
       /* v1.0.3：轮流配额合并——避免第一个检索词占满名额、其他语言被挤出 */
@@ -382,7 +385,7 @@
       c.proj.refDraft = c.proj.refDraft || {};
       c.proj.refDraft.refs = refs;
       c.proj.papers = refs.map(function (r0, i) {
-        return { id: "f" + c.proj.id + "_" + i, title: r0.title, year: String(r0.year || ""), doi: r0.doi, venue: r0.venue, type: "J", author: "", abs: (r0.abs || "").slice(0, 1200) };
+        return { id: "f" + c.proj.id + "_" + i, title: r0.title, year: String(r0.year || ""), doi: r0.doi, venue: r0.venue, type: "J", author: r0.author || "", abs: (r0.abs || "").slice(0, 1200) };
       });
       c.save();
       report("✓ 检索到 " + refs.length + " 篇（含 " + refs.filter(function (x) { return x.abs; }).length + " 篇带摘要）· 检索词：" + queries.join(" ＋ "));
