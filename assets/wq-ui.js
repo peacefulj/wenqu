@@ -370,20 +370,11 @@
       const p = P(); if (!p) return toast("先新建项目");
       const secs = Object.keys(p.draft || {});
       const hits = [];
-      const re = /(?:^|[^\d\[（(]?)(\d+(?:\.\d+)?(?:%|万|千|亿|个百分点)?)/g;
+      /* v3.2：数字扫描统一走 WQCore.scanNumHits（S0：三处合一，含 [n] 引用排除与置信区间保留） */
       secs.forEach(s0 => {
-        const t = p.draft[s0] || "";
-        let m;
-        while ((m = re.exec(t)) && hits.length < 80) {
-          const ctxFull = t.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\s+/g, " ");
-          const num = m[1];
-          /* v1.0.7（QA三轮 P2-4）：只把"1900-2100 且上下文像年份"的 4 位数当成年份跳过；样本量 1863 等不再误伤 */
-          if (/^\d{4}$/.test(num) && +num >= 1900 && +num <= 2100) {
-            const around = t.slice(Math.max(0, m.index - 6), m.index + m[0].length + 6);
-            if (/年|年份|年度|—|–|至|到/.test(around)) continue;
-          }
-          hits.push({ sec: s0, num, ctx: ctxFull, key: (s0 + "|" + ctxFull).slice(0, 100) });
-        }
+        (window.WQCore && WQCore.scanNumHits ? WQCore.scanNumHits(p.draft[s0]) : []).forEach(h => {
+          hits.push({ sec: s0, num: h.num, ctx: h.ctx, key: (s0 + "|" + h.ctx).slice(0, 100) });
+        });
       });
       const uniq = []; const seen = new Set();
       hits.forEach(h => { if (!seen.has(h.key)) { seen.add(h.key); uniq.push(h); } });
@@ -391,7 +382,7 @@
       const bound = uniq.filter(h => p.nummap[h.key] && p.nummap[h.key].src).length;
       const rows = uniq.slice(0, 40).map(function (h) {
         const cur0 = p.nummap[h.key] || {};
-        return '<div class="refrow"><span class="rn">' + (cur0.src ? "✅" : "🔴") + '</span><span class="rt">…' + esc(h.ctx) + '…</span>' +
+        return '<div class="refrow"><span class="rn">' + (cur0.review ? "⚠" : cur0.src ? "✅" : "🔴") + '</span><span class="rt">…' + esc(h.ctx) + '…</span>' +
           '<select class="nmSel" data-nmkey="' + esc(h.key) + '">' +
           '<option value="">未绑定</option>' +
           p.papers.map((f, i) => '<option value="文献[' + (i + 1) + ']"' + (cur0.src === "文献[" + (i + 1) + "]" ? " selected" : "") + '>文献[' + (i + 1) + '] ' + esc(f.title.slice(0, 14)) + '</option>').join("") +
@@ -422,7 +413,7 @@
       }));
       document.getElementById("nmSave").addEventListener("click", function () {
         pushCheck(p, "nums", "数字来源绑定（" + uniq.length + " 处）",
-          uniq.map(h => (p.nummap[h.key] && p.nummap[h.key].src ? "✅" : "🔴") + "「" + h.sec + "」…" + h.ctx + "…" + (p.nummap[h.key] ? "（" + p.nummap[h.key].src + "）" : "（未绑定）")),
+          uniq.map(h => { const b0 = p.nummap[h.key]; return (b0 && b0.review ? "⚠待复核" : b0 && b0.src ? "✅" : "🔴") + "「" + h.sec + "」…" + h.ctx + "…" + (b0 && b0.src ? "（" + b0.src + "）" : "（未绑定）"); }),
           { problem: uniq.length - bound, total: uniq.length, bound: bound });
         renderChecks(); toast("绑定结果已存入校验记录 ✓");
       });

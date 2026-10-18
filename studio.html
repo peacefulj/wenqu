@@ -3,14 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>文渠科研工作台 · 萤算科研 — 生成只是起点：修改 · 核验 · 复现</title>
+<title>萤算科研工作台 — 生成只是起点：修改 · 核验 · 复现</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#2456e6">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 <meta name="description" content="萤算科研（工作台内部名：文渠）：参考稿 Agent + 修改工作台（归属账本/贡献度）+ 校验中心（引用核验/数字绑定/回测）+ 数据复现。免费检索，AI 只按 token 计费，数据只存你的浏览器。">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="stylesheet" href="assets/wb.css">
-<script src="assets/vendor/pdf.min.js"></script>
 <style>
   .wbgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
   @media (max-width:900px){.wbgrid{grid-template-columns:1fr}}
@@ -46,7 +45,7 @@
 <body>
 
 <header class="site"><div class="container bar">
-  <a class="brand" href="index.html">萤算科研导图<small>工作台</small></a>
+  <a class="brand" href="index.html">萤算科研<small>工作台</small></a>
   <nav class="main"><a class="on" href="studio.html">科研工作台</a><a href="quick.html">参考稿</a><a href="map.html">🗺 项目导图</a></nav>
 </div></header>
 
@@ -728,12 +727,12 @@ document.addEventListener("click", e => {
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
 </script>
+<script src="assets/wq-core.js"></script>
 <script src="assets/paradigms.js"></script>
 <script src="assets/vendor/marked.min.js"></script>
 <script src="assets/vendor/purify.min.js"></script>
 <script src="assets/studio.js"></script>
 <script src="assets/wb.js"></script>
-<script src="assets/wq-core.js"></script>
 <script src="assets/wq-ui.js"></script>
 <script src="assets/wq-pptx.js"></script>
 <script>
@@ -756,3 +755,8 @@ async function wqInstall() {
 </script>
 </body>
 </html>
+
+<script>
+/* v3.2：pdf.js 懒加载（320KB 移出首屏；SW 预缓存不受影响，离线仍可用） */
+addEventListener("load", () => { const s0 = document.createElement("script"); s0.src = "assets/vendor/pdf.min.js"; document.head.appendChild(s0); });
+</script>

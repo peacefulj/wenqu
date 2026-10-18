@@ -45,6 +45,8 @@
   /* 数字扫描（与工作台 ckNums 同口径：正则 + [n] 引用排除 + 年份启发式）。
      derive 与改写后的绑定重匹配共用，改口径必须两处同步 */
   function scanNumHits(t) {
+    /* v3.2（S0）：唯一实现下沉到 wq-core（WQCore.scanNumHits），三处页面共用同一份口径 */
+    return (window.WQCore && WQCore.scanNumHits) ? WQCore.scanNumHits(t) : [];
     t = String(t || "");
     var re = /(?:^|[^\d\[（(]?)(\d+(?:\.\d+)?(?:%|万|千|亿|个百分点)?)/g;
     var hits = [], m;

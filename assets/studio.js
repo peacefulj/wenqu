@@ -1168,26 +1168,15 @@ function renderNumBar() {
     pane.insertBefore(bar, anchor ? anchor.nextSibling : pane.firstChild);
   }
   const secs = Object.keys(p.draft || {});
-  const re = /(?:^|[^\d\[（(]?)(\d+(?:\.\d+)?(?:%|万|千|亿|个百分点)?)/g;
   let hits = 0, bound = 0; const seen = {};
-  secs.forEach(s0 => {
-    const t = p.draft[s0] || ""; let m;
-    while ((m = re.exec(t)) && hits < 500) {
-      const num = m[1];
-      const pre = m.index > 0 ? t.charAt(m.index - 1) : "";
-      const after = t.charAt(m.index + m[0].length);
-      if (pre === "（" || pre === "(") continue;
-      if ((pre === "[" || pre === "［") && after === "]" && num.indexOf(".") < 0) continue;
-      if (/^\d{4}$/.test(num) && +num >= 1900 && +num <= 2100) {
-        const around = t.slice(Math.max(0, m.index - 6), m.index + m[0].length + 6);
-        if (/年|年份|年度|—|–|至|到/.test(around)) continue;
-      }
-      const ctx = t.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\s+/g, " ");
-      const key = (s0 + "|" + ctx).slice(0, 100);
-      if (seen[key]) continue; seen[key] = 1; hits++;
+  /* v3.2：数字扫描统一走 WQCore.scanNumHits（S0：三处合一） */
+  if (window.WQCore && WQCore.scanNumHits) secs.forEach(s0 => {
+    WQCore.scanNumHits(p.draft[s0]).forEach(h => {
+      const key = (s0 + "|" + h.ctx).slice(0, 100);
+      if (seen[key]) return; seen[key] = 1; hits++;
       const b0 = (p.nummap || {})[key];
       if (b0 && b0.src) bound++;
-    }
+    });
   });
   const pct = hits ? Math.round(bound / hits * 100) : 100;
   bar.innerHTML = "<b>🔢 数据关联</b>　正文数字 <b>" + hits + "</b> 处 · 已绑定来源 <b>" + bound + "</b> 处" + (hits ? "（覆盖 " + pct + "%）" : "") +

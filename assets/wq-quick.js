@@ -313,6 +313,8 @@
         $("qMsg").textContent = "完成 ✓ 参考稿已存入工作台（共 " + (proj.ref.order || []).length + " 节 / " + (proj.papers || []).length + " 篇文献）";
         $("qGoStudio").href = "studio.html?p=" + proj.id + "&stage=5";
         $("qDoneRow").hidden = false;
+        var goMap = document.getElementById("qGoMap");
+        if (goMap) { goMap.href = "map.html?p=" + encodeURIComponent(proj.id); }
       }
     } catch (e) {
       renderSteps(steps, stateMap());

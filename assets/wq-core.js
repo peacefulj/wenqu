@@ -152,7 +152,8 @@
           if (v.archived || !v.content || v.content.length < 3000) return;
           freed += v.content.length; moved++;
           var key = p.id + ":" + i;
-          jobs.push(tx("vers", "readwrite", function (s) { s.put(v.content, key); }));
+          var content0 = v.content;   /* v3.2（P0 修复）：先捕获——tx 回调异步执行时 v.content 已被截成预览（v30 闭包 bug，曾把预览当全文存进 IDB） */
+          jobs.push(tx("vers", "readwrite", function (s) { s.put(content0, key); }));
           v.archived = true; v.archiveKey = key;
           v.content = v.content.slice(0, 300) + "\n…〔正文 " + v.content.length + " 字已归档到 IndexedDB；在版本档案里点开会自动回取〕";
         });
@@ -494,6 +495,27 @@
       ' · 参考原样 ' + pct(t.aiChars / t.total) + '（共 ' + t.total.toLocaleString() + " 字）</span></div>";
   }
 
+  /* v3.2：数字扫描唯一实现（studio/wq-ui/wq-map 共用；[n] 整数引用排除、置信区间保留、年份启发式） */
+  function scanNumHits(t) {
+    t = String(t || "");
+    var re = /(?:^|[^\d\[（(]?)(\d+(?:\.\d+)?(?:%|万|千|亿|个百分点)?)/g;
+    var hits = [], m;
+    while ((m = re.exec(t)) && hits.length < 80) {
+      var num = m[1];
+      var pre = m.index > 0 ? t.charAt(m.index - 1) : "";
+      var after = t.charAt(m.index + m[0].length);
+      if (pre === "（" || pre === "(") continue;
+      if ((pre === "[" || pre === "［") && after === "]" && num.indexOf(".") < 0) continue;
+      var ctxFull = t.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\s+/g, " ");
+      if (/^\d{4}$/.test(num) && +num >= 1900 && +num <= 2100) {
+        var around = t.slice(Math.max(0, m.index - 6), m.index + m[0].length + 6);
+        if (/年|年份|年度|—|–|至|到/.test(around)) continue;
+      }
+      hits.push({ num: num, ctx: ctxFull });
+    }
+    return hits;
+  }
+
   /* ================= 导出到 window ================= */
   window.WQCore = {
     version: "1.0.0",
@@ -507,7 +529,8 @@
     },
     pipeline: WQPipeline,
     diff: { paras: parasDiff, chars: chars, charsHTML: charsHTML, sim: sim },
-    ledger: { analyzeText: analyzeText, analyzeProject: analyzeProject, contributionHTML: contributionHTML }
+    ledger: { analyzeText: analyzeText, analyzeProject: analyzeProject, contributionHTML: contributionHTML },
+    scanNumHits: scanNumHits
   };
   window.WQStore = WQStore;
 })();
