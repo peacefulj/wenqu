@@ -1,4 +1,4 @@
-/* 萤算科研 · 零依赖 PPTX 生成器 wq-pptx.js
+/* 研墨 · 零依赖 PPTX 生成器 wq-pptx.js
  * v1.0（2026-10-17）：学术答辩版式（16:9，封面+章节要点页+结尾页），真实 .pptx 文件（OOXML）。
  * 用法：WQPptx.build([{t:"标题", b:["要点","要点"], sub:"副题"}, ...], {title:"论文题目", author:"姓名"})
  *      → 返回 Promise<Blob>。 MIT 风格自研，无第三方依赖。
@@ -39,13 +39,13 @@
   var CORE = function (title) {
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
-      '<dc:title>' + esc(title || "答辩演示") + '</dc:title><dc:creator>萤算科研</dc:creator>' +
+      '<dc:title>' + esc(title || "答辩演示") + '</dc:title><dc:creator>研墨</dc:creator>' +
       '<dcterms:created xsi:type="dcterms:W3CDTF">' + new Date().toISOString().replace(/\.\d+Z$/, "Z") + '</dcterms:created>' +
       '</cp:coreProperties>';
   };
   var APP = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
-    '<Application>萤算科研</Application><PresentationFormat>宽屏</PresentationFormat></Properties>';
+    '<Application>研墨</Application><PresentationFormat>宽屏</PresentationFormat></Properties>';
   var PRESENTATION = function (nSlides) {
     var ids = "";
     for (var i = 1; i <= nSlides; i++) {
@@ -67,7 +67,7 @@
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + rels + '</Relationships>';
   };
   var THEME = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="萤算学术">' +
+    '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="研墨学术">' +
     '<a:themeElements>' +
     '<a:clrScheme name="学术"><a:dk1><a:srgbClr val="1B2434"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1>' +
     '<a:dk2><a:srgbClr val="37465C"/></a:dk2><a:lt2><a:srgbClr val="F6F8FC"/></a:lt2>' +
@@ -139,7 +139,7 @@
       boxes += textbox(3, 1143000, 4000500, 9906000, 800100,
         [{ t: slide.sub || "", sz: 1800, color: "5C6675" }], { anchor: "t" });
       boxes += textbox(4, 1143000, 5715000, 9906000, 457200,
-        [{ t: "萤算科研 · 文渠工作台 生成", sz: 1200, color: "9AA4B2" }], { anchor: "t" });
+        [{ t: "研墨工作台 生成", sz: 1200, color: "9AA4B2" }], { anchor: "t" });
     } else {
       boxes += accentBar;
       boxes += textbox(2, 838200, 596900, 10515600, 1143000,

@@ -1,4 +1,4 @@
-/* 萤算科研 · 核心底座 wq-core.js
+/* 研墨 · 核心底座 wq-core.js
  * v1.0（2026-10-16）：给快速模式与工作台共用的纯前端能力，全部 IIFE 封装、零依赖：
  *   1) WQStore —— localStorage 读写 + IndexedDB 全量镜像/自愈 + 版本档案归档（防 5MB 配额爆掉）
  *   2) WQAI    —— SSE 流式调用（实测 usage 优先，无 usage 用估算）+ 本机用量统计与费用折算

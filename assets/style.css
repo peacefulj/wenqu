@@ -1,4 +1,4 @@
-/* 文渠 · 免费论文通道导航 —— 设计系统（2026-10） */
+/* 研墨 · 免费论文通道导航 —— 设计系统（2026-10） */
 :root{
   --ink:#1b2434; --muted:#5c6675; --line:#e5e8ee;
   --bg:#f6f7fa; --card:#ffffff;
@@ -49,7 +49,7 @@ nav.main a.on{background:var(--accent-weak); color:var(--accent); font-weight:60
 .card p{margin:0; font-size:13.5px; color:var(--muted)}
 .card .more{display:inline-block; margin-top:10px; font-size:13px; color:var(--accent); font-weight:600}
 
-/* 萤算钩子条 */
+/* 研墨钩子条 */
 .hook{margin:30px 0 6px; background:var(--accent-weak); border:1px dashed #b9c8f5;
   border-radius:var(--radius); padding:18px 20px; display:flex; gap:14px; align-items:center; flex-wrap:wrap}
 .hook .txt{flex:1; min-width:240px}

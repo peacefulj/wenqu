@@ -1,4 +1,4 @@
-/* 文渠 · 科研工作台（合并平台）— 纯前端：项目存储(localStorage) + OpenAlex/Crossref + 萤算AI
+/* 研墨 · 科研工作台（合并平台）— 纯前端：项目存储(localStorage) + OpenAlex/Crossref + 研墨AI
  * v0.3：学科范式包×学位层级×个人写作档案（见 assets/paradigms.js）；含评审 P0 修复。
  */
 "use strict";
@@ -780,7 +780,7 @@ $("btnExportDoc").addEventListener("click", () => {
   const aiDecl = metaLines.length ? `<h2>AI 辅助说明</h2><p style="font-size:10.5pt;color:#555">本稿以下章节含 AI 辅助起草内容（模型 · 日期 · 依据）：<br>${metaLines.map(esc2).join("<br>")}</p>` : "";
   const refs = p.papers.length ? `<h2>参考文献</h2><p style="font-size:10.5pt;line-height:1.4">` +
     p.papers.map((f, i) => `[${i + 1}] ${esc2(f.author || "作者待补")}. ${esc2(f.title)}[${f.type || "J"}]. ${esc2(f.venue || "出处待补")}, ${esc2(f.year || "年份待补")}${f.doi ? ". DOI:" + esc2(f.doi) : ""}.`).join("<br>") + "</p>" : "";
-  const html = `<html><head><meta charset="utf-8"><style>body{font-family:SimSun,serif;font-size:12pt;line-height:1.6}h1{font-size:16pt;text-align:center}h2{font-size:14pt}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}${aiDecl}<p style="color:#888">—— 由萤算科研·文渠工作台辅助起草（${new Date().toISOString().slice(0, 10)}），引用与数据请人工核对 ——</p></body></html>`;
+  const html = `<html><head><meta charset="utf-8"><style>body{font-family:SimSun,serif;font-size:12pt;line-height:1.6}h1{font-size:16pt;text-align:center}h2{font-size:14pt}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}${aiDecl}<p style="color:#888">—— 由研墨工作台辅助起草（${new Date().toISOString().slice(0, 10)}），引用与数据请人工核对 ——</p></body></html>`;
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" }));
   a.download = (p.topic || p.name || "论文全文").replace(/[\\/:*?"<>|]/g, "_") + ".doc";

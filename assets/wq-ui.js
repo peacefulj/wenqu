@@ -1,4 +1,4 @@
-/* 萤算科研 · 工作台集成 wq-ui.js
+/* 研墨 · 工作台集成 wq-ui.js
  * v1.0（2026-10-16）：在 studio.html 上挂载生成之后的环节——
  *   ① 修改工作台：参考稿 ↔ 我的稿 双栏，逐段 采用/改写/追问依据，diff、归属账本、本人贡献度
  *   ② 校验中心：引用存在性（Crossref，免费）/ 引用-论断抽查 / 数字来源绑定 / 格式规范 / 回测对比
@@ -580,7 +580,7 @@
         const a = led.bySec[sec];
         declLines.push(sec + "：本人贡献 " + pct(a.contribution) + "（亲笔 " + a.userChars + " 字 / 混合 " + a.mixedChars + " 字 / 参考原样 " + a.aiChars + " 字）");
       });
-      const aiDecl = '<h2>AI 辅助说明</h2><p style="font-size:10.5pt;color:#555">本稿在「萤算科研（文渠工作台）」辅助下完成：AI 提供参考稿与改写建议，作者逐节修改并定稿。各节归属（按字符估算）：<br>' +
+      const aiDecl = '<h2>AI 辅助说明</h2><p style="font-size:10.5pt;color:#555">本稿在「研墨」辅助下完成：AI 提供参考稿与改写建议，作者逐节修改并定稿。各节归属（按字符估算）：<br>' +
         (declLines.map(esc2).join("<br>") || "（账本为空）") +
         '<br>模型：' + esc2((p.ref && p.ref.model) || WQCore.ai.conf().model || "") + ' · 报告日期：' + WQCore.stamp() +
         '。作者对全部内容与引用的真实性负责。</p>';
@@ -592,7 +592,7 @@
       const refs = p.papers.length ? "<h2>参考文献</h2><p style=\"font-size:10.5pt;line-height:1.4\">" +
         p.papers.map((f, i) => "[" + (i + 1) + "] " + esc2(f.author || "作者待补") + ". " + esc2(f.title) + "[" + (f.type || "J") + "]. " + esc2(f.venue || "出处待补") + ", " + esc2(f.year || "年份待补") + (f.doi ? ". DOI:" + esc2(f.doi) : "") + ".").join("<br>") + "</p>" : "";
       const css = (window.WQTemplate && WQTemplate.activeCss()) || EXP_CSS[$("expFmt") ? $("expFmt").value : "plain"] || EXP_CSS.plain;
-      const html = `<html><head><meta charset="utf-8"><style>${css}table{border-collapse:collapse}th,td{border:1px solid #999;padding:4px 8px}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}${aiDecl}${ckDecl}<p style="color:#888">—— 由萤算科研·文渠工作台辅助完成（${WQCore.stamp()}）；引用与数据请人工核对 ——</p></body></html>`;
+      const html = `<html><head><meta charset="utf-8"><style>${css}table{border-collapse:collapse}th,td{border:1px solid #999;padding:4px 8px}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}${aiDecl}${ckDecl}<p style="color:#888">—— 由研墨工作台辅助完成（${WQCore.stamp()}）；引用与数据请人工核对 ——</p></body></html>`;
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" }));
       a.download = (p.topic || p.name || "论文全文").replace(/[\\/:*?"<>|]/g, "_") + ".doc";
@@ -1080,7 +1080,7 @@
         "只输出 JSON：{\"name\":\"模板名\",\"bodyFont\":\"…\",\"bodySize\":\"…\",\"lineHeight\":\"…\",\"margin\":\"…\",\"h1Size\":\"…\",\"h2Size\":\"…\",\"h3Size\":\"…\",\"indent\":\"…\"}；原文没提到的参数用国内通行值补齐。\n【格式要求原文】\n" + spec.slice(0, 1200), "提取模板");
     });
     $m("tplExport").addEventListener("click", function () {
-      dlText("萤算科研-排版模板.json", JSON.stringify(tplMineList(), null, 2), "application/json");
+      dlText("研墨-排版模板.json", JSON.stringify(tplMineList(), null, 2), "application/json");
     });
     $m("tplImportFile").addEventListener("change", function (e) {
       const f = e.target.files[0]; if (!f) return;

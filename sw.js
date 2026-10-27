@@ -1,10 +1,10 @@
-/* 文渠科研平台 · Service Worker
+/* 研墨平台 · Service Worker
  * 策略：同源静态资产 cache-first（命中即离线可用）；跨域 API（OpenAlex/Crossref/Unpaywall/AI 中转）
  * 一律直连不缓存；页面导航离线时回退 studio.html。
  * 更新方式：改代码后把 CACHE 版本号 +1，旧缓存自动清理；用户刷新即得新版。
  */
 "use strict";
-const CACHE = "wenqu-v40";
+const CACHE = "wenqu-v41";
 const SHELL = [
   "./",
   "index.html",

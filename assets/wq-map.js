@@ -1,4 +1,4 @@
-/* 萤算科研导图 · wq-map.js v1.0（M0-M2）
+/* 研墨导图 · wq-map.js v1.0（M0-M2）
  * 依赖：wq-core.js（WQCore/WQStore，共享 wenqu_studio 项目库——与 v30 同一份浏览器数据，零迁移）、
  *       vendor/marked.min.js + purify.min.js（可选，降级转义）、vendor/cytoscape.min.js（图渲染）
  * 职责：
@@ -1476,7 +1476,7 @@
       var blob = new Blob([JSON.stringify(ST.db)], { type: "application/json" });
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "萤算导图备份-" + new Date().toISOString().slice(0, 10) + ".json";
+      a.download = "研墨导图备份-" + new Date().toISOString().slice(0, 10) + ".json";
       a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
       toast("备份已下载 ✓（含全部项目与版本档案）");

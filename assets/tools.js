@@ -1,4 +1,4 @@
-/* 文渠 · 文献工具箱 — 纯前端，官方公开 API（OpenAlex / Crossref / Unpaywall）+ 萤算 OpenAI 兼容接口 */
+/* 研墨 · 文献工具箱 — 纯前端，官方公开 API（OpenAlex / Crossref / Unpaywall）+ 研墨 OpenAI 兼容接口 */
 "use strict";
 
 /* ---------- 通用 ---------- */
@@ -150,7 +150,7 @@ async function callAI(userMsg) {
   const base = (s.base || AI_DEF.base).replace(/\/+$/, "");
   const key = s.key || "";
   const model = s.model || AI_DEF.model;
-  if (!key) throw new Error("未配置 API Key：上方填入萤算 Key 并点保存设置");
+  if (!key) throw new Error("未配置 API Key：上方填入研墨 Key 并点保存设置");
   const r = await fetchJSON(`${base}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },

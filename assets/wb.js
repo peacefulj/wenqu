@@ -1,5 +1,5 @@
-/* 文渠科研工作台 · app.js
- * 集成：OpenAlex/Crossref/Unpaywall 官方API + 自托管 pdf.js + citation.js(MIT) + 萤算 OpenAI 兼容接口
+/* 研墨工作台 · app.js
+ * 集成：OpenAlex/Crossref/Unpaywall 官方API + 自托管 pdf.js + citation.js(MIT) + 研墨 OpenAI 兼容接口
  * 纯前端零后端；开源件许可与集成状态见「开源引擎」页。
  */
 "use strict";
@@ -1479,7 +1479,7 @@ ${poolList}`, { temperature: 0.4 });
     const intro = await callAI(`为中文综述「${topic}」写一段 250-350 字的引言：说明该主题为什么重要、综述覆盖哪些方面（下列章节）、以及阅读价值。不要列条目。\n章节：${outline.map(o => o.section).join("；")}`, { temperature: 0.4 });
     const concl = await callAI(`为中文综述「${topic}」写一段 200-300 字的结语：总结主要脉络、指出共识与分歧、列出 3 个值得进一步研究的问题。`, { temperature: 0.4 });
     const refs = pool.map(p => `[${p.n}] ${p.authors}${p.authors ? " " : ""}(${p.year}). ${p.title}. ${p.venue}.${p.doi ? " DOI: " + p.doi + "." : ""}${p.oa ? " [免费PDF] " + p.oa : ""}`);
-    const md = `# ${topic}（综述草稿）\n\n> 由文渠科研工作台生成 · 文献池 ${pool.length} 篇 · 生成日期 ${new Date().toISOString().slice(0, 10)}\n> ⚠️ AI 草稿：所有引用 [n] 与论断请人工核对后再使用。\n\n## 引言\n\n${intro.trim()}\n\n${drafts.join("\n\n")}\n\n## 结语\n\n${concl.trim()}\n\n## 参考文献\n\n${refs.join("\n")}\n`;
+    const md = `# ${topic}（综述草稿）\n\n> 由研墨工作台生成 · 文献池 ${pool.length} 篇 · 生成日期 ${new Date().toISOString().slice(0, 10)}\n> ⚠️ AI 草稿：所有引用 [n] 与论断请人工核对后再使用。\n\n## 引言\n\n${intro.trim()}\n\n${drafts.join("\n\n")}\n\n## 结语\n\n${concl.trim()}\n\n## 参考文献\n\n${refs.join("\n")}\n`;
     setP(100, `完成 ✓ 全文约 ${md.length} 字，参考文献 ${pool.length} 条`);
     setMD($("stOut"), md);
     if (window.wqTrail) window.wqTrail("ai", "综述草稿", topic.slice(0, 30) + " · " + md.length + " 字 · " + pool.length + " 篇文献");

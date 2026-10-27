@@ -1,6 +1,6 @@
 {
-  "name": "萤算科研",
-  "short_name": "萤算科研",
+  "name": "研墨",
+  "short_name": "研墨",
   "description": "把科研项目的全部产出画成一张图：主题、提纲、草稿、文献、版本、校验，六种链条串起生成与迭代的每一步；配套工作台与参考稿 Agent。",
   "lang": "zh-CN",
   "start_url": "./map.html",

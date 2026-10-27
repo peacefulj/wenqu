@@ -1,4 +1,4 @@
-/* 萤算科研 · 参考稿 Agent（快速模式）wq-quick.js
+/* 研墨 · 参考稿 Agent（快速模式）wq-quick.js
  * v1.0（2026-10-16）：对标"一键生成"但定位为学习参考稿——
  *   步骤：真实文献 50 篇（OpenAlex）→ AI 提纲（沿用已有材料）→ 分节流式写作（逐节落盘可续跑）
  *        → 图表占位卡（本地生成，不编数据）→ 自检（引用编号/字数）→ 落库进工作台
@@ -53,7 +53,7 @@
     var c = WQCore.ai.conf();
     $("qkBase").value = c.base || ""; $("qkKey").value = c.key || ""; $("qkModel").value = c.model || "";
     $("qkPriceIn").value = c.priceIn || ""; $("qkPriceOut").value = c.priceOut || "";
-    /* v1.0.2：自愈——配了非萤算服务商但模型还是默认 glm-5.3-flash（会 503 无渠道），自动探测并修正 */
+    /* v1.0.2：自愈——配了非研墨服务商但模型还是默认 glm-5.3-flash（会 503 无渠道），自动探测并修正 */
     (async function autoHeal() {
       try {
         if (!c.key || !c.base) return;
