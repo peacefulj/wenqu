@@ -223,8 +223,6 @@
     if (!hasKey()) { renderKeyState(); return; }
     if (f.title.length < 2) { $("qMsg").textContent = "主题/关键词至少 2 个字"; $("qTitle").focus(); return; }
     busy = true; ctl = new AbortController();
-    proj.runLock = { tab: TABID, ts: Date.now() };
-    var lockTimer = setInterval(function () { if (proj.runLock) proj.runLock.ts = Date.now(); }, 20000);
     $("qGo").disabled = true; $("qStop").hidden = false; $("qDoneRow").hidden = true; $("qMsg").textContent = "";
     usageStart = WQCore.ai.usageToday();
     var actualTimer = setInterval(function () { $("qActual").textContent = actualText(); }, 1500);
@@ -256,6 +254,8 @@
       proj._form = { type: f.type, words: f.words, secs: f.secs, refsN: f.refsN, level: f.level, lang: f.lang, material: f.material.slice(0, 2000), paradigm: f.paradigm };
       DB.projects.unshift(proj); DB.cur = proj.id;
     }
+    proj.runLock = { tab: TABID, ts: Date.now() };
+    var lockTimer = setInterval(function () { if (proj.runLock) proj.runLock.ts = Date.now(); }, 20000);
     var saveDB = function () { WQCore.saveLocal(DB); };
 
     var lv = lvObj(proj._form.level), tp = TYPE_SPEC[proj._form.type] || TYPE_SPEC.thesis;
@@ -347,7 +347,7 @@
         } catch (e) { /* 翻译失败时用原文检索 */ }
       }
       if (lang === "en" && queries.length > 1) queries = [queries[1]];
-      var sel = "display_name,publication_year,doi,primary_location,cited_by_count,abstract_inverted_index";
+      var sel = "display_name,publication_year,doi,primary_location,cited_by_count,abstract_inverted_index,authorships";
       var per = Math.min(200, c.proj._form.refsN);
       var packs = [];
       for (var qi = 0; qi < queries.length; qi++) {
