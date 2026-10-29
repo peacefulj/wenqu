@@ -6,6 +6,10 @@
 - 专业版（可安装到桌面）：https://peacefulj.github.io/wenqu/
 - 不需要后端，不需要数据库，数据默认只存在你的浏览器里。
 
+![研墨首页](assets/screenshots/home.png)
+
+![研墨工作台](assets/screenshots/studio.png)
+
 ## 它适合做什么
 
 - 从题目开始，检索文献、生成可编辑提纲和参考稿；
