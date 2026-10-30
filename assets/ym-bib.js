@@ -608,8 +608,10 @@
     var opt = function (arr) { var s = arr.filter(Boolean).join(", "); return s ? " " + s + "." : "."; };
     var tail = "";
     if (c.type === "article-journal" || c.type === "article-magazine") {
-      var voliss = [c.volume ? String(c.volume) : "", c.issue ? "(" + c.issue + ")" : ""].join("");
-      var seg = [c["container-title"] || "", yr, voliss].filter(Boolean).join(", ");
+      /* 国标：刊名, 年, 卷(期): 页码；没有卷号时写「年(期)」 */
+      var yv = c.volume ? [yr, String(c.volume) + (c.issue ? "(" + c.issue + ")" : "")].filter(Boolean).join(", ")
+        : yr + (c.issue ? "(" + c.issue + ")" : "");
+      var seg = [c["container-title"] || "", yv].filter(Boolean).join(", ");
       tail = "[J]. " + seg + (pg ? ": " + pg : "") + ".";
     } else if (c.type === "article-newspaper") {
       tail = "[N]. " + [c["container-title"] || "", yr].filter(Boolean).join(", ") + (c.issue ? "(" + c.issue + ")" : "") + ".";
@@ -625,9 +627,9 @@
     } else if (c.type === "thesis") {
       tail = "[D]." + opt([pubSeg, yr]);
     } else if (c.type === "report") {
-      tail = "[R]." + opt([pub, yr]);
+      tail = "[R]." + opt([pubSeg, yr]);   // 国标：出版地: 出版者, 年
     } else if (c.type === "standard") {
-      tail = "[S]." + opt([pub, yr]);
+      tail = "[S]." + opt([pubSeg, yr]);
     } else if (c.type === "patent") {
       tail = "[P]." + (yr ? " " + yr + "." : "");
     } else if (c.type === "post" || c.type === "post-weblog" || c.type === "webpage") {

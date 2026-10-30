@@ -4,6 +4,27 @@
 
 ## [未发布]
 
+## [1.2.0] - 2026-10-30
+
+### 新增
+
+- **试用与测试页**（`try.html`）：
+  - 一键创建演示项目：4 篇文献，4 节带引用、公式、表格的示例正文；只新增这一个项目，不动已有项目。
+  - 下载示例文件：BibTeX / RIS / CSL-JSON 各一份，外加一份虚构内容的示例 PDF。
+  - 按步骤直达各项新功能：文献导入导出、PDF 批注与 AI 精读、Markdown / LaTeX 导出、本地同步、项目导图、MCP。
+  - 打开页面时自动检测浏览器：本机存储、IndexedDB、存储空间、离线缓存、本地同步、PDF 组件、App 内置浏览器提醒等。
+  - 手动测试 OpenAlex / Crossref 是否连得上，以及 AI 接口是否可用（只读模型列表，不计费）。
+  - 自动运行功能自测，可以复制检测报告，或带着报告去 GitHub 反馈。
+- README 增加「在线试用」链接表；首页、工作台、参考稿页加上试用页入口；GitHub Release 说明末尾附在线试用链接。
+
+### 修复
+
+- GB/T 7714：期刊只有期号没有卷号时写成「2019(8)」（原来是「2019, (8)」）；报告类文献补上出版地（如「Washington, DC: World Bank, 2018」）。
+
+### 变更
+
+- 文献格式与导出的单元测试移到 `assets/ym-selftest.js`，发布前自检和试用页跑同一批用例；自检增加 README 版本号、示例文件和示例 PDF 的检查；发版脚本同步更新 README 里的「当前版本」。
+
 ## [1.1.0] - 2026-10-30
 
 这一版的重点：和 Zotero / LaTeX / AI 客户端打通，PDF 能在研墨里读、批注、精读；同时修了一批会丢数据的问题。
@@ -70,7 +91,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.1.0...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/peacefulj/wenqu/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/peacefulj/wenqu/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/peacefulj/wenqu/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/peacefulj/wenqu/releases/tag/v1.0.0

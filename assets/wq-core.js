@@ -19,7 +19,7 @@
   var LS_USAGE = "wenqu_usage";
   var IDB_NAME = "wenqu-idb";
   var IDB_VER = 1;
-  var APP_VERSION = (window.YANMO && window.YANMO.version) || "1.1.0";
+  var APP_VERSION = (window.YANMO && window.YANMO.version) || "";   // 版本号只认 version.js，这里不写死，免得发版后过期
 
   var esc = function (s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {

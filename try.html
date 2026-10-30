@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>试用与测试 — 研墨</title>
+<meta name="description" content="一键创建演示项目、下载示例文件，试用研墨的 Zotero 文献导入导出、PDF 批注与 AI 精读、Markdown / LaTeX 导出、本地同步；并检测你的浏览器支持哪些功能。">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2456e6">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<style>
+  .tl{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+  .tl a{display:block;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff;color:inherit}
+  .tl a:hover{border-color:var(--accent);text-decoration:none}
+  .tl b{display:block;font-size:15px;margin-bottom:3px}
+  .tl span{display:block;font-size:12.5px;color:var(--muted);line-height:1.55}
+  .tl code{font-size:11.5px;color:#64748b}
+  ol.tsteps{margin:12px 0 0;padding-left:22px;line-height:1.75;font-size:14px}
+  ol.tsteps li{margin-bottom:12px}
+  ol.tsteps .go{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+  ol.tsteps .go a{font-size:13px;border:1px solid var(--line);border-radius:999px;padding:2px 12px;background:#fff}
+  ol.tsteps .go a.dl{border-color:#b9e6c9;background:#f4fbf6}
+  .cklist{margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+  .cklist:empty{display:none}
+  .ck{display:flex;gap:10px;align-items:baseline;padding:7px 12px;border-bottom:1px dashed var(--line);font-size:13.5px}
+  .ck:last-child{border-bottom:none}
+  .ck b{flex:0 0 16px}
+  .ckn{flex:0 0 230px;font-weight:600}
+  .ckn.wide{flex:1 1 auto}
+  .cki{flex:1;color:var(--muted);word-break:break-word}
+  .ck-ok b{color:#0a7a43}.ck-warn b{color:#b45309}.ck-bad b{color:#c62828}.ck-info b{color:#2456e6}
+  .ck-bad .cki{color:#c62828}
+  #tryReport{white-space:pre-wrap;font-size:12px;background:#f6f8fc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-height:260px;overflow:auto;margin-top:10px}
+  @media (max-width:640px){.ck{flex-wrap:wrap}.ckn{flex:1 1 auto}.cki{flex:1 1 100%;padding-left:26px}}
+</style>
+</head>
+<body>
+
+<header class="site"><div class="container bar">
+  <a class="brand" href="index.html">研墨<small>试用与测试</small></a>
+  <nav class="main"><a href="studio.html">科研工作台</a><a href="quick.html">参考稿</a><a href="map.html">🗺 项目导图</a><a class="on" href="try.html">🧪 试用与测试</a></nav>
+</div></header>
+
+<main class="container page">
+  <h1 class="title">试用与测试 <span class="beta" data-ym-version>v1.2.0</span></h1>
+  <p class="meta">不用注册：一键建一个演示项目，跟着下面的步骤把功能点一遍；页面下方会自动检测你的浏览器支持哪些功能。数据只存在你的浏览器里。<a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志 ↗</a></p>
+
+  <section class="block">
+    <h2>① 页面入口<small>点开即用</small></h2>
+    <div class="tl">
+      <a href="studio.html"><b>🧭 科研工作台</b><span>项目工作流：选题 → 文献 → 阅读 → 写作 → 修改 → 投稿</span><code>studio.html</code></a>
+      <a href="studio.html?tab=search"><b>🧰 工具台</b><span>免建项目：检索 + 免费 PDF、AI 读论文、引用格式转换</span><code>studio.html?tab=search</code></a>
+      <a href="quick.html"><b>⚡ 参考稿</b><span>输入题目，生成真实文献 + 提纲 + 分节底稿（需要 AI Key）</span><code>quick.html</code></a>
+      <a href="map.html"><b>🗺 项目导图</b><span>主题、提纲、草稿、文献、版本、校验画成一张图</span><code>map.html</code></a>
+      <a href="index.html"><b>🏠 首页</b><span>功能概览与高频场景入口</span><code>index.html</code></a>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>② 演示项目<small>4 篇文献 + 4 节示例正文（含引用、公式、表格），专门用来试新功能</small></h2>
+    <div class="row" style="align-items:center">
+      <button id="tryDemo" class="btn2">＋ 一键创建演示项目</button>
+      <span id="tryDemoMsg" class="hint"></span>
+    </div>
+    <ol class="tsteps">
+      <li><b>文献导入导出（Zotero / EndNote / NoteExpress）</b>：先下载示例文件，在「② 文献获取与管理」点「📥 导入 Zotero / BibTeX / RIS」，把文件拖进去。sample.bib 里有一条和演示项目重复，可以看到查重和「补全空缺字段」（会补上 DOI）。同一栏还能导出 BibTeX / RIS / CSL-JSON，或复制 GB/T 7714。
+        <div class="go"><a class="dl" href="assets/demo/sample.bib" download>⤓ sample.bib</a><a class="dl" href="assets/demo/sample.ris" download>⤓ sample.ris</a><a class="dl" href="assets/demo/sample-csl.json" download>⤓ sample-csl.json</a><a href="studio.html?p=p-yanmo-demo&amp;stage=2">打开 ② 文献库 →</a></div>
+      </li>
+      <li><b>PDF 阅读、高亮批注</b>：下载示例 PDF（内容是虚构的），在文献表第 4 篇的「全文」列点「📎 上传 PDF」。选中文字选颜色即可高亮，点「📝 批注」写笔记，「⤓ 批注 .md」导出。配好 AI Key 后可以试「✨ AI 精读」，看它给每条结论标页码。
+        <div class="go"><a class="dl" href="assets/demo/demo-paper.pdf" download>⤓ demo-paper.pdf</a><a href="studio.html?p=p-yanmo-demo&amp;stage=2">打开 ② 文献库 →</a></div>
+      </li>
+      <li><b>Markdown / LaTeX / Word 导出</b>：在「④ 设计与写作」点「⤓ Markdown」「⤓ LaTeX（Overleaf）」或「⤓ 导出全文 + 归属说明」。LaTeX 文件上传到 Overleaf，菜单 Compiler 选 XeLaTeX 就能编译，正文的 [n] 会变成 \cite。
+        <div class="go"><a href="studio.html?p=p-yanmo-demo&amp;stage=4">打开 ④ 写作与导出 →</a><a href="https://www.overleaf.com/" target="_blank" rel="noopener">Overleaf ↗</a></div>
+      </li>
+      <li><b>本地同步（电脑上的 Chrome / Edge）</b>：工作台左侧点「🔄 开启本地同步…」选一个位置保存 yanmo-sync.json。之后随便改点内容，约 3 秒后文件就更新了；可以放在网盘目录里。
+        <div class="go"><a href="studio.html?p=p-yanmo-demo">打开工作台 →</a></div>
+      </li>
+      <li><b>项目导图</b>：看文献、正文、版本怎样连成一张图，点节点可以直接改写、存版本。
+        <div class="go"><a href="map.html?p=p-yanmo-demo">打开演示项目的导图 →</a></div>
+      </li>
+      <li><b>MCP（Claude Desktop / Cursor 等）</b>：用第 4 步的同步文件，让 AI 客户端读取你的项目、文献和批注（只读）。
+        <div class="go"><a href="https://github.com/peacefulj/wenqu#readme" target="_blank" rel="noopener">README 里的配置说明 ↗</a></div>
+      </li>
+    </ol>
+    <p class="hint">演示项目可以随时在工作台左侧删除；重新点上面的按钮会把它恢复成初始状态。文献 1–3 是真实论文，第 4 篇和示例 PDF 是虚构的，只用于测试。</p>
+  </section>
+
+  <section class="block">
+    <h2>③ 浏览器检测<small>打开本页时自动运行，不联网</small></h2>
+    <div id="tryEnv" class="cklist"><p class="hint" style="margin:8px 12px">检测中…</p></div>
+    <div class="row" style="margin-top:10px;align-items:center">
+      <button id="tryNet" class="btn2 ghost">测试网络（OpenAlex / Crossref）</button>
+      <button id="tryAI" class="btn2 ghost" title="只请求接口的模型列表，不调用模型，不产生费用">测试 AI 接口（不计费）</button>
+      <span id="tryNetMsg" class="hint"></span>
+    </div>
+    <div id="tryNetOut" class="cklist"></div>
+  </section>
+
+  <section class="block">
+    <h2>④ 功能自测<small>文献格式解析、GB/T 7714、Markdown / LaTeX 导出的单元测试，和发布前自检是同一批用例</small></h2>
+    <div class="row" style="align-items:center"><button id="trySelf" class="btn2 ghost">重新运行自测</button><span id="trySelfSum" class="hint"></span></div>
+    <div id="trySelfOut" class="cklist"></div>
+  </section>
+
+  <section class="block">
+    <h2>⑤ 反馈<small>遇到问题时附上检测报告，方便定位</small></h2>
+    <div class="row" style="align-items:center">
+      <button id="tryCopy" class="btn2 ghost">📋 复制检测报告</button>
+      <a id="tryIssue" class="btn2 ghost" href="https://github.com/peacefulj/wenqu/issues/new" target="_blank" rel="noopener">去 GitHub 反馈 ↗</a>
+      <a class="btn2 ghost" href="mailto:info@yingcompute.com">邮件反馈</a>
+      <span id="tryCopyMsg" class="hint"></span>
+    </div>
+    <pre id="tryReport" hidden></pre>
+  </section>
+</main>
+
+<footer class="site"><div class="container">
+  <div class="links"><a href="index.html">首页</a> · <a href="studio.html">科研工作台</a> · <a href="quick.html">参考稿</a> · <a href="map.html">项目导图</a> · <a href="https://github.com/peacefulj/wenqu" target="_blank" rel="noopener">GitHub 开源</a></div>
+  <div class="disc">示例 PDF 与第 4 篇演示文献为虚构内容，仅用于测试软件功能，不能引用。检测在本机进行；只有点「测试网络」「测试 AI 接口」时才会访问对应的服务。</div>
+  <div>© 2026 研墨 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.2.0</span> 更新日志</a></div>
+</div></footer>
+
+<script src="assets/version.js"></script>
+<script src="assets/wq-core.js"></script>
+<script src="assets/ym-bib.js"></script>
+<script src="assets/ym-export.js"></script>
+<script src="assets/ym-selftest.js"></script>
+<script src="assets/ym-try.js"></script>
+<script>
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>

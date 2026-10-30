@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /* 研墨 · 发布前自检 scripts/check.mjs —— node scripts/check.mjs（或 npm run check）
  * 全部通过才可以打版本标签。检查内容：
- *   1 脚本语法（含页面内联脚本）  2 版本号一致  3 页面引用的文件都存在、都在 SW 离线缓存清单里
- *   4 ym-bib 文献格式自测  5 ym-export Markdown / LaTeX 自测  6 MCP 服务冒烟测试  7 文档与源码卫生
+ *   1 脚本语法（含页面内联脚本）  2 版本号一致（含 README）  3 页面引用的文件都存在、都在 SW 离线缓存清单里
+ *   4 功能自测（文献格式与导出，用例在 assets/ym-selftest.js，试用页 try.html 也跑这一批）  5 MCP 服务冒烟测试  6 文档与源码卫生
  * 零依赖，Node.js 18+。
  */
 import { spawnSync, spawn } from "node:child_process";
@@ -60,6 +60,8 @@ const clDate = (cl.match(new RegExp("^## \\[" + reEsc(ver) + "\\] - (\\d{4}-\\d{
 check(!!clDate, "CHANGELOG.md 有「## [" + ver + "] - 日期」一节");
 check(clDate === Y.date, "CHANGELOG 里的发布日期与 version.js 一致", clDate + " ≠ " + Y.date);
 check(/^## \[未发布\]/m.test(cl), "CHANGELOG.md 顶部保留「## [未发布]」");
+const readmeVer = (read("README.md").match(/当前版本：\*\*v([^*]+)\*\*/) || [])[1];
+check(readmeVer === ver, "README 里的「当前版本」与之一致", "README 是 v" + readmeVer);
 const staleVer = [];
 for (const h of htmls) for (const m of read(h).matchAll(/data-ym-version>v([^<]*)</g)) if (m[1] !== ver) staleVer.push(h + "：v" + m[1]);
 check(!staleVer.length, "页面页脚的版本号都是 v" + ver, staleVer.join("，"));
@@ -93,62 +95,19 @@ const strays = list("assets", /\.(js|css)$/).filter(u => !shell.includes(u));
 check(!strays.length, "assets/ 下的脚本和样式都在预缓存清单里", strays.join("，"));
 check(!orderBad.length, "脚本加载顺序正确", orderBad.join("\n"));
 
-/* ---------------- 4 ym-bib ---------------- */
-section("4. ym-bib：文献格式");
+/* ---------------- 4 功能自测 ---------------- */
+section("4. 功能自测（assets/ym-selftest.js，与试用页 try.html 同一批用例）");
 const Bib = require(join(ROOT, "assets/ym-bib.js"));
-const bibText = `@string{jfe = "Journal of Financial Economics"}
-@article{fama2015five,
-  title = {A five-factor asset pricing model},
-  author = {Fama, Eugene F. and French, Kenneth R.},
-  journal = jfe, volume = {116}, number = {1}, pages = {1--22}, year = {2015},
-  doi = {10.1016/j.jfineco.2014.10.010}
-}
-@phdthesis{zhang2021,
-  author = {张三 and 李四},
-  title = {数字经济与农村共同富裕研究},
-  school = {北京大学}, address = {北京}, year = {2021}
-}`;
-const r1 = Bib.parse(bibText);
-check(r1.format === "bibtex" && r1.items.length === 2 && !r1.errors.length, "BibTeX 解析（含 @string 宏）", JSON.stringify({ format: r1.format, n: r1.items.length, errors: r1.errors }));
-const ps1 = r1.items.map((c, i) => Object.assign(Bib.cslToPaper(c, "bibtex"), { id: "f" + i }));
-const gb1 = Bib.gbList(ps1);
-check(gb1[0] === "[1] FAMA E F, FRENCH K R. A five-factor asset pricing model[J]. Journal of Financial Economics, 2015, 116(1): 1-22. DOI: 10.1016/j.jfineco.2014.10.010.", "GB/T 7714 期刊条目", gb1[0]);
-check(gb1[1] === "[2] 张三, 李四. 数字经济与农村共同富裕研究[D]. 北京: 北京大学, 2021.", "GB/T 7714 学位论文条目", gb1[1]);
-const bibOut = Bib.toBibTeX(ps1);
-check(/@article\{fama2015five,/.test(bibOut) && /pages\s*=\s*\{1--22\}/.test(bibOut), "BibTeX 输出保留引用键与页码");
-check(/language\s*=\s*\{chinese\}/.test(bibOut) && !/language\s*=\s*\{zh\}/.test(bibOut), "中文条目 language = {chinese}（gbt7714 不认 zh）");
-const back = Bib.parse(bibOut);
-check(back.items.length === 2 && back.items[1].language === "zh", "BibTeX 往返：language 转回 CSL 的 zh", JSON.stringify(back.items.map(x => x.language)));
-const ris = "TY  - JOUR\nAU  - Harris, Charles R.\nTI  - Array programming with NumPy\nT2  - Nature\nPY  - 2020\nVL  - 585\nIS  - 7825\nSP  - 357\nEP  - 362\nDO  - 10.1038/s41586-020-2649-2\nER  - \n";
-const r2 = Bib.parse(ris);
-check(r2.format === "ris" && r2.items.length === 1 && Bib.gbList(r2.items.map(c => Bib.cslToPaper(c, "ris")))[0] === "[1] HARRIS C R. Array programming with NumPy[J]. Nature, 2020, 585(7825): 357-362. DOI: 10.1038/s41586-020-2649-2.", "RIS 解析 → GB/T 7714");
-const r3 = Bib.parse(Bib.toCSLJSON(ps1));
-check(r3.format === "csl" && r3.items.length === 2, "CSL-JSON 往返");
-const plan = Bib.planImport(ps1, r1.items.map(c => Bib.cslToPaper(c, "bibtex")));
-check(plan.add.length === 0 && plan.dup.length === 2, "按 DOI / 题名查重", JSON.stringify({ add: plan.add.length, dup: plan.dup.length }));
-
-/* ---------------- 5 ym-export ---------------- */
-section("5. ym-export：Markdown / LaTeX");
 const X = require(join(ROOT, "assets/ym-export.js"));
-const ctx = X.newCtx(["ka", "kb", "kc", "kd"]);
-const inl = X.inlineTex("见[1,2]与[3-4]、[1][4]，$x_1$ 增长 50% a_b #3 {x}", ctx);
-check(inl === "见\\cite{ka,kb}与\\cite{kc,kd}、\\cite{ka,kd}，$x_1$ 增长 50\\% a\\_b \\#3 \\{x\\}", "正文 [n] → \\cite，特殊字符转义，公式原样保留", inl);
-X.inlineTex("超出编号[9]", ctx);
-check(ctx.unresolved.length === 1 && ctx.unresolved[0] === "[9]", "对不上文献库的 [n] 原样保留并报告");
-check(X.inlineTex("约 $5 到 $10", X.newCtx()) === "约 \\$5 到 \\$10", "金额里的 $ 不当成公式");
-const tbl = X.mdToTex("## 数据\n| 变量 | 来源 |\n| --- | --- |\n| x | [2] |\n- 第一点\n- 第二点", X.newCtx(["ka", "kb"]));
-check(/\\subsection\{数据\}/.test(tbl) && /\\begin\{tabularx\}/.test(tbl) && /x & \\cite\{kb\} \\\\/.test(tbl) && /\\begin\{itemize\}/.test(tbl), "标题 / 表格 / 列表转换", tbl);
-const papersX = [{ id: "f1", title: "Digital finance", author: "Smith J", year: "2021", venue: "JF", type: "J" }, { id: "f2", title: "数字普惠金融", author: "张三", year: "2020", venue: "经济研究", type: "J" }];
-const envX = (md) => ({ YMBib: Bib, secs: [{ name: "引言", md: md }], paradigm: "定量", level: "期刊", ledger: null, checks: [], model: "m", stamp: "2026-10-30 12:00:00", day: "2026-10-30", label: "研墨 v" + ver, en: false });
-const tex1 = X.buildLatex({ name: "P", topic: "T", papers: JSON.parse(JSON.stringify(papersX)) }, envX("正文[1]。"));
-check(tex1.text.includes("\\begin{filecontents*}[overwrite]{yanmo-refs.bib}") && tex1.text.includes("\\bibliographystyle{gbt7714-numerical}") && tex1.cited === 1 && /^% \\nocite\{\*\}/m.test(tex1.text), "LaTeX：内嵌 .bib、gbt7714、有引用时 \\nocite 注释掉");
-const tex2 = X.buildLatex({ name: "P", topic: "T", papers: JSON.parse(JSON.stringify(papersX)) }, envX("没有引用。"));
-check(/^\\nocite\{\*\}/m.test(tex2.text) && tex2.cited === 0, "LaTeX：正文没有引用时列出全部文献（\\nocite{*}）");
-const md1 = X.buildMarkdown({ name: "P", topic: "T", papers: papersX }, envX("第一段[1]\n第二段\n## 小节\n内容"));
-check(md1.text.startsWith("---\ntitle: \"T\"") && md1.text.includes("第一段[1]\n\n第二段") && md1.text.includes("### 小节") && md1.text.includes("## 参考文献"), "Markdown：front matter、每行一段、节内标题降级、参考文献");
+const samples = {};
+[["bib", "sample.bib"], ["ris", "sample.ris"], ["csl", "sample-csl.json"]].forEach(([k, f]) => { if (existsSync(join(ROOT, "assets/demo", f))) samples[k] = read("assets/demo/" + f); });
+check(Object.keys(samples).length === 3, "示例文件 assets/demo/sample.bib / sample.ris / sample-csl.json 都在");
+for (const r of require(join(ROOT, "assets/ym-selftest.js")).run(Bib, X, samples)) check(r.ok, r.name, r.detail);
+const demoPdf = existsSync(join(ROOT, "assets/demo/demo-paper.pdf")) ? readFileSync(join(ROOT, "assets/demo/demo-paper.pdf")) : null;
+check(!!demoPdf && demoPdf.subarray(0, 5).toString("latin1") === "%PDF-" && /\/Count 2\b/.test(demoPdf.toString("latin1")), "示例 PDF assets/demo/demo-paper.pdf 有效（2 页）");
 
-/* ---------------- 6 MCP ---------------- */
-section("6. MCP 服务冒烟测试");
+/* ---------------- 5 MCP ---------------- */
+section("5. MCP 服务冒烟测试");
 await (async function mcpSmoke() {
   const dir = mkdtempSync(join(tmpdir(), "yanmo-check-"));
   const file = join(dir, "yanmo-sync.json");
@@ -243,8 +202,8 @@ await (async function mcpSmoke() {
   }
 })();
 
-/* ---------------- 7 卫生 ---------------- */
-section("7. 文档与源码卫生");
+/* ---------------- 6 卫生 ---------------- */
+section("6. 文档与源码卫生");
 const mds = list(".", /\.md$/);
 const liquid = mds.filter(f => /\{\{|\{%/.test(read(f)));
 check(!liquid.length, mds.length + " 个 Markdown 文档里没有 {{ / {%（GitHub Pages 的 Jekyll 会把它们当模板）", liquid.join("，"));

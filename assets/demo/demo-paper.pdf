@@ -1,0 +1,90 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R /F2 8 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 2720 >>
+stream
+BT /F2 18 Tf 1 0 0 1 64 764.0 Tm (Mobile Money and Rural Entrepreneurship) Tj ET
+BT /F1 11 Tf 1 0 0 1 64 733.9 Tm (A fictional demo paper for testing YanMo - not a real study, do not cite) Tj ET
+BT /F1 10 Tf 1 0 0 1 64 715.9 Tm (YanMo Demo Team, 2026) Tj ET
+BT /F2 12.5 Tf 1 0 0 1 64 685.4 Tm (Abstract) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 664.3 Tm (This short document was generated for software testing only. It imitates the) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 649.1 Tm (structure of an empirical paper so that you can try highlighting, notes and AI close) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 633.9 Tm (reading in YanMo. All data and numbers below are invented. We ask whether access to) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 618.6 Tm (mobile money increases the probability that rural households start a non-farm) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 603.4 Tm (business. Using a fictional panel of 2,400 households observed from 2018 to 2022, we) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 588.2 Tm (find that adopting mobile money raises the annual probability of business entry by) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 573.0 Tm (3.1 percentage points.) Tj ET
+BT /F2 12.5 Tf 1 0 0 1 64 547.7 Tm (1 Introduction) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 526.6 Tm (Digital financial services lower transaction costs and make it easier for households) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 511.4 Tm (to share risk and to save. Earlier empirical work documents sizeable effects of) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 496.2 Tm (mobile money on consumption smoothing and poverty. This demo paper asks a narrower) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 480.9 Tm (question: does mobile money help rural households start a business? We focus on) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 465.7 Tm (non-farm self-employment, which is a common route out of poverty in rural areas.) Tj ET
+BT /F2 12.5 Tf 1 0 0 1 64 440.5 Tm (2 Data) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 419.4 Tm (The fictional sample covers 2,400 households in 120 villages. Mobile money adoption) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 404.1 Tm (equals one if the household holds an active mobile money account in a given year.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 388.9 Tm (Business entry equals one if the household starts a non-farm business during the) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 373.7 Tm (year. In the pooled sample the adoption rate is 46 percent and the business entry) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 358.5 Tm (rate is 7.8 percent. Control variables include household size, the education of the) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 343.2 Tm (household head, land holdings and the distance to the nearest bank branch.) Tj ET
+BT /F1 8 Tf 1 0 0 1 64 40 Tm (YanMo demo PDF - fictional content generated for software testing - page 1 of 2) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R /F2 8 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 1767 >>
+stream
+BT /F2 12.5 Tf 1 0 0 1 64 764.0 Tm (3 Empirical Strategy) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 742.9 Tm (We estimate a two-way fixed effects model: Entry_it = a + b MobileMoney_it + c X_it +) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 727.6 Tm (u_i + l_t + e_it, where u_i and l_t are household and year fixed effects and X_it is) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 712.4 Tm (the vector of controls. Standard errors are clustered at the village level. The) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 697.2 Tm (coefficient of interest is b.) Tj ET
+BT /F2 12.5 Tf 1 0 0 1 64 672.0 Tm (4 Results) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 650.8 Tm (The estimated coefficient b equals 0.031 with a standard error of 0.009, which is) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 635.6 Tm (significant at the 1 percent level. Relative to the mean entry rate of 7.8 percent,) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 620.4 Tm (this is an increase of about 40 percent. The effect is larger for women \(0.044\) than) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 605.2 Tm (for men \(0.019\). Dropping the year 2020 leaves the estimate almost unchanged \(0.029\).) Tj ET
+BT /F2 12.5 Tf 1 0 0 1 64 579.9 Tm (5 Limitations) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 558.8 Tm (Mobile money adoption is not randomly assigned, so the estimates may be biased by) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 543.6 Tm (unobserved ability or by local shocks that affect both adoption and entrepreneurship.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 528.4 Tm (Because all data in this document are fictional, none of the results may be cited.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 64 513.1 Tm (Use this file only to test the PDF reader, annotations and AI close reading in YanMo.) Tj ET
+BT /F1 8 Tf 1 0 0 1 64 40 Tm (YanMo demo PDF - fictional content generated for software testing - page 2 of 2) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+9 0 obj
+<< /Title (Mobile Money and Rural Entrepreneurship - YanMo demo PDF) /Author (YanMo Demo Team) /Subject (Fictional content for software testing) /Producer (yanmo make_demo_pdf) >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000257 00000 n 
+0000003029 00000 n 
+0000003165 00000 n 
+0000004984 00000 n 
+0000005081 00000 n 
+0000005183 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R /Info 9 0 R >>
+startxref
+5378
+%%EOF

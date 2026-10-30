@@ -1,0 +1,6 @@
+# 二进制文件不做换行转换：assets/demo/demo-paper.pdf 全是 ASCII，会被 git 误判成文本，
+# 在开了 core.autocrlf 的 Windows 上检出时会被改坏（PDF 的交叉引用表按字节偏移定位）
+*.pdf binary
+*.png binary
+*.jpg binary
+*.ico binary

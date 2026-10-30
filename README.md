@@ -5,7 +5,21 @@
 - 网页版：https://www.yanmo.io/
 - 专业版（可安装到桌面）：https://peacefulj.github.io/wenqu/
 - 不需要后端，不需要数据库，数据默认只存在你的浏览器里。
-- 当前版本：**v1.1.0**（[更新日志](CHANGELOG.md)）
+- 当前版本：**v1.2.0**（[更新日志](CHANGELOG.md)）
+
+## 在线试用
+
+打开就能用，不用安装、不用注册：
+
+| 页面 | 链接 | 说明 |
+| --- | --- | --- |
+| 🧪 试用与测试 | [try.html](https://peacefulj.github.io/wenqu/try.html) | 一键创建演示项目，下载示例文件（BibTeX / RIS / CSL-JSON / PDF），检测浏览器支持哪些功能 |
+| 🧭 科研工作台 | [studio.html](https://peacefulj.github.io/wenqu/studio.html) | 项目工作流：选题 → 文献 → 阅读 → 写作 → 修改 → 投稿 |
+| 🧰 工具台 | [studio.html?tab=search](https://peacefulj.github.io/wenqu/studio.html?tab=search) | 免建项目：检索 + 免费 PDF、AI 读论文、引用格式转换 |
+| ⚡ 参考稿 | [quick.html](https://peacefulj.github.io/wenqu/quick.html) | 输入题目，生成真实文献 + 提纲 + 分节底稿（需要 AI Key） |
+| 🗺 项目导图 | [map.html](https://peacefulj.github.io/wenqu/map.html) | 主题、提纲、草稿、文献、版本、校验画成一张图 |
+
+第一次用建议从「试用与测试」开始：点「一键创建演示项目」，再按页面上的步骤把导入、PDF 批注、导出、本地同步各试一遍。
 
 ![研墨首页](assets/screenshots/home.png)
 
@@ -92,6 +106,7 @@ Key 只保存在当前浏览器里，不会上传到我们的服务器；在公�
 
 ```text
 index.html / quick.html / studio.html / map.html     页面（workbench.html、tools.html 是旧地址跳转）
+try.html              试用与测试：演示项目、示例文件、浏览器检测、功能自测
 assets/
   version.js     版本号（唯一来源）与更新提示
   wq-core.js     存储（多标签页合并、备份格式）、AI 调用、流水线、diff、账本
@@ -105,6 +120,9 @@ assets/
   ym-pdf.js      PDF 阅读器、批注、AI 精读
   ym-export.js   Markdown / LaTeX 导出
   ym-sync.js     本地同步文件
+  ym-selftest.js 功能自测用例（scripts/check.mjs 与 try.html 共用）
+  ym-try.js      试用与测试页
+  demo/          示例文件：sample.bib / sample.ris / sample-csl.json、demo-paper.pdf（虚构内容）
   paradigms.js   学科范式与层级配置
   vendor/        cytoscape、marked、pdf.js、DOMPurify、citation.js
 mcp/yanmo-mcp.mjs     只读 MCP 服务
@@ -145,7 +163,7 @@ sw.js                 Service Worker（PWA 离线缓存）
 
 ## 开发
 
-没有打包步骤，修改 `assets/` 下的文件后刷新页面即可。提交前运行 `node scripts/check.mjs`；版本规则、发版步骤和不能改动的存储键名见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+没有打包步骤，修改 `assets/` 下的文件后刷新页面即可。提交前运行 `node scripts/check.mjs`，并在浏览器里打开 `try.html` 看一遍检测和自测结果；版本规则、发版步骤和不能改动的存储键名见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 欢迎提 issue 和 PR：修 bug、接新的模型服务商、补文献源、改界面都可以。
 

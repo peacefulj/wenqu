@@ -4,7 +4,7 @@
  *       node scripts/release.mjs --notes [版本号] [--out 文件]     输出某个版本的更新说明（给 gh release 用）
  * 发版时做的事（规则见 CONTRIBUTING.md）：
  *   1. 校验：语义化版本号、比当前版本大、CHANGELOG「## [未发布]」下面有内容
- *   2. 同步改版本号：assets/version.js（含日期）、sw.js、package.json、各页面页脚
+ *   2. 同步改版本号：assets/version.js（含日期）、sw.js、package.json、README、各页面页脚
  *   3. CHANGELOG：「[未发布]」的内容归到「[新版本] - 日期」，顶部留一个空的「[未发布]」，更新底部对比链接
  *   4. 打印接下来的 git / gh 命令——不会自动提交、打标签或推送
  */
@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO = "https://github.com/peacefulj/wenqu";
+const PAGES = "https://peacefulj.github.io/wenqu/";
 const args = process.argv.slice(2);
 const DRY = args.includes("--dry-run");
 const read = (f) => readFileSync(join(ROOT, f), "utf8");
@@ -46,7 +47,9 @@ if (args[0] === "--notes") {
   const ver = (args[1] && !args[1].startsWith("--")) ? args[1] : curVersion();
   const body = sectionOf(read("CHANGELOG.md"), ver);
   if (body == null || !body.trim()) die("CHANGELOG.md 里没有 [" + ver + "] 的内容");
-  const text = body.trim() + "\n\n---\n完整更新日志：" + REPO + "/blob/main/CHANGELOG.md\n";
+  const text = body.trim() + "\n\n---\n" +
+    "**在线试用**：[试用与测试](" + PAGES + "try.html)（一键演示项目 + 示例文件 + 浏览器检测） · [科研工作台](" + PAGES + "studio.html) · [参考稿](" + PAGES + "quick.html) · [项目导图](" + PAGES + "map.html)\n\n" +
+    "完整更新日志：" + REPO + "/blob/main/CHANGELOG.md\n";
   const out = optOf("--out");
   if (out) { writeFileSync(resolve(out), text); console.error("已写入 " + resolve(out)); }   // PowerShell 5.1 的「>」会存成 UTF-16，所以提供 --out
   else process.stdout.write(text);
@@ -85,6 +88,7 @@ plan("CHANGELOG.md", (s) => {
 plan("assets/version.js", (s) => s.replace(/version:\s*"[^"]+"/, 'version: "' + next + '"').replace(/date:\s*"[^"]+"/, 'date: "' + date + '"'), "版本号");
 plan("sw.js", (s) => s.replace(/const VERSION = "[^"]+";/, 'const VERSION = "' + next + '";'), "VERSION");
 plan("package.json", (s) => s.replace(/("version"\s*:\s*)"[^"]+"/, '$1"' + next + '"'), "version");
+plan("README.md", (s) => s.replace(/(当前版本：\*\*v)[^*]+(\*\*)/, "$1" + next + "$2"), "「当前版本：**v…**」");
 for (const h of readdirSync(ROOT).filter(f => f.endsWith(".html"))) {
   const t = read(h);
   if (/data-ym-version>/.test(t)) plan(h, (s) => s.replace(/(data-ym-version>)v[^<]*(<)/g, "$1v" + next + "$2"), "页脚版本号");

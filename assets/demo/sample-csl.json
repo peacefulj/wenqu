@@ -1,0 +1,18 @@
+[
+  {
+    "id": "demirguckunt2018global",
+    "type": "report",
+    "title": "The Global Findex Database 2017: Measuring Financial Inclusion and the Fintech Revolution",
+    "author": [
+      { "family": "Demirgüç-Kunt", "given": "Asli" },
+      { "family": "Klapper", "given": "Leora" },
+      { "family": "Singer", "given": "Dorothe" },
+      { "family": "Ansar", "given": "Saniya" },
+      { "family": "Hess", "given": "Jake" }
+    ],
+    "publisher": "World Bank",
+    "publisher-place": "Washington, DC",
+    "issued": { "date-parts": [[2018]] },
+    "DOI": "10.1596/978-1-4648-1259-0"
+  }
+]
