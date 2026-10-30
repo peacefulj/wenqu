@@ -25,47 +25,32 @@ function dlText(name, text, mime = "application/json") {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
-/* ---------- 存储与安全 ---------- */
+/* ---------- 存储与安全 ----------
+ * v1.1.0：读写统一走 wq-core——载入时校验结构（坏数据不再让页面打不开）、
+ * 多标签页按「本页是否改过」合并、删除留墓碑；损坏原文由 loadLocal 另存为 wenqu_studio.bak-*。 */
 const KEY = "wenqu_studio";
-function loadDB() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return { projects: [], cur: null };
-    try {
-      const d = JSON.parse(raw);
-      if (d && Array.isArray(d.projects)) return d;
-      throw new Error("结构异常");
-    } catch {
-      const bk = KEY + ".bak-" + Date.now(); // 损坏原文先备份，绝不静默丢弃
-      try { localStorage.setItem(bk, raw); } catch {}
-      console.warn("studio 数据损坏，原文已备份到", bk);
-      return { projects: [], cur: null };
-    }
-  } catch { return { projects: [], cur: null }; }
-}
+function loadDB() { return WQCore.loadLocal(); }
 let DB = loadDB();
 const save = () => {
-  try {
-    DB.savedAt = Date.now();
-    localStorage.setItem(KEY, JSON.stringify(DB));
-    if (window.WQStore) window.WQStore.mirror(DB); // v1.0：全量镜像到 IndexedDB（防丢+可自愈）
-  } catch (e) {
-    /* v1.0 配额自愈：先把版本正文归档到 IndexedDB 减重，再重试一次 */
-    if (window.WQStore && !save._healing) {
-      save._healing = true;
-      window.WQStore.archiveVersions(DB).then((r) => {
-        save._healing = false;
-        if (r && r.moved) {
-          try { localStorage.setItem(KEY, JSON.stringify(DB)); wqNotice("存储空间已满：已把 " + r.moved + " 条版本正文归档到 IndexedDB（腾出约 " + Math.round(r.freedChars / 10000 * 10) / 10 + " 万字符），已自动保存。"); }
-          catch (e2) { wqNotice("减重后仍保存失败：" + (e2?.message || e2) + "，请立即「⤓ 备份全部」。"); }
-        } else {
-          wqNotice("保存失败（存储空间已满或被禁用）：" + (e?.message || e) + "\n建议先「⤓ 备份全部」导出 JSON，再清理旧数据。");
-        }
-      });
-      return;
-    }
-    wqNotice("保存失败（存储空间已满或被禁用）：" + (e?.message || e) + "\n建议先「⤓ 备份全部」导出 JSON，再清理旧数据。");
+  const r = WQCore.saveLocal(DB);   // 内含 IndexedDB 全量镜像（防丢+可自愈）
+  if (r.ok) return;
+  const e = r.err;
+  /* v1.0 配额自愈：先把版本正文归档到 IndexedDB 减重，再重试一次 */
+  if (window.WQStore && !save._healing) {
+    save._healing = true;
+    window.WQStore.archiveVersions(DB).then((res) => {
+      save._healing = false;
+      if (res && res.moved) {
+        const r2 = WQCore.saveLocal(DB);
+        if (r2.ok) wqNotice("存储空间已满：已把 " + res.moved + " 条版本正文归档到 IndexedDB（腾出约 " + Math.round(res.freedChars / 10000 * 10) / 10 + " 万字符），已自动保存。");
+        else wqNotice("减重后仍保存失败：" + (r2.err?.message || r2.err) + "，请立即「⤓ 备份全部」。");
+      } else {
+        wqNotice("保存失败（存储空间已满或被禁用）：" + (e?.message || e) + "\n建议先「⤓ 备份全部」导出 JSON，再清理旧数据。");
+      }
+    });
+    return;
   }
+  wqNotice("保存失败（存储空间已满或被禁用）：" + (e?.message || e) + "\n建议先「⤓ 备份全部」导出 JSON，再清理旧数据。");
 };
 const cur = () => DB.projects.find(p => p.id === DB.cur);
 
@@ -105,7 +90,11 @@ function styleBlock() {
 
 /* ---------- AI ---------- */
 const AI_DEF = { base: "https://yingcompute.com/v1", model: "glm-5.3-flash" };
-function aiConf() { try { return { ...AI_DEF, ...JSON.parse(localStorage.getItem("wenqu_ai") || "{}") }; } catch { return { ...AI_DEF }; } }
+/* v1.1.0：统一走 WQCore.ai.conf（含「仅本次会话保存」的 Key） */
+function aiConf() {
+  if (window.WQCore && WQCore.ai && WQCore.ai.conf) return WQCore.ai.conf();
+  try { return { ...AI_DEF, ...JSON.parse(localStorage.getItem("wenqu_ai") || "{}") }; } catch { return { ...AI_DEF }; }
+}
 async function callAI(userMsg, maxTokens = 4096) {
   const c = aiConf();
   if (!c.key) throw new Error("未配置 API Key（页头「AI / 接口设置」里填好并保存）");
@@ -191,16 +180,23 @@ document.querySelectorAll(".stage[data-s]").forEach(b => b.addEventListener("cli
 /* ---------- 项目栏 ---------- */
 function renderProjects() {
   $("projList").innerHTML = DB.projects.map(p => `
-    <div class="proj ${p.id === DB.cur ? "on" : ""}" data-id="${p.id}">
+    <div class="proj ${p.id === DB.cur ? "on" : ""}" data-id="${esc(p.id)}">
       <div class="pname" title="${esc(p.name)}">${esc(p.name)}</div>
       <div class="pmeta">${esc(p.status)} · ${p.papers.length}篇 · ${esc(PQ(p).name)} · ${esc(LV(p).name)}</div>
-      <button class="pdel" data-del="${p.id}" title="删除">✕</button>
+      <button class="pdel" data-del="${esc(p.id)}" title="删除">✕</button>
     </div>`).join("") || '<p class="hint">还没有项目，点上方新建</p>';
   document.querySelectorAll(".proj").forEach(el => el.addEventListener("click", async e => {
     if (e.target.dataset.del) {
-      if (!(await wqConfirmAI({ title: "删除该项目？", lines: ["此操作不可撤销；建议先「⤓ 备份全部」"], okText: "删除" }))) return;
-      DB.projects = DB.projects.filter(p => p.id !== e.target.dataset.del);
-      if (DB.cur === e.target.dataset.del) DB.cur = DB.projects[0]?.id || null;
+      const delId = e.target.dataset.del;
+      /* v1.1.0：删除属于破坏性操作，不受「AI 前不再询问」开关影响，始终确认 */
+      const ok = window.wqChoose
+        ? (await wqChoose("删除该项目？", ["此操作不可撤销；建议先「⤓ 备份全部」", "项目里上传的 PDF 也会一并删除"], [{ key: "del", label: "删除" }, { key: "no", label: "取消", primary: true }])) === "del"
+        : confirm("删除该项目？此操作不可撤销");
+      if (!ok) return;
+      DB.projects = DB.projects.filter(p => p.id !== delId);
+      WQCore.markDeleted(DB, delId);   // 墓碑：其他标签页的旧快照不会把它写回来
+      if (window.YMPdf) YMPdf.removeProject(delId);
+      if (DB.cur === delId) DB.cur = DB.projects[0]?.id || null;
       save(); renderProjects(); renderAll(); return;
     }
     DB.cur = el.dataset.id; save(); renderProjects(); renderAll();
@@ -222,29 +218,55 @@ $("npOk").addEventListener("click", () => {
   renderProjects(); renderAll();
 });
 
-/* 备份导出/导入 */
-$("btnExportAll").addEventListener("click", () => {
-  dlText("wenqu-backup-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(DB, null, 2));
+/* 备份导出/导入
+ * v1.1.0：备份包含已归档到 IndexedDB 的版本正文（原来只导出 300 字预览）；
+ * 导入先校验结构，覆盖本机同名项目前先询问，可先导出一份本机备份。 */
+async function exportBackupFile(reason) {
+  const data = await WQCore.buildBackup(DB);
+  const nArc = Object.keys(data.archives || {}).length;
+  dlText("yanmo-backup-" + WQCore.localDay() + ".json", JSON.stringify(data, null, 2));
   try { localStorage.setItem("wenqu_lastBackup", new Date().toISOString()); } catch {}
-  const p = cur(); if (p) { trailAdd(p, "export", "备份全部", DB.projects.length + " 个项目"); save(); renderProcessLog(); }
+  const p = cur();
+  if (p) { trailAdd(p, "export", reason || "备份全部", DB.projects.length + " 个项目" + (nArc ? "（含 " + nArc + " 条归档版本正文）" : "")); save(); renderProcessLog(); }
   renderBackupHint();
-});
-$("importFile").addEventListener("change", async (e) => {
-  const f = e.target.files[0]; if (!f) return;
+  return data;
+}
+window.wqExportBackup = exportBackupFile;
+$("btnExportAll").addEventListener("click", () => { exportBackupFile().catch(err => wqNotice("备份失败：" + err.message)); });
+/* 导入备份文件（「⤒ 导入备份」与本地同步文件的「导入它」共用）；返回是否导入成功 */
+async function importBackupFile(f) {
   try {
-    const d = JSON.parse(await f.text());
-    if (!d || !Array.isArray(d.projects)) throw new Error("不是本平台的备份文件");
+    let raw;
+    try { raw = JSON.parse(await f.text()); } catch { throw new Error("不是有效的 JSON 文件"); }
+    const bk = WQCore.parseBackup(raw);
+    if (!bk.projects.length) throw new Error("文件里没有可导入的项目");
+    const clash = bk.projects.filter(pr => DB.projects.some(x => x.id === pr.id));
+    if (clash.length) {
+      const lines = clash.slice(0, 5).map(x => "「" + x.name + "」").concat(clash.length > 5 ? ["…等 " + clash.length + " 个"] : [], ["导入的版本会替换本机这些项目，建议先导出一份本机备份"]);
+      const act = window.wqChoose
+        ? await wqChoose("导入会覆盖本机 " + clash.length + " 个同名项目", lines, [{ key: "backup", label: "先备份再导入", primary: true }, { key: "go", label: "直接导入" }, { key: "cancel", label: "取消" }])
+        : (confirm("导入会覆盖本机 " + clash.length + " 个同名项目，继续？") ? "go" : "cancel");
+      if (act !== "backup" && act !== "go") return false;
+      if (act === "backup") await exportBackupFile("导入前自动备份");
+    }
+    const nArc = window.WQStore ? await WQStore.importArchives(bk.archives) : 0;
     let n = 0;
-    for (const pr of d.projects) {
+    for (const pr of bk.projects) {
       const i = DB.projects.findIndex(x => x.id === pr.id);
       if (i >= 0) DB.projects[i] = pr; else { DB.projects.unshift(pr); n++; }
     }
-    if (d.cur) DB.cur = DB.cur || d.cur;
+    if (bk.cur && !DB.projects.some(x => x.id === DB.cur)) DB.cur = bk.cur;
     save(); renderProjects(); renderAll();
-    const p = cur(); if (p) { trailAdd(p, "importT", "导入备份", "合并 " + d.projects.length + " 个项目（新导入 " + n + " 个）"); save(); renderProcessLog(); }
-    wqNotice(`导入完成：合并 ${d.projects.length} 个项目（其中新导入 ${n} 个）`);
-  } catch (err) { wqNotice("导入失败：" + err.message); }
-  finally { e.target.value = ""; }
+    const note = "合并 " + bk.projects.length + " 个项目（新导入 " + n + " 个）" + (nArc ? "，恢复归档版本正文 " + nArc + " 条" : "") + (bk.appVersion ? "；来源版本 v" + bk.appVersion : "");
+    const p = cur(); if (p) { trailAdd(p, "importT", "导入备份", note); save(); renderProcessLog(); }
+    wqNotice("导入完成：" + note);
+    return true;
+  } catch (err) { wqNotice("导入失败：" + err.message); return false; }
+}
+window.wqImportBackup = importBackupFile;
+$("importFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try { await importBackupFile(f); } finally { e.target.value = ""; }
 });
 
 /* ---------- 项目范式/层级配置（阶段1顶部，随时可改） ---------- */
@@ -298,7 +320,10 @@ function drawTrend(groups, topic) {
       <div class="tyr">${esc(g.key)}</div>
     </div>`).join("");
   const first = groups[0]?.count || 0;
-  const lastG = groups.findLast(g => g.key < "2026");        // 修复：原 find 恒取最早年份，增幅恒 0
+  /* 取最近一个完整年份（v1.1.0：不用 findLast，旧浏览器没有；当前年不完整故排除） */
+  const thisYear = String(new Date().getFullYear());
+  let lastG = null;
+  for (let gi = groups.length - 1; gi >= 0; gi--) { if (groups[gi].key < thisYear) { lastG = groups[gi]; break; } }
   const last = lastG?.count || groups[groups.length - 1]?.count || 0;
   const growth = first ? Math.round((last - first) / first * 100) : 0;
   $("trendBox").innerHTML = `
@@ -400,16 +425,19 @@ $("btnImportBasket").addEventListener("click", () => {
 
 function renderPapers() {
   const p = cur();
+  /* v1.1.0：新增「全文」列（PDF 阅读/批注/AI 精读，见 ym-pdf.js）；所有 id 进属性前转义 */
+  const pdfCell = (f) => (window.YMPdf ? YMPdf.cellHTML(p, f) : "");
   $("paperList").innerHTML = !p ? '<p class="hint">先新建项目</p>' :
-    (p.papers.length ? `<table class="tb"><tr><th>#</th><th>标题</th><th>年份</th><th>出处</th><th>摘要</th><th></th></tr>` +
+    (p.papers.length ? `<table class="tb"><tr><th>#</th><th>标题</th><th>年份</th><th>出处</th><th>摘要</th><th>全文</th><th></th></tr>` +
       p.papers.map((f, i) => `<tr>
         <td>${i + 1}</td>
-        <td>${esc(f.title.slice(0, 55))}${f.title.length > 55 ? "…" : ""}${f.doi ? `<br><a href="https://doi.org/${esc(f.doi)}" target="_blank" rel="noopener" class="mono">DOI</a>` : ""}</td>
+        <td>${esc(f.title.slice(0, 55))}${f.title.length > 55 ? "…" : ""}${f.author ? `<br><span class="hint">${esc(String(f.author).slice(0, 40))}</span>` : ""}${f.doi ? `<br><a href="https://doi.org/${esc(f.doi)}" target="_blank" rel="noopener" class="mono">DOI</a>` : ""}</td>
         <td>${esc(f.year || "—")}</td><td>${esc(f.venue || "—")}</td>
-        <td>${f.abs ? '<span class="badge b-ok">✓</span>' : `<button class="btn2 btn-sm" data-abs="${f.id}">补摘要</button>`}${(!f.doi && f.verify && f.verify.doiSuggest) ? `<br><button class="btn2 btn-sm" data-adoptdoi="${f.id}" title="核验匹配 ${esc(f.verify.doiSuggest)}（匹配度 ${f.verify.score}）">采纳DOI</button>` : ""}</td>
-        <td><button class="btn2 btn-sm warn" data-rm="${f.id}">删</button></td>
+        <td>${f.abs ? '<span class="badge b-ok">✓</span>' : `<button class="btn2 btn-sm" data-abs="${esc(f.id)}">补摘要</button>`}${(!f.doi && f.verify && f.verify.doiSuggest) ? `<br><button class="btn2 btn-sm" data-adoptdoi="${esc(f.id)}" title="核验匹配 ${esc(f.verify.doiSuggest)}（匹配度 ${esc(f.verify.score)}）">采纳DOI</button>` : ""}</td>
+        <td>${pdfCell(f)}</td>
+        <td><button class="btn2 btn-sm warn" data-rm="${esc(f.id)}">删</button></td>
       </tr>`).join("") + "</table>"
-      : '<p class="hint">文献库为空。可单条添加、批量粘贴 DOI，或从收藏篮导入。</p>');
+      : '<p class="hint">文献库为空。可单条添加、批量粘贴 DOI、从收藏篮导入，或用「📥 导入 Zotero / BibTeX / RIS」。</p>');
   document.querySelectorAll("[data-abs]").forEach(b => b.addEventListener("click", () => withBusy(b, () => fillAbs(b.dataset.abs))));
   document.querySelectorAll("[data-rm]").forEach(b => b.addEventListener("click", async () => {
     const p2 = cur(); if (!p2) return;
@@ -419,6 +447,7 @@ function renderPapers() {
       if (!ok) return;
     }
     p2.papers = p2.papers.filter(f => f.id !== b.dataset.rm);
+    if (window.YMPdf) YMPdf.remove(p2.id, b.dataset.rm);
     save(); renderPapers(); renderProjects();
   }));
   /* v1.0.1（QA P1-9）：核验匹配到的 DOI 一键采纳 */
@@ -622,7 +651,7 @@ ${outlineCtx(p0)}${designCtx}`;
     const gate = WQCore.citeDiff((p.draft || {})[sec] || "", txt);
     const usage = __usage;
     const model = (WQCore.ai.conf().model || "默认");
-    const cost = WQCore.ai.estCostText(usage ? usage.prompt_tokens : 0, usage ? usage.completion_tokens : 0);
+    const cost = WQCore.ai.estCostText(usage ? (usage.inTok || 0) : 0, usage ? (usage.outTok || 0) : 0);   /* v1.1.0：stream 返回的是 inTok/outTok */
     openSuggest4({ pid, sec, txt, gate, prog, out, model, cost, baseText: (p.draft || {})[sec] || "" });
   } catch (e) { prog.textContent = "失败：" + e.message; }
 }
@@ -778,9 +807,10 @@ $("btnExportDoc").addEventListener("click", () => {
     return `<h2>${esc2(s)}</h2>` + (t ? t.split(/\n+/).map(x => `<p>${esc2(x)}</p>`).join("") : "<p>〔本节未起草〕</p>");
   }).join("\n");
   const aiDecl = metaLines.length ? `<h2>AI 辅助说明</h2><p style="font-size:10.5pt;color:#555">本稿以下章节含 AI 辅助起草内容（模型 · 日期 · 依据）：<br>${metaLines.map(esc2).join("<br>")}</p>` : "";
-  const refs = p.papers.length ? `<h2>参考文献</h2><p style="font-size:10.5pt;line-height:1.4">` +
-    p.papers.map((f, i) => `[${i + 1}] ${esc2(f.author || "作者待补")}. ${esc2(f.title)}[${f.type || "J"}]. ${esc2(f.venue || "出处待补")}, ${esc2(f.year || "年份待补")}${f.doi ? ". DOI:" + esc2(f.doi) : ""}.`).join("<br>") + "</p>" : "";
-  const html = `<html><head><meta charset="utf-8"><style>body{font-family:SimSun,serif;font-size:12pt;line-height:1.6}h1{font-size:16pt;text-align:center}h2{font-size:14pt}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}${aiDecl}<p style="color:#888">—— 由研墨工作台辅助起草（${new Date().toISOString().slice(0, 10)}），引用与数据请人工核对 ——</p></body></html>`;
+  /* v1.1.0：参考文献按 GB/T 7714 生成（有卷期页码等结构化题录时更完整） */
+  const refLines = window.YMBib ? YMBib.gbList(p.papers) : p.papers.map((f, i) => `[${i + 1}] ${f.author || "作者待补"}. ${f.title}[${f.type || "J"}]. ${f.venue || "出处待补"}, ${f.year || "年份待补"}${f.doi ? ". DOI:" + f.doi : ""}.`);
+  const refs = p.papers.length ? `<h2>参考文献</h2><p style="font-size:10.5pt;line-height:1.4">` + refLines.map(esc2).join("<br>") + "</p>" : "";
+  const html = `<html><head><meta charset="utf-8"><style>body{font-family:SimSun,serif;font-size:12pt;line-height:1.6}h1{font-size:16pt;text-align:center}h2{font-size:14pt}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}${aiDecl}<p style="color:#888">—— 由${esc2((window.YANMO && YANMO.label) || "研墨")}辅助起草（${WQCore.localDay()}），引用与数据请人工核对 ——</p></body></html>`;
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" }));
   a.download = (p.topic || p.name || "论文全文").replace(/[\\/:*?"<>|]/g, "_") + ".doc";
@@ -986,7 +1016,8 @@ function vStamp() {
 function addVersion(p, kind, content, field) {
   if (!p || !content) return;
   p.versions = p.versions || [];
-  p.versions.unshift({ ts: vStamp(), kind: kind, content: String(content).slice(0, 12000), field: field || "", star: false });
+  /* v1.1.0：不再截断到 12000 字；超出配额时由 save() 的自愈把长正文归档到 IndexedDB */
+  p.versions.unshift({ ts: vStamp(), kind: kind, content: String(content), field: field || "", star: false });
   /* v3.1（E1）：40 条上限，⭐星标豁免淘汰；淘汰发生时明示条数，不再静默 */
   let vDrop = 0;
   while (p.versions.length > 40) {
@@ -1018,16 +1049,26 @@ function verDl(v, fmt) {
 async function verLoad(i) {
   const p = cur(); if (!p) return;
   const v = (p.versions || [])[i]; if (!v || !v.field || v.field === "tool") return;
-  /* v1.0：归档版本先回取全文 */
+  /* v1.0：归档版本先回取全文（v1.1.0：按版本自身的 archiveKey 取，不再按下标） */
   let content = v.content;
-  if (v.archived && window.WQStore) content = (await window.WQStore.getVersion(p.id, i)) || v.content;
+  if (v.archived && window.WQStore) {
+    const full = await window.WQStore.getVersion(p.id, v);
+    if (!full) { wqNotice("这个版本的完整正文没能从本机取回（可能清理过浏览器数据），已取消载入，避免用预览覆盖正文"); return; }
+    content = full;
+  }
   const f = v.field;
+  /* v1.1.0：载入前先把当前内容存一版，载错了能找回 */
+  const curText = (window.WQCore && WQCore.readField) ? WQCore.readField(p, f) : "";
+  if (curText && curText.trim() && curText !== content) addVersion(p, "载入前自动存档", curText, f);
   p.outs = p.outs || {};
-  if (f === "selection") p.selection = v.content;
+  if (f === "selection") p.selection = content;
   else if (f === "matrix") p.matrix = content;
   else if (f === "outline") { p.outline = content; p.outs.outline = content; p.showW = "outline"; }
   else if (f === "design") { p.design = content; p.outs.design = content; p.showW = "design"; }
-  else if (f.indexOf("draft:") === 0) { p.draft = p.draft || {}; const sec2 = f.slice(6); p.draft[sec2] = content; p.showW = "sec:" + sec2; }
+  else if (f.indexOf("draft:") === 0) {
+    p.draft = p.draft || {}; const sec2 = f.slice(6); p.draft[sec2] = content; p.showW = "sec:" + sec2;
+    if (p.draftRich) delete p.draftRich[sec2];   // v1.1.0：富文本是旧内容派生的，留着会让导出优先用到过期的富文本
+  }
   else if (f.indexOf("outs.") === 0) { const k = f.slice(5); p.outs[k] = content; if (["internal", "consistency", "aidecl"].indexOf(k) >= 0) p.showW = k; else p.showV = k; }
   save(); renderAll();
   $("verDrawer").classList.remove("open"); $("mask").classList.remove("open");
@@ -1116,7 +1157,7 @@ function verDiffRun() {
   } else {
     const vb = vs[+sb.value];
     if (!vb || vb === va) { out0.innerHTML = "<p class='hint'>请选择两个不同的版本</p>"; return; }
-    if (vb.archived && window.WQStore) { out0.innerHTML = "<p class='hint'>B 为归档版本，回取中…</p>"; window.WQStore.getVersion(p.id, +sb.value).then(c => run(c || vb.content, "B·" + vb.kind)); return; }
+    if (vb.archived && window.WQStore) { out0.innerHTML = "<p class='hint'>B 为归档版本，回取中…</p>"; window.WQStore.getVersion(p.id, vb).then(c => run(c || vb.content, "B·" + vb.kind)); return; }
     run(vb.content, "B·" + vb.kind);
   }
 }
@@ -1311,7 +1352,7 @@ function verOpen() {
     let content = v.content;
     if (v.archived && window.WQStore) {
       dt.innerHTML = '<p class="hint">从 IndexedDB 回取正文中…</p>';
-      content = (await window.WQStore.getVersion(p2.id, i)) || v.content;
+      content = (await window.WQStore.getVersion(p2.id, v)) || v.content;
     }
     dt.innerHTML = mdRender(content) + "<div style=\"margin-top:8px\"><button class=\"pill\" data-vdl=\"" + i + "\">⤓ .md</button> <button class=\"pill\" data-vdw=\"" + i + "\">⤓ Word</button>" + (v.field && v.field !== "tool" ? " <button class=\"pill\" data-vld=\"" + i + "\">↻ 载入回项目（迭代）</button>" : "") + " <button class=\"pill\" data-vstar=\"" + i + "\">" + (v.star ? "⭐ 取消星标" : "☆ 加星标") + "</button></div>";
     el.classList.add("open");

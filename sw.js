@@ -1,10 +1,13 @@
-/* 研墨平台 · Service Worker
+/* 研墨 · Service Worker
  * 策略：同源静态资产 cache-first（命中即离线可用）；跨域 API（OpenAlex/Crossref/Unpaywall/AI 中转）
- * 一律直连不缓存；页面导航离线时回退 studio.html。
- * 更新方式：改代码后把 CACHE 版本号 +1，旧缓存自动清理；用户刷新即得新版。
+ * 一律直连不缓存；页面导航网络优先，离线时回退缓存 / studio.html。
+ * 版本：VERSION 必须与 assets/version.js 一致——发布时运行 node scripts/release.mjs <版本号>，会一起改。
+ *       版本一变缓存名就变：新 SW 安装时重新下载全部资源，激活后清理旧缓存，页面上会提示「刷新」。
  */
 "use strict";
-const CACHE = "wenqu-v42";
+const VERSION = "1.1.0";
+const CACHE = "yanmo-v" + VERSION;
+const OWN = /^(wenqu|yanmo)-v/;   // 只清理研墨自己的旧缓存：github.io 同源下可能还有别的项目
 const SHELL = [
   "./",
   "index.html",
@@ -14,23 +17,29 @@ const SHELL = [
   "workbench.html",
   "map.html",
   "manifest.webmanifest",
+  "assets/version.js",
   "assets/style.css",
   "assets/map.css",
-  "assets/wq-map.js",
-  "assets/vendor/cytoscape.min.js",
   "assets/wb.css",
-  "assets/studio.js",
+  "assets/ym.css",
   "assets/wq-core.js",
-  "assets/wq-pptx.js",
-  "assets/wq-ui.js",
-  "assets/wq-quick.js",
   "assets/paradigms.js",
+  "assets/studio.js",
   "assets/wb.js",
-  "assets/tools.js",
+  "assets/wq-ui.js",
+  "assets/wq-pptx.js",
+  "assets/wq-quick.js",
+  "assets/wq-map.js",
+  "assets/ym-bib.js",
+  "assets/ym-refs.js",
+  "assets/ym-pdf.js",
+  "assets/ym-export.js",
+  "assets/ym-sync.js",
   "assets/vendor/marked.min.js",
   "assets/vendor/purify.min.js",
   "assets/vendor/pdf.min.js",
   "assets/vendor/pdf.worker.min.js",
+  "assets/vendor/cytoscape.min.js",
   "assets/icons/icon-192.png",
   "assets/icons/icon-512.png",
   "assets/icons/apple-touch-icon.png",
@@ -39,7 +48,8 @@ const SHELL = [
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE)
-      .then((c) => c.addAll(SHELL).catch(() => null)) // 单个资源失败不阻塞安装
+      /* 逐个缓存：单个失败不影响其他（addAll 一个失败就全部作废）；cache:"reload" 绕过 HTTP 缓存，免得把旧版文件存进新版缓存 */
+      .then((c) => Promise.all(SHELL.map((u) => c.add(new Request(u, { cache: "reload" })).catch(() => null))))
       .then(() => self.skipWaiting())
   );
 });
@@ -47,7 +57,7 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && OWN.test(k)).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -63,8 +73,10 @@ self.addEventListener("fetch", (e) => {
   if (req.mode === "navigate") {
     e.respondWith(
       fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => null);
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => null);
+        }
         return res;
       }).catch(() => caches.match(req).then((r) => r || caches.match("studio.html")))
     );

@@ -77,13 +77,16 @@
 
 <footer class="mfoot">
   导图是项目数据的可视化投影，编辑写回原项目（与工作台/快速稿同一份数据）。AI 产出均为学习参考，使用前请人工核对；数据只存本机浏览器，请定期到工作台备份。
+  <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.1.0</span></a>
 </footer>
 
+<script src="assets/version.js"></script>
 <script src="assets/vendor/marked.min.js"></script>
 <script src="assets/vendor/purify.min.js"></script>
 <script src="assets/wq-core.js"></script>
 <script src="assets/vendor/cytoscape.min.js"></script>
 <script src="assets/wq-map.js"></script>
+<script src="assets/ym-sync.js"></script>
 <script>
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));

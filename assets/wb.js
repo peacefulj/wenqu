@@ -11,6 +11,9 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+/* v1.1.0：外部链接只放行 http/https（数据源或用户输入里可能出现 javascript: 之类），并转义 */
+const safeUrl = (u) => { const s = String(u ?? "").trim(); return /^https?:\/\//i.test(s) ? esc(s) : "#"; };
+window.wqSafeUrl = safeUrl;
 /* v0.6：Markdown 渲染（marked + DOMPurify 本地库；缺失时降级为转义纯文本） */
 function mdRender(text) {
   const src = String(text == null ? "" : text);
@@ -202,8 +205,9 @@ async function maybeKeepToProject(kind, content) {
 }
 window.maybeKeepToProject = maybeKeepToProject;
 
-/* citation.js 懒加载（首屏省约 3.2MB） */
+/* citation.js 懒加载（首屏省约 3.2MB；v1.1.0 起 ym-refs.js 也复用它做兜底解析） */
 let _citeLoading = null;
+window.wqEnsureCiteJS = function () { return ensureCiteJS(); };
 function ensureCiteJS() {
   if (window.CiteJS) return Promise.resolve();
   if (_citeLoading) return _citeLoading;
@@ -254,35 +258,55 @@ function rlogRender() {
 rlogRender();
 /* ================= 设置（与 wenqu/tools.html 共用 localStorage 键） ================= */
 const AI_DEF = { base: "https://yingcompute.com/v1", model: "glm-5.3-flash" };
+/* v1.1.0：读写统一走 WQCore（Key 可选只存本次会话；API 地址非 HTTPS 时提醒） */
+function readAIConf() {
+  if (window.WQCore && WQCore.ai && WQCore.ai.conf) return WQCore.ai.conf();
+  try { return { ...AI_DEF, ...JSON.parse(localStorage.getItem("wenqu_ai") || "{}") }; } catch { return { ...AI_DEF }; }
+}
 function loadAI() {
-  try {
-    const s = JSON.parse(localStorage.getItem("wenqu_ai") || "{}");
-    $("aiBase").value = s.base || AI_DEF.base;
-    $("aiKey").value = s.key || "";
-    $("aiModel").value = s.model || AI_DEF.model;
-    if ($("aiConfirmChk")) $("aiConfirmChk").checked = s.confirm !== false;
-  } catch { $("aiBase").value = AI_DEF.base; $("aiModel").value = AI_DEF.model; }
+  const s = readAIConf();
+  $("aiBase").value = s.base || AI_DEF.base;
+  $("aiKey").value = s.key || "";
+  $("aiModel").value = s.model || AI_DEF.model;
+  if ($("aiConfirmChk")) $("aiConfirmChk").checked = s.confirm !== false;
+  if ($("aiKeySession")) $("aiKeySession").checked = !!s.sessionKey;
+  renderBaseWarn();
 }
 function getAI() {
-  try {
-    const s = JSON.parse(localStorage.getItem("wenqu_ai") || "{}");
-    return { base: (s.base || AI_DEF.base).replace(/\/+$/, ""), key: s.key || "", model: s.model || AI_DEF.model };
-  } catch { return { ...AI_DEF, key: "" }; }
+  const s = readAIConf();
+  return { base: String(s.base || AI_DEF.base).replace(/\/+$/, ""), key: s.key || "", model: s.model || AI_DEF.model };
 }
+function renderBaseWarn() {
+  const box = $("aiBaseWarn"); if (!box) return;
+  const w = (window.WQCore && WQCore.ai.baseWarning) ? WQCore.ai.baseWarning($("aiBase").value) : "";
+  box.hidden = !w; box.textContent = w ? "⚠ " + w : "";
+}
+$("aiBase").addEventListener("input", renderBaseWarn);
 $("aiSave").addEventListener("click", () => {
   /* v1.0 合并式保存：保留扩展字段（priceIn/priceOut 等由 wq-ui 写入），避免被整体覆写 */
-  let prev = {};
-  try { prev = JSON.parse(localStorage.getItem("wenqu_ai") || "{}") || {}; } catch (e) { prev = {}; }
-  lsSet("wenqu_ai", JSON.stringify(Object.assign({}, prev, {
-    base: $("aiBase").value.trim() || AI_DEF.base,
-    key: $("aiKey").value.trim(),
-    model: $("aiModel").value.trim() || prev.model || AI_DEF.model,
-    confirm: $("aiConfirmChk") ? $("aiConfirmChk").checked : true,
-  })));
+  const sessionOnly = $("aiKeySession") ? $("aiKeySession").checked : false;
+  let ok = true;
+  if (window.WQCore && WQCore.ai.setConf) {
+    const prev = readAIConf();
+    ok = WQCore.ai.setConf({
+      base: $("aiBase").value.trim() || AI_DEF.base,
+      model: $("aiModel").value.trim() || prev.model || AI_DEF.model,
+      confirm: $("aiConfirmChk") ? $("aiConfirmChk").checked : true,
+    }) && WQCore.ai.setKey($("aiKey").value.trim(), sessionOnly);
+  } else {
+    let prev = {};
+    try { prev = JSON.parse(localStorage.getItem("wenqu_ai") || "{}") || {}; } catch (e) { prev = {}; }
+    ok = lsSet("wenqu_ai", JSON.stringify(Object.assign({}, prev, {
+      base: $("aiBase").value.trim() || AI_DEF.base, key: $("aiKey").value.trim(),
+      model: $("aiModel").value.trim() || prev.model || AI_DEF.model, confirm: $("aiConfirmChk") ? $("aiConfirmChk").checked : true,
+    })));
+  }
+  if (!ok) toast("浏览器存储不可用（隐私模式或配额已满），设置没有保存");
   lsSet("wenqu_email", $("upEmail").value.trim());
   lsSet("wenqu_grobid", $("grobidUrl").value.trim());
   oaMail = $("upEmail").value.trim(); // 立即生效，不必刷新页面
-  $("aiSave").textContent = "已保存 ✓"; setTimeout(() => $("aiSave").textContent = "保存设置", 1500);
+  renderBaseWarn();
+  $("aiSave").textContent = sessionOnly ? "已保存 ✓（Key 仅本次会话）" : "已保存 ✓"; setTimeout(() => $("aiSave").textContent = "保存设置", 1800);
   if (typeof refreshAIButtons === "function") refreshAIButtons(); // 合并平台：保存后即时解除 AI 按钮置灰
 });
 $("btnSet").addEventListener("click", () => { $("setPanel").hidden = !$("setPanel").hidden; });
@@ -342,7 +366,7 @@ function renderBasket() {
       <div class="bm">${esc((x.authors || []).slice(0, 3).join(", "))}${(x.authors || []).length > 3 ? " 等" : ""} · ${esc(x.year || "")} · ${esc(x.venue || "")}</div>
       ${x.doi ? `<div class="bm mono">DOI: ${esc(x.doi)}</div>` : ""}
       <button class="pill" data-del="${i}" style="margin-top:6px">移除</button>
-      ${x.oa_url ? `<a class="pill ok" href="${esc(x.oa_url)}" target="_blank" rel="noopener">📥 PDF</a>` : ""}
+      ${x.oa_url ? `<a class="pill ok" href="${safeUrl(x.oa_url)}" target="_blank" rel="noopener">📥 PDF</a>` : ""}
     </div>`).join("") : '<p class="hint">空的。在「找文献」「新论文雷达」点【➕收藏】把文献放进来。</p>';
   $("bkList").querySelectorAll("[data-del]").forEach(el => el.addEventListener("click", () => delBasket(+el.dataset.del)));
 }
@@ -415,6 +439,7 @@ const QLANG_KEY = "wenqu_qlang", QN_KEY = "wenqu_qn";
 const transCache = {}, qOverride = {};
 let sRows = [], sQ = "", sMeta = null, sView = "cards", sLangView = "all";
 let mtxExtra = {}, mtxSort = { k: "", dir: -1 }, mtxStop = false;
+let mtxRunning = false;   /* v1.1.0：抽取进行中——表格每批重绘后按钮仍保持禁用，避免重复启动、重复扣费 */
 (function restoreSearchPrefs() {
   try {
     const l = localStorage.getItem(QLANG_KEY); if (l && $("qLang")) $("qLang").value = l;
@@ -596,15 +621,15 @@ function searchCard(w, i) {
   const doi = w.doi ? w.doi.replace("https://doi.org/", "") : "";
   const hasAb = !!w.abstract_inverted_index;
   return `<div class="rcard" data-i="${i}">
-    <div class="rt"><a href="${esc(w.doi || w.id)}" target="_blank" rel="noopener">${i + 1}. ${esc(w.display_name)}</a></div>
-    <div class="rmeta"><span class="lpill">${esc(LANG_NAME[langOf(w)] || langOf(w))}</span>${esc(w.publication_year || "")} · ${esc(venue)} · ${esc(authors.join(", "))}${(w.authorships || []).length > 4 ? " 等" : ""} · 被引 ${w.cited_by_count ?? 0}</div>
+    <div class="rt"><a href="${safeUrl(w.doi || w.id)}" target="_blank" rel="noopener">${i + 1}. ${esc(w.display_name)}</a></div>
+    <div class="rmeta"><span class="lpill">${esc(LANG_NAME[langOf(w)] || langOf(w))}</span>${esc(w.publication_year || "")} · ${esc(venue)} · ${esc(authors.join(", "))}${(w.authorships || []).length > 4 ? " 等" : ""} · 被引 ${esc(w.cited_by_count ?? 0)}</div>
     <div class="rbtns">
-      ${pdf ? `<a class="pill ok" href="${esc(pdf)}" target="_blank" rel="noopener">📥 免费 PDF</a>` : `<button class="pill no" data-helpbtn>无免费版 · 求助</button>`}
+      ${pdf ? `<a class="pill ok" href="${safeUrl(pdf)}" target="_blank" rel="noopener">📥 免费 PDF</a>` : `<button class="pill no" data-helpbtn>无免费版 · 求助</button>`}
       <button class="pill" data-act="ab" ${hasAb ? "" : "disabled"} ${hasAb ? "" : "title=该文无摘要无法速读"}>⚡AI速读</button>
       <button class="pill" data-act="add">➕收藏</button>
       <button class="pill" data-act="cite">引 ↗</button>
       ${doi ? `<a class="pill" href="https://doi.org/${esc(doi)}" target="_blank" rel="noopener">DOI</a>` : ""}
-      <a class="pill" href="${esc(w.id)}" target="_blank" rel="noopener">详情</a>
+      <a class="pill" href="${safeUrl(w.id)}" target="_blank" rel="noopener">详情</a>
     </div>
     <div class="ab" data-ab hidden></div>
     ${helpBoxHTML(w)}
@@ -686,8 +711,8 @@ function renderMatrix() {
       <span class="hint" id="mtxSel">已选 ${selN} 篇</span>
     </div>
     <div class="mbar">
-      <button class="pill" id="mtxAI" style="background:#7a3fa8;color:#fff;border-color:#7a3fa8">✨ AI 抽取字段（问题/方法/发现/局限）</button>
-      <button class="pill" id="mtxStop" hidden>停止</button>
+      <button class="pill" id="mtxAI" style="background:#7a3fa8;color:#fff;border-color:#7a3fa8" ${mtxRunning ? "disabled" : ""}>${mtxRunning ? "⏳ 抽取中…" : "✨ AI 抽取字段（问题/方法/发现/局限）"}</button>
+      <button class="pill" id="mtxStop" ${mtxRunning ? "" : "hidden"}>停止</button>
       <button class="pill" id="mtxCsv">⤓ CSV（Excel 可开）</button>
       <button class="pill" id="mtxMd">⤓ Markdown</button>
       <button class="pill" id="mtxMdCopy">复制 Markdown</button>
@@ -703,13 +728,13 @@ function renderMatrix() {
         return `<tr data-id="${esc(id)}">
           <td><input type="checkbox" class="mtxck" ${mtxSel.has(id) ? "checked" : ""}></td>
           <td class="mono">${sRows.indexOf(w) + 1}</td>
-          <td><a href="${esc(w.doi || w.id)}" target="_blank" rel="noopener">${esc(String(w.display_name || "").slice(0, 150))}</a>${ab ? ' <button class="pill mtxabs" title="展开摘要">摘要</button>' : ""}</td>
+          <td><a href="${safeUrl(w.doi || w.id)}" target="_blank" rel="noopener">${esc(String(w.display_name || "").slice(0, 150))}</a>${ab ? ' <button class="pill mtxabs" title="展开摘要">摘要</button>' : ""}</td>
           <td>${esc(authorsOf(w, 2))}${(w.authorships || []).length > 2 ? " 等" : ""}</td>
           <td class="mono">${esc(w.publication_year || "")}</td>
           <td class="mono">${w.cited_by_count ?? 0}</td>
           <td>${esc(venueOf(w).slice(0, 60))}</td>
           <td>${LANG_NAME[langOf(w)] || esc(langOf(w))}</td>
-          <td>${oa ? `<a class="pill ok" href="${esc(oa)}" target="_blank" rel="noopener">📥</a>` : '<span class="mtxempty">—</span>'}</td>
+          <td>${oa ? `<a class="pill ok" href="${safeUrl(oa)}" target="_blank" rel="noopener">📥</a>` : '<span class="mtxempty">—</span>'}</td>
           <td>${mtxCell(w, "q")}</td><td>${mtxCell(w, "method")}${mtxA(w) && !mtxA(w).noAb && mtxA(w).data ? "<br><span class=\"hint\">" + esc(mtxA(w).data) + "</span>" : ""}</td>
           <td>${mtxCell(w, "findings")}</td><td>${mtxCell(w, "limits")}</td>
         </tr>${ab ? `<tr class="absrow" data-abr="${esc(id)}" hidden><td></td><td colspan="12" style="color:var(--muted);font-size:12.5px">${esc(ab.slice(0, 600))}${ab.length > 600 ? "…" : ""}</td></tr>` : ""}`;
@@ -777,17 +802,24 @@ function bindMatrix() {
 function selOrView() { const rows = mtxRows(); return mtxSel.size ? rows.filter(w => mtxSel.has(w.id)) : rows; }
 
 async function mtxAIExtract() {
+  if (mtxRunning) { toast("抽取正在进行，请等它完成或先点「停止」"); return; }
   const rows = selOrView();
   const withAb = rows.filter(w => w.abstract_inverted_index);
   const noAb = rows.length - withAb.length;
   if (!withAb.length) { toast("所选论文都没有官方摘要，无法抽取"); return; }
   const B = 8, calls = Math.ceil(withAb.length / B);
-  if (!(await wqConfirmAI({ title: "AI 批量抽取矩阵字段？", lines: [
-    "论文 " + withAb.length + " 篇" + (noAb ? "（另有 " + noAb + " 篇无摘要，将标注「无摘要」）" : ""),
-    "分批调用 AI " + calls + " 次，约 " + Math.max(1, Math.round(calls * 0.5)) + "-" + Math.ceil(calls * 1.2) + " 分钟",
-    "只依据官方摘要抽取；摘要未提及的字段一律标注，不会编造",
-  ], okText: "开始抽取" }))) return;
-  const prog = $("mtxProg"); $("mtxAI").disabled = true; $("mtxStop").hidden = false; mtxStop = false;
+  mtxRunning = true;   // 确认框打开期间也算占用，防止连点弹出两个确认框
+  let okGo = false;
+  try {
+    okGo = await wqConfirmAI({ title: "AI 批量抽取矩阵字段？", lines: [
+      "论文 " + withAb.length + " 篇" + (noAb ? "（另有 " + noAb + " 篇无摘要，将标注「无摘要」）" : ""),
+      "分批调用 AI " + calls + " 次，约 " + Math.max(1, Math.round(calls * 0.5)) + "-" + Math.ceil(calls * 1.2) + " 分钟",
+      "只依据官方摘要抽取；摘要未提及的字段一律标注，不会编造",
+    ], okText: "开始抽取" });
+  } finally { if (!okGo) mtxRunning = false; }
+  if (!okGo) return;
+  renderMatrix();
+  const prog = $("mtxProg"); mtxStop = false;
   rows.forEach(w => { if (!w.abstract_inverted_index) mtxExtra[w.id] = { noAb: true }; });
   let done = 0;
   try {
@@ -817,7 +849,7 @@ async function mtxAIExtract() {
     mtxProgTxt = "抽取中断：" + e.message + "（已完成的批次已保留，可再点抽取续跑）";
     if (window.wqTrail) window.wqTrail("cancel", "检索矩阵·AI抽取", "中断：" + e.message.slice(0, 60));
   } finally {
-    $("mtxAI").disabled = false; $("mtxStop").hidden = true;
+    mtxRunning = false;
     renderMatrix();
   }
 }
@@ -912,14 +944,17 @@ async function analyze(prompt, label) {
   const CHUNK = 12000; // v0.5：加大分块，长文少调几次 AI（更快）
   const chunks = text.match(new RegExp("[\\s\\S]{1," + CHUNK + "}", "g")) || [];
   const calls = chunks.length === 1 ? 1 : chunks.length + 1;
-  const okGo = await wqConfirmAI({ title: "开始分析：" + label, lines: [
-    "文档：" + (docName || "（粘贴文本）") + " · " + text.length + " 字符",
-    "将分 " + chunks.length + " 段、调用 AI " + calls + " 次",
-    "长文分段通常需 1-3 分钟，期间请勿关闭页面"
-  ], okText: "开始分析" });
+  busy = true;   /* v1.1.0：确认框打开时就占用——原来确认期间还能再点一次，两路分析同时跑、重复扣费 */
+  let okGo = false;
+  try {
+    okGo = await wqConfirmAI({ title: "开始分析：" + label, lines: [
+      "文档：" + (docName || "（粘贴文本）") + " · " + text.length + " 字符",
+      "将分 " + chunks.length + " 段、调用 AI " + calls + " 次",
+      "长文分段通常需 1-3 分钟，期间请勿关闭页面"
+    ], okText: "开始分析" });
+  } finally { if (!okGo) busy = false; }
   if (!okGo) { prog.textContent = "已取消"; return; }
   out.hidden = false; $("btnCopy").hidden = true; out.textContent = "";
-  busy = true;
   const t0 = Date.now();
   let lastMsg = "正在分析（" + label + "）…";
   const timer = setInterval(function () { if (busy) prog.textContent = lastMsg + "（已用 " + Math.round((Date.now() - t0) / 1000) + "s）"; }, 1000);
@@ -1225,7 +1260,9 @@ function gbAuthors(authors) {
   const etal = /[\u4e00-\u9fff]/.test(list.join("")) ? "等" : "et al";
   return list.length > 3 ? list.slice(0, 3).join(", ") + ", " + etal : list.join(", ");
 }
-function gbEntry(c, idx) {
+/* v1.1.0：GB/T 7714 以 ym-bib.js 为准（项目文献库、导出、MCP 共用同一实现）；下面的本地实现只作兜底 */
+function gbEntry(c, idx) { return window.YMBib ? YMBib.gbEntry(c, idx) : gbEntryLocal(c, idx); }
+function gbEntryLocal(c, idx) {
   const t = GB_TYPE[c.type] || "Z"; // 未知文献类型按国标 [Z] 其他，不冒充期刊
   const title = String(c.title || "[无题]").replace(/\s+/g, " ").trim();
   const yr = c.issued?.["date-parts"]?.[0]?.[0] ? String(c.issued["date-parts"][0][0]) : "";
@@ -1331,7 +1368,7 @@ $("btnCiteOA").addEventListener("click", async () => {
     const ok = onlyPdf ? oaPdf : (oaPdf || oaLanding);
     if (ok) found++; else misses.push(c);
     rows.push(`<tr><td>${i + 1}</td><td>${esc(String(c.title).slice(0, 70))}${c.issued?.["date-parts"]?.[0]?.[0] ? ` <span class="mono">(${c.issued["date-parts"][0][0]})</span>` : ""}</td>
-      <td>${ok ? (oaPdf ? `<a class="pill ok" href="${esc(oaPdf)}" target="_blank" rel="noopener">📥 直接PDF</a>` : "") : ""} ${ok && !oaPdf ? `<a class="pill" href="${esc(oaLanding)}" target="_blank" rel="noopener">开放版本</a>` : ""}${!ok ? '<span class="pill no">无免费版</span>' : ""}</td>
+      <td>${ok ? (oaPdf ? `<a class="pill ok" href="${safeUrl(oaPdf)}" target="_blank" rel="noopener">📥 直接PDF</a>` : "") : ""} ${ok && !oaPdf ? `<a class="pill" href="${safeUrl(oaLanding)}" target="_blank" rel="noopener">开放版本</a>` : ""}${!ok ? '<span class="pill no">无免费版</span>' : ""}</td>
       <td>${c.DOI ? `<a class="pill" href="https://doi.org/${esc(c.DOI)}" target="_blank" rel="noopener">DOI</a>` : "—"}</td></tr>`);
     out.innerHTML = `<table class="tb"><tr><th>#</th><th>文献</th><th>免费全文</th><th>DOI</th></tr>${rows.join("")}</table>`;
     await sleep(400);
@@ -1546,11 +1583,11 @@ ${batch.map(b => b.line).join("\n")}`, { temperature: 0.2, max_tokens: 2048 });
     const pdf = oaLink(x.w);
     const cls = (x.score ?? 0) >= 80 ? "hi" : (x.score ?? 0) >= 60 ? "mid" : "";
     return `<div class="rcard" data-i="${i}">
-      <div class="rt"><span class="score ${cls}" style="margin-right:8px">${x.score ?? "?"}</span><a href="${esc(x.w.doi || x.w.id)}" target="_blank" rel="noopener">${esc(x.w.display_name)}</a></div>
+      <div class="rt"><span class="score ${cls}" style="margin-right:8px">${x.score ?? "?"}</span><a href="${safeUrl(x.w.doi || x.w.id)}" target="_blank" rel="noopener">${esc(x.w.display_name)}</a></div>
       ${x.why ? `<div class="why">💡 ${esc(x.why)}</div>` : ""}
       <div class="rmeta">${esc(x.w.publication_year || "")} · ${esc(x.w.primary_location?.source?.display_name || "")} · ${esc((x.w.authorships || []).slice(0, 3).map(a => a.author?.display_name || "").join(", "))}</div>
       <div class="rbtns">
-        ${pdf ? `<a class="pill ok" href="${esc(pdf)}" target="_blank" rel="noopener">📥 免费 PDF</a>` : `<button class="pill no" data-helpbtn>无免费版 · 求助</button>`}
+        ${pdf ? `<a class="pill ok" href="${safeUrl(pdf)}" target="_blank" rel="noopener">📥 免费 PDF</a>` : `<button class="pill no" data-helpbtn>无免费版 · 求助</button>`}
         <button class="pill" data-add="${i}">➕收藏</button>
         ${x.doi ? `<a class="pill" href="https://doi.org/${esc(x.doi)}" target="_blank" rel="noopener">DOI</a>` : ""}
       </div>
@@ -1581,7 +1618,7 @@ $("engOut").innerHTML = ENGINES.map(g => `
   <h3>${esc(g.sec)}</h3>
   <table class="tb"><tr><th>项目</th><th>星数 / 许可</th><th>是什么 → 怎么用</th><th>集成状态</th></tr>
   ${g.items.map(x => `<tr>
-    <td><a href="${esc(x.url)}" target="_blank" rel="noopener"><b>${esc(x.name)}</b></a></td>
+    <td><a href="${safeUrl(x.url)}" target="_blank" rel="noopener"><b>${esc(x.name)}</b></a></td>
     <td>★${esc(x.stars)}<br>${KIND_LABEL[x.kind]} <span class="mono">${esc(x.lic)}</span></td>
     <td>${esc(x.what)}<br><span class="hint">↳ ${esc(x.use)}</span></td>
     <td class="st">${x.st}</td>
@@ -1659,7 +1696,7 @@ const DBS = [
 ];
 function renderDB() {
   $("dbGrid").innerHTML = DBS.map(g => `<h3 style="margin-top:6px">${esc(g.g)}</h3><div class="rbtns" style="margin-bottom:10px">` +
-    g.items.map(x => `<a class="pill" style="font-size:13px;padding:6px 14px" href="${esc(x.u)}" target="_blank" rel="noopener" title="${esc(x.d)}">${esc(x.n)}</a>`).join("") + `</div>`).join("") +
+    g.items.map(x => `<a class="pill" style="font-size:13px;padding:6px 14px" href="${safeUrl(x.u)}" target="_blank" rel="noopener" title="${esc(x.d)}">${esc(x.n)}</a>`).join("") + `</div>`).join("") +
     '<p class="hint">悬停看说明。需要机构权限的库走你所在的学校/单位订阅；没有权限的用「求助」兜底通道（NSTL 传递 / 向作者索要）。<b>第三方服务条目</b>需自购卡自行登录，与本平台无隶属关系、不代理不留凭据，使用前请自行确认符合所在机构授权条款。</p>';
 }
 function dbGo() {
@@ -1680,7 +1717,7 @@ function getPortals() { try { return JSON.parse(localStorage.getItem(PORTAL_KEY)
 function renderPortals() {
   const p = getPortals();
   $("dbPortals").innerHTML = p.length ? p.map((x, i) =>
-    `<span class="pill" style="font-size:13px;padding:6px 14px;margin:0 8px 8px 0"><a href="${esc(x.u)}" target="_blank" rel="noopener">${esc(x.n)}</a> <button class="pill" data-dp="${i}" style="border:none;background:none;padding:0 2px;color:var(--bad);font-weight:800" title="删除">✕</button></span>`).join("")
+    `<span class="pill" style="font-size:13px;padding:6px 14px;margin:0 8px 8px 0"><a href="${safeUrl(x.u)}" target="_blank" rel="noopener">${esc(x.n)}</a> <button class="pill" data-dp="${i}" style="border:none;background:none;padding:0 2px;color:var(--bad);font-weight:800" title="删除">✕</button></span>`).join("")
     : '<p class="hint">还没有自定义入口。添加后点击名称即在新开页打开。</p>';
   $("dbPortals").querySelectorAll("[data-dp]").forEach(b => b.addEventListener("click", () => {
     const a = getPortals(); a.splice(+b.dataset.dp, 1); lsSet(PORTAL_KEY, JSON.stringify(a)); renderPortals();

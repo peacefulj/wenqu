@@ -1,0 +1,71 @@
+/* 研墨 v1.1.0 新模块样式：文献导入弹窗（ym-refs）、PDF 阅读器与批注（ym-pdf）、本地同步面板（ym-sync）
+ * 层级：阅读器 150 < 弹窗 160 < 选中文字工具条 170 < 页面通用对话框 wqChoose / wqNotice（200）
+ */
+
+/* ---------- 通用弹窗 ---------- */
+.ymmodal{position:fixed;inset:0;z-index:160;background:rgba(20,28,44,.38);display:flex;align-items:flex-start;justify-content:center;padding:6vh 12px;overflow:auto}
+.ymcard{background:#fff;border-radius:14px;box-shadow:0 18px 50px rgba(15,23,42,.25);width:min(760px,96vw);padding:14px 18px 16px;max-height:88vh;overflow:auto;box-sizing:border-box}
+.ymhead{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:15px}
+.ymdrop{display:block;border:2px dashed #c7d2fe;border-radius:12px;padding:18px;text-align:center;color:#5c6675;cursor:pointer;margin:8px 0;background:#f8faff}
+.ymdrop.over{border-color:#2456e6;background:#eef2ff;color:#2456e6}
+.ymprev{max-height:38vh;overflow:auto;margin-top:6px}
+.ymprev table.tb{font-size:12.5px}
+.ymprev table.tb td{padding:5px 8px}
+
+/* ---------- PDF 阅读器 ---------- */
+.ymr{position:fixed;inset:0;z-index:150;background:#eef1f6;display:flex;flex-direction:column;font-size:14px;color:#1b2434}
+.ymr-top{display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #e5e8ee;flex-wrap:wrap}
+.ymr-title{max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ymr-main{flex:1;display:flex;min-height:0}
+.ymr-pages{flex:1;overflow:auto;padding:18px 24px;position:relative}
+.ymr-page{position:relative;margin:0 auto 16px;background:#fff;box-shadow:0 2px 10px rgba(15,23,42,.12)}
+.ymr-page canvas{display:block}
+.ymr-pno{position:absolute;left:6px;bottom:4px;font-size:11px;color:#94a3b8;z-index:3;pointer-events:none}
+.ymr-hl{position:absolute;inset:0;z-index:1;pointer-events:none}
+.ymr-mark{position:absolute;border-radius:2px;mix-blend-mode:multiply}
+.ymr .c-y,.ymmodal .c-y{background:rgba(255,212,59,.55)}
+.ymr .c-g,.ymmodal .c-g{background:rgba(105,219,124,.5)}
+.ymr .c-b,.ymmodal .c-b{background:rgba(77,171,247,.45)}
+.ymr .c-r,.ymmodal .c-r{background:rgba(255,135,135,.5)}
+.ymr-mark.flash{animation:ymrflash 1.4s ease}
+@keyframes ymrflash{0%,40%{box-shadow:0 0 0 3px rgba(36,86,230,.75)}100%{box-shadow:0 0 0 0 rgba(36,86,230,0)}}
+.ymr-side{width:min(400px,38vw);border-left:1px solid #e5e8ee;background:#fff;display:flex;flex-direction:column;min-height:0}
+.ymr-tabs{display:flex;border-bottom:1px solid #e5e8ee}
+.ymr-tabs button{flex:1;border:none;background:none;padding:10px 6px;cursor:pointer;color:#5c6675;font-weight:600;font-size:13.5px;border-bottom:2px solid transparent}
+.ymr-tabs button.on{color:#2456e6;border-bottom-color:#2456e6}
+.ymr-sidebody{flex:1;overflow:auto;padding:10px 12px}
+.ymr-ann{border:1px solid #e5e8ee;border-radius:10px;padding:8px 10px;margin-bottom:8px;background:#fbfcfe}
+.ymr-annh{display:flex;align-items:center;gap:6px;font-size:12.5px;flex-wrap:wrap}
+.ymr-ann blockquote{margin:6px 0;padding:2px 8px;border-left:3px solid #cbd5e1;color:#334155;font-size:13px;line-height:1.55;max-height:9em;overflow:auto}
+.ymr-ann textarea{width:100%;box-sizing:border-box;font:inherit;font-size:12.5px;border:1px solid #e5e8ee;border-radius:8px;padding:5px 7px;resize:vertical}
+.ymr-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:0 0 10px}
+.ymr-bubble{position:fixed;z-index:170;display:flex;gap:2px;background:#1b2434;border-radius:10px;padding:5px 6px;box-shadow:0 8px 24px rgba(2,6,23,.3)}
+.ymr-bubble[hidden]{display:none}
+.ymr-bubble button{border:none;background:transparent;color:#fff;font-size:14px;cursor:pointer;padding:3px 7px;border-radius:6px}
+.ymr-bubble button:hover{background:rgba(255,255,255,.14)}
+.ymr-aiout{margin-top:8px;font-size:13.5px;line-height:1.65}
+.ymr-aiout.ymr-stream{white-space:pre-wrap;color:#334155}
+@media (max-width:760px){
+  .ymr-main{flex-direction:column}
+  .ymr-side{width:auto;height:42vh;border-left:none;border-top:1px solid #e5e8ee}
+  .ymr-pages{padding:10px}
+  .ymr-title{max-width:90vw}
+}
+
+/* ---------- pdf.js 3.11 文字层（取自 pdf.js web/text_layer_builder.css，Apache-2.0） ---------- */
+.textLayer{position:absolute;text-align:initial;inset:0;overflow:hidden;opacity:.25;line-height:1;-webkit-text-size-adjust:none;-moz-text-size-adjust:none;text-size-adjust:none;forced-color-adjust:none;transform-origin:0 0;z-index:2}
+.textLayer span,.textLayer br{color:transparent;position:absolute;white-space:pre;cursor:text;transform-origin:0% 0%}
+.textLayer span.markedContent{top:0;height:0}
+.textLayer ::selection{background:blue;background:AccentColor}
+.textLayer br::selection{background:transparent}
+.textLayer .endOfContent{display:block;position:absolute;inset:100% 0 0;z-index:-1;cursor:default;-webkit-user-select:none;user-select:none}
+.textLayer .endOfContent.active{top:0}
+
+/* ---------- 本地同步面板（项目栏） ---------- */
+#ymSyncBox{margin-top:10px;border:1px dashed #d6dbe5;border-radius:10px;padding:8px 10px;font-size:12.5px;background:#fbfcfe}
+#ymSyncBox:empty{display:none}
+#ymSyncBox .ys-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:2px 0}
+#ymSyncBox .ys-row b{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ymSyncBox .ys-warn{color:#b45309}
+#ymSyncBox[data-state="on"]{border-style:solid;border-color:#bbf7d0;background:#f0fdf4}
+#ymSyncBox[data-state="conflict"],#ymSyncBox[data-state="err"]{border-style:solid;border-color:#fde68a;background:#fffbeb}

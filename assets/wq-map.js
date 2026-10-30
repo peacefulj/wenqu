@@ -527,7 +527,7 @@
       if (vi < 0) return resolve(null);
       var v = p.versions[vi];
       if (!v.archived || !window.WQStore) return resolve(null);
-      window.WQStore.getVersion(p.id, vi).then(function (c) {
+      window.WQStore.getVersion(p.id, v).then(function (c) {   /* v1.1.0：按版本自身的 archiveKey 取 */
         ST.fullFetched[d.id] = 1;
         resolve(c || null);
       }, function () { resolve(null); });
@@ -540,11 +540,12 @@
     ST.selId = id;
     var K = KINDS[d.kind] || { label: d.kind, icon: "•" };
     var metaBits = [];
-    if (d.meta.ts) metaBits.push("🕓 " + d.meta.ts);
-    if (d.meta.year) metaBits.push("年份 " + d.meta.year);
-    if (d.meta.model) metaBits.push("模型 " + d.meta.model);
+    var E = WQCore.esc;   /* v1.1.0：元数据来自项目数据（可能来自导入的备份），进 innerHTML 前一律转义 */
+    if (d.meta.ts) metaBits.push("🕓 " + E(d.meta.ts));
+    if (d.meta.year) metaBits.push("年份 " + E(d.meta.year));
+    if (d.meta.model) metaBits.push("模型 " + E(d.meta.model));
     if (d.meta.review) metaBits.push("⚠ 迁移待复核");
-    if (d.meta.src) metaBits.push("来源 " + d.meta.src);
+    if (d.meta.src) metaBits.push("来源 " + E(d.meta.src));
     if (d.meta.stats && d.meta.stats.total != null)
       metaBits.push("⚠ 问题 " + (d.meta.stats.problem || 0) + " / " + d.meta.stats.total + (d.meta.stats.bound != null ? " · 已绑定 " + d.meta.stats.bound : ""));
     if (d.kind === "paper" && d.meta.doi) metaBits.push('<a href="https://doi.org/' + WQCore.esc(d.meta.doi) + '" target="_blank" rel="noopener">doi.org ↗</a>');
@@ -673,7 +674,7 @@
     if (bSnap) bSnap.addEventListener("click", function () {
       var p = reloadDB();
       var f = fieldOf(d);
-      p.versions.unshift({ ts: WQCore.stamp(), kind: "导图·手动存档", content: String(d.body || "").slice(0, 12000), field: f });
+      p.versions.unshift({ ts: WQCore.stamp(), kind: "导图·手动存档", content: String(d.body || ""), field: f });
       p.trail.unshift({ ts: WQCore.stamp(), type: "ver", label: "导图存档「" + d.t + "」", note: "" });
       capVersions(p);
       saveDB(); toast("已存版本 ✓"); rebuild(false, true); showCard(id);
@@ -1175,14 +1176,18 @@
     if (vi < 0) { toast("找不到该版本记录（可能已被容量上限淘汰）"); return; }
     var v = p.versions[vi];
     var lines = ["「" + v.kind + "」将覆盖 " + (v.field || "") + " 的当前内容", "覆盖前会自动为当前内容存一版「回滚前自动存档」（专家评审 A2：凡丢弃必先留版）"];
-    if (!v.archived && (v.content || "").length >= 12000) {
-      /* 默认拦截式警告：截断残本写回正文比不看更糟 */
-      lines.push("⚠ 此版本存档时被截断到 12000 字（原稿可能更长），载入将得到残本——建议先到工作台核对原稿");
+    if (!v.archived && (v.content || "").length === 12000) {
+      /* 默认拦截式警告：v1.1.0 之前的版本存档会被截断到 12000 字，正好 12000 字的多半是残本 */
+      lines.push("⚠ 此版本可能在旧版本中被截断到 12000 字（原稿可能更长），载入将得到残本——建议先到工作台核对原稿");
     }
     var ok = await confirmBox({ title: "把这个版本载入回项目？", lines: lines });
     if (!ok) return;
     var content = v.content;
-    if (v.archived && window.WQStore) content = (await window.WQStore.getVersion(p.id, vi)) || content;
+    if (v.archived && window.WQStore) {
+      var full = await window.WQStore.getVersion(p.id, v);
+      if (!full) { toast("没能从本机取回该版本的完整正文，已取消载入（避免用预览覆盖正文）"); return; }
+      content = full;
+    }
     var f = v.field || "";
     /* A2：覆盖前为当前内容自动存版——回滚不再是唯一不落版的写路径 */
     var cur = null;
@@ -1193,7 +1198,7 @@
     else if (f === "design") cur = p.design;
     else if (f.indexOf("outs.") === 0) cur = (p.outs || {})[f.slice(5)];
     if (typeof cur === "string" && cur.trim() && cur !== content) {
-      p.versions.unshift({ ts: WQCore.stamp(), kind: "回滚前自动存档", content: String(cur).slice(0, 12000), field: f });
+      p.versions.unshift({ ts: WQCore.stamp(), kind: "回滚前自动存档", content: String(cur), field: f });
       capVersions(p);
     }
     if (f === "selection") p.selection = content;
@@ -1473,13 +1478,18 @@
     });
     document.getElementById("btnBak").addEventListener("click", function () {
       reloadDB();
-      var blob = new Blob([JSON.stringify(ST.db)], { type: "application/json" });
-      var a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "研墨导图备份-" + new Date().toISOString().slice(0, 10) + ".json";
-      a.click();
-      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
-      toast("备份已下载 ✓（含全部项目与版本档案）");
+      /* v1.1.0：与工作台同一备份格式，包含已归档到 IndexedDB 的版本正文 */
+      WQCore.buildBackup(ST.db).then(function (data) {
+        var blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "yanmo-backup-" + WQCore.localDay() + ".json";
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+        try { localStorage.setItem("wenqu_lastBackup", new Date().toISOString()); } catch (e) {}
+        var n = Object.keys(data.archives || {}).length;
+        toast("备份已下载 ✓（含全部项目与版本档案" + (n ? "，其中归档正文 " + n + " 条" : "") + "）");
+      }, function (e) { toast("备份失败：" + (e && e.message)); });
     });
     sel.addEventListener("change", function () {
       ST.pid = sel.value; ST.selId = null;

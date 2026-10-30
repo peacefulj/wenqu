@@ -10,6 +10,7 @@
 <meta name="description" content="研墨：参考稿 Agent + 修改工作台（归属账本/贡献度）+ 校验中心（引用核验/数字绑定/回测）+ 数据复现。免费检索，AI 只按 token 计费，数据只存你的浏览器。">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="stylesheet" href="assets/wb.css">
+<link rel="stylesheet" href="assets/ym.css">
 <style>
   .wbgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
   @media (max-width:900px){.wbgrid{grid-template-columns:1fr}}
@@ -68,7 +69,7 @@
   <div id="setPanel" hidden><div class="container" style="padding:0">
     <div class="grid4">
       <div><label>API 地址（一般不用改，中转站/服务商提供）</label><input id="aiBase" type="text" placeholder="https://yingcompute.com/v1"></div>
-      <div><label>API Key（只存本浏览器；没有？注册后粘贴即可，检索类功能不需要它）</label><input id="aiKey" type="password" placeholder="sk-…"></div>
+      <div><label>API Key（只存本浏览器；没有？注册后粘贴即可，检索类功能不需要它）</label><input id="aiKey" type="password" placeholder="sk-…" autocomplete="off"></div>
       <div><label>模型</label><input id="aiModel" type="text" placeholder="glm-5.3-flash"></div>
       <div><label>邮箱（Unpaywall 用，选填）</label><input id="upEmail" type="text" placeholder="your@mail.com"></div>
     </div>
@@ -78,9 +79,11 @@
       <div><label>单价·输入（元/百万token，选填——用于本机费用折算）</label><input id="aiPriceIn" type="text" placeholder="如 2" aria-label="输入单价，元每百万token"></div>
       <div><label>单价·输出（元/百万token，选填）</label><input id="aiPriceOut" type="text" placeholder="如 8" aria-label="输出单价，元每百万token"></div>
     </div>
+    <div id="aiBaseWarn" class="callout c-warn" style="margin:8px 0 0;padding:8px 12px;font-size:13px" hidden></div>
     <div class="actions">
       <button class="btn2" id="aiSave">保存设置</button>
       <label class="hint" style="display:flex;align-items:center;gap:6px;margin-left:6px"><input type="checkbox" id="aiConfirmChk"> AI 操作前弹「确认/取消」</label>
+      <label class="hint" style="display:flex;align-items:center;gap:6px;margin-left:6px" title="Key 存在 sessionStorage，关掉浏览器就清除；公共电脑、实验室共用电脑建议勾选"><input type="checkbox" id="aiKeySession"> Key 只在本次会话有效</label>
       <span class="hint" id="usageBox"></span>
     </div>
     <div class="hint" style="margin-top:6px;line-height:1.7">
@@ -101,7 +104,8 @@
         <button id="btnVer" class="toolbtn" style="flex:1">📜 版本 (<span id="verCount">0</span>)</button>
         <label class="toolbtn" style="flex:1;cursor:pointer;text-align:center">⤒ 导入备份<input id="importFile" type="file" accept=".json" hidden></label>
       </div>
-      <p class="hint" style="margin-top:10px">AI 设置与收藏篮在页头；项目数据只存本浏览器（建议定期备份）。范式/层级在阶段1「项目配置」可改。</p>
+      <div id="ymSyncBox"></div>
+      <p class="hint" style="margin-top:10px">AI 设置与收藏篮在页头；项目数据只存本浏览器（建议定期备份，或开启上方的本地同步）。范式/层级在阶段1「项目配置」可改。</p>
     </aside>
 
     <!-- 右：双模式 -->
@@ -673,9 +677,9 @@
 </aside>
 
 <footer class="site"><div class="container">
-  <div class="links"><a href="index.html">首页</a> · <a href="quick.html">参考稿</a> · 发现问题？<a href="mailto:feedback@example.com">邮件告诉我们</a></div>
-  <div class="disc">本平台检索与 OA 链接来自 OpenAlex / Crossref / Unpaywall 官方公开接口，仅指向来源方标注的合法开放版本；不提供文献代下、代写服务。AI 产出（速读、审稿、综述草稿、引用匹配）均可能出错，使用前请人工核对；学术润色仅做语言表达优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器。</div>
-  <div>© 2026 研墨工作台 · 数据接口礼貌限速</div>
+  <div class="links"><a href="index.html">首页</a> · <a href="quick.html">参考稿</a> · 发现问题？<a href="mailto:info@yingcompute.com">邮件告诉我们</a> · <a href="https://github.com/peacefulj/wenqu/issues" target="_blank" rel="noopener">GitHub Issues</a></div>
+  <div class="disc">本平台检索与 OA 链接来自 OpenAlex / Crossref / Unpaywall 官方公开接口，仅指向来源方标注的合法开放版本；不提供文献代下、代写服务。AI 产出（速读、审稿、综述草稿、引用匹配）均可能出错，使用前请人工核对；学术润色仅做语言表达优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器；上传的 PDF 也只存在本机。</div>
+  <div>© 2026 研墨工作台 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.1.0</span> 更新日志</a> · 数据接口礼貌限速</div>
 </div></footer>
 
 <aside id="verDrawer">
@@ -735,14 +739,20 @@ document.addEventListener("click", e => {
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
 </script>
+<script src="assets/version.js"></script>
 <script src="assets/wq-core.js"></script>
 <script src="assets/paradigms.js"></script>
 <script src="assets/vendor/marked.min.js"></script>
 <script src="assets/vendor/purify.min.js"></script>
+<script src="assets/ym-bib.js"></script>
 <script src="assets/studio.js"></script>
 <script src="assets/wb.js"></script>
 <script src="assets/wq-ui.js"></script>
 <script src="assets/wq-pptx.js"></script>
+<script src="assets/ym-refs.js"></script>
+<script src="assets/ym-pdf.js"></script>
+<script src="assets/ym-export.js"></script>
+<script src="assets/ym-sync.js"></script>
 <script>
 /* PWA：SW 注册 + 安装按钮（Chromium localhost/HTTPS 下出现） */
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {

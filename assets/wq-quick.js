@@ -349,16 +349,20 @@
       if (lang === "en" && queries.length > 1) queries = [queries[1]];
       var sel = "display_name,publication_year,doi,primary_location,cited_by_count,abstract_inverted_index,authorships";
       var per = Math.min(200, c.proj._form.refsN);
-      var packs = [];
+      var packs = [], fails = 0, lastErr = "";
+      /* v1.1.0：区分「网络/限流失败」与「真的没命中」——原来一律提示“题目可能太具体”，误导用户去改题目 */
+      var oaGet = async function (url) {
+        try {
+          var r = await fetch(url);
+          if (!r.ok) { fails++; lastErr = "HTTP " + r.status + (r.status === 429 ? "（请求过于频繁）" : ""); return []; }
+          var j = await r.json();
+          return (j && j.results) || [];
+        } catch (e) { fails++; lastErr = (e && e.message) || "网络错误"; return []; }
+      };
       for (var qi = 0; qi < queries.length; qi++) {
-        var dd = { results: [] };
-        try { dd = await fetch(OA + "?search=" + encodeURIComponent(queries[qi]) + "&per-page=" + per + "&select=" + sel + mail()).then(function (r) { return r.json(); }); } catch (e) {}
-        packs.push(dd.results || []);
+        packs.push(await oaGet(OA + "?search=" + encodeURIComponent(queries[qi]) + "&per-page=" + per + "&select=" + sel + mail()));
       }
-      try {
-        var d2 = await fetch(OA + "?search=" + encodeURIComponent(queries[0]) + "&per-page=" + per + "&sort=cited_by_count:desc&select=" + sel + mail()).then(function (r) { return r.json(); });
-        packs.push(d2.results || []);
-      } catch (e) {}
+      packs.push(await oaGet(OA + "?search=" + encodeURIComponent(queries[0]) + "&per-page=" + per + "&sort=cited_by_count:desc&select=" + sel + mail()));
       var seen = new Set(), refs = [];
       var push = function (w) {
         if (!w || !w.display_name) return;
@@ -371,7 +375,7 @@
         refs.push({
           n: refs.length + 1, title: w.display_name, year: w.publication_year || "", doi: doi,
           venue: (w.primary_location && w.primary_location.source && w.primary_location.source.display_name) || "",
-          cited: w.cited_by_count || 0, author: authorStr, abs: abstractFromInverted(w.abstract_inverted_index)
+          cited: w.cited_by_count || 0, author: authorStr, authors: au0.slice(0, 30), abs: abstractFromInverted(w.abstract_inverted_index)
         });
       };
       /* v1.0.3：轮流配额合并——避免第一个检索词占满名额、其他语言被挤出 */
@@ -381,13 +385,14 @@
         packs.forEach(function (rs) { if (rs[ri]) push(rs[ri]); });
       }
       refs = refs.slice(0, c.proj._form.refsN);
-
-      refs = refs.slice(0, c.proj._form.refsN);
-      if (refs.length < 10) throw new Error("OpenAlex 命中过少（" + refs.length + " 篇）——题目可能太具体，换个表述重试");
+      if (refs.length < 10) {
+        if (fails && fails >= packs.length) throw new Error("OpenAlex 暂时连不上（" + lastErr + "）——不是题目的问题，稍等一两分钟后点「续跑」");
+        throw new Error("OpenAlex 命中过少（" + refs.length + " 篇）——题目可能太具体，换个表述重试" + (fails ? "（另有 " + fails + " 次检索失败：" + lastErr + "）" : ""));
+      }
       c.proj.refDraft = c.proj.refDraft || {};
       c.proj.refDraft.refs = refs;
       c.proj.papers = refs.map(function (r0, i) {
-        return { id: "f" + c.proj.id + "_" + i, title: r0.title, year: String(r0.year || ""), doi: r0.doi, venue: r0.venue, type: "J", author: r0.author || "", abs: (r0.abs || "").slice(0, 1200) };
+        return { id: "f" + c.proj.id + "_" + i, title: r0.title, year: String(r0.year || ""), doi: r0.doi, venue: r0.venue, type: "J", author: r0.author || "", authors: r0.authors || [], abs: (r0.abs || "").slice(0, 1200) };
       });
       c.save();
       report("✓ 检索到 " + refs.length + " 篇（含 " + refs.filter(function (x) { return x.abs; }).length + " 篇带摘要）· 检索词：" + queries.join(" ＋ "));

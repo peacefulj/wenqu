@@ -28,6 +28,22 @@
   })();
 
   /* ================= 公共小件 ================= */
+  /* v1.1.0：富文本只保留排版标签——导入的备份、粘贴进来的内容里可能夹带脚本或事件属性 */
+  const RICH_FORBID = ["style", "form", "input", "button", "textarea", "select", "option", "iframe", "frame", "object", "embed", "svg", "math", "link", "meta", "base"];
+  function sanitizeRich(html) {
+    const s = String(html || "");
+    if (!s) return "";
+    if (window.DOMPurify) return DOMPurify.sanitize(s, { FORBID_TAGS: RICH_FORBID, FORBID_ATTR: ["srcset", "action", "formaction"] });
+    return plainToRich(htmlToPlain(s));   // 没有 DOMPurify 时退化为纯文本段落
+  }
+  /* 排版模板 CSS 只允许普通样式声明：去掉能跳出 <style> 的字符、外部引用与脚本 */
+  function cleanCss(css) {
+    return String(css || "")
+      .replace(/<\/?\s*style/gi, "").replace(/[<>]/g, "")
+      .replace(/@import[^;]*;?/gi, "").replace(/expression\s*\(/gi, "(")
+      .replace(/javascript\s*:/gi, "").replace(/url\s*\(/gi, "(")
+      .slice(0, 8000);
+  }
   function P() { try { return cur(); } catch (e) { return null; } }
   function plainLen(s) { return String(s || "").replace(/\s+/g, "").length; }
   function mdInline(t) { return esc(t).replace(/\n/g, "<br>"); }
@@ -91,7 +107,7 @@
     /* v1.0.6：富文本容器内容与当前节同步（切项目/切节/恢复） */
     if (typeof editorRich === "function" && editorRich()) {
       const sr = (p.draftRich || {})[sec];
-      editorRich().innerHTML = sr || plainToRich(saved);
+      editorRich().innerHTML = (sr && sanitizeRich(sr)) || plainToRich(saved);
     }
     renderContrib();
     renderWbDiff(sec, refText, mineBox.value);
@@ -111,14 +127,12 @@
       if (!(await askAI("改写这段并采用？（按你的写作档案改成你的表达）", ["调用 AI 1 次，改写结果直接进入「我的稿」"], "改写并采用"))) return;
       $("wbProg").textContent = "改写中…";
       try {
-        const lv = LV(p0);
+        /* v1.1.0：修正参数（原来把 3000 当成 opts 传，温度与上限都没生效） */
         const r = await WQCore.ai.stream(
-          "把下面这段学术文字改写成作者自己的表达：保持论点、引用编号[n]与术语不变；按写作档案调整句式、衔接与用词；不增删事实；不做规避检测处理，只做语言层面的重写。\n" + styleBlock() + "\n\n【原文】\n" + para, 3000, { temperature: 0.4 });
-        const p = liveProj(pid); if (!p) return;
-        setMineText(r.text, true);   /* v1.0.7：富文本/纯文本统一写入 */
-        logLedger(p, sec, "rewrite", para.length);
-        saveDraft(sec, true);
-        $("wbProg").textContent = "✓ 已改写并采用（" + r.usage.inTok + "+" + r.usage.outTok + " tok）";
+          "把下面这段学术文字改写成作者自己的表达：保持论点、引用编号[n]与术语不变；按写作档案调整句式、衔接与用词；不增删事实；不做规避检测处理，只做语言层面的重写。\n" + styleBlock() + "\n\n【原文】\n" + para, { max_tokens: 3000, temperature: 0.4 });
+        if (!liveProj(pid)) return;
+        const here = applyAIToSection(pid, sec, r.text, "append", "rewrite", para.length);   /* 富文本/纯文本统一写入；已切节则写回原节 */
+        $("wbProg").textContent = (here ? "✓ 已改写并采用（" : "✓ 已改写并写入「" + sec + "」（") + r.usage.inTok + "+" + r.usage.outTok + " tok）";
       } catch (e) { $("wbProg").textContent = "失败：" + e.message; }
     })));
     $("wbRefPane").querySelectorAll("[data-why]").forEach(b => b.addEventListener("click", () => withBusy(b, async () => {
@@ -145,6 +159,36 @@
     p.ledger[sec] = p.ledger[sec] || [];
     p.ledger[sec].unshift({ ts: WQCore.stamp(), action, chars: chars || 0 });
     if (p.ledger[sec].length > 100) p.ledger[sec].length = 100;
+  }
+
+  /* v1.1.0：AI 结果回来时用户可能已切到别的节或项目——结果写回发起时的那一节，
+     不动编辑器里正在显示的内容（原来会把 A 节的改写写进 B 节，再存到 A 节名下）。
+     返回 true 表示结果已进入当前编辑器。 */
+  function applyAIToSection(pid, sec, text, mode, action, chars) {
+    const p = liveProj(pid); if (!p || !text) return false;
+    const sameView = wbState.pid === pid && has("wbSec") && $("wbSec").value === sec;
+    if (sameView) {
+      setMineText(text, mode === "append");
+      logLedger(p, sec, action, chars);
+      saveDraft(sec, true);
+      return true;
+    }
+    p.draft = p.draft || {};
+    const old = p.draft[sec] || "";
+    const next = (mode === "append" && old.trim()) ? old.replace(/\s+$/, "") + "\n\n" + text : text;
+    if (old.trim()) addVersion(p, "改写前自动存档·" + sec, old, "draft:" + sec);
+    p.draft[sec] = next;
+    if (p.draftRich) delete p.draftRich[sec];
+    logLedger(p, sec, action, chars);
+    addVersion(p, "我的稿·" + sec, next, "draft:" + sec);
+    trailAdd(p, "ai", "AI 改写写回·" + sec, "发起后切换了章节，结果写回原节");
+    save(); renderProjects();
+    toast("改写结果已写入「" + sec + "」——你已切到别的节，当前编辑器没有改动");
+    return false;
+  }
+  /* 当前编辑器里的正文（富文本模式取派生纯文本） */
+  function currentMine() {
+    try { return editorPlainValue().plain; } catch (e) { return has("wbMine") ? $("wbMine").value : ""; }
   }
 
   /* v1.0.7（QA三轮 P0-1）：正文统一写入口——富文本/纯文本双模式都正确落位 */
@@ -199,8 +243,8 @@
   (function bindWorkbench() {
     if (!has("wbSec")) return;
     $("wbSec").addEventListener("change", async () => {
-      /* v1.0.1（QA P1-4）：有未保存修改时先询问，不再静默覆盖 */
-      const prevSec = wbState.sec, mine = $("wbMine").value;
+      /* v1.0.1（QA P1-4）：有未保存修改时先询问，不再静默覆盖；v1.1.0：富文本模式也检查（原来只看隐藏的文本框） */
+      const prevSec = wbState.sec, mine = currentMine();
       const p = P();
       const saved = (p && p.draft && p.draft[prevSec]) || "";
       if (prevSec && mine.trim() && mine !== saved) {
@@ -244,19 +288,17 @@
     });
     $("wbRewrite").addEventListener("click", () => withBusy($("wbRewrite"), async () => {
       const p0 = P(); const sec = $("wbSec").value; if (!p0) return toast("先新建项目");
-      const mine = $("wbMine").value.trim();
+      const mine = currentMine().trim();
       if (!mine) return toast("先在右侧写入内容（采用或自写），再整节改写");
       const pid = p0.id;
       if (!(await askAI("整节改写为你的表达？", ["「" + sec + "」全文将按写作档案重写（调用 AI 1 次）", "改写后原稿仍可在版本档案找回"], "开始改写"))) return;
       $("wbProg").textContent = "整节改写中…";
       try {
         const r = await WQCore.ai.stream(
-          "把下面这一节学术论文文字改写成作者自己的表达：保持论点结构、引用编号[n]、术语与数据不变；按写作档案调整句式、衔接与用词；分段保持清晰；只做语言层面重写，不做规避检测处理。" + styleBlock() + "\n\n【本节原文】\n" + mine, 6000, { temperature: 0.4 });
-        const p = liveProj(pid); if (!p) return;
-        setMineText(r.text, false);   /* v1.0.7：富文本/纯文本统一写入（整节替换） */
-        logLedger(p, sec, "rewrite_full", plainLen(mine));
-        saveDraft(sec, true);
-        $("wbProg").textContent = "✓ 已改写保存";
+          "把下面这一节学术论文文字改写成作者自己的表达：保持论点结构、引用编号[n]、术语与数据不变；按写作档案调整句式、衔接与用词；分段保持清晰；只做语言层面重写，不做规避检测处理。" + styleBlock() + "\n\n【本节原文】\n" + mine, { max_tokens: 6000, temperature: 0.4 });
+        if (!liveProj(pid)) return;
+        const here = applyAIToSection(pid, sec, r.text, "replace", "rewrite_full", plainLen(mine));
+        $("wbProg").textContent = here ? "✓ 已改写保存" : "✓ 已改写并写回「" + sec + "」";
       } catch (e) { $("wbProg").textContent = "失败：" + e.message; }
     }));
     $("wbAsk").addEventListener("click", () => {
@@ -568,7 +610,7 @@
       const parts = secList.map(s => {
         const rich = (p.draftRich || {})[s];
         let t = p.draft?.[s] || "";
-        const richClean = rich ? rich.replace(/〔生成：[^〕]*〕/g, "") : "";
+        const richClean = rich ? sanitizeRich(rich).replace(/〔生成：[^〕]*〕/g, "") : "";
         if (t) t = t.replace(/〔生成：[^〕]*〕/g, "").trim();
         return `<h2>${esc2(s)}</h2>` + (richClean ? richClean : (t ? t.split(/\n+/).map(x => `<p>${esc2(x)}</p>`).join("") : "<p>〔本节未写〕</p>"));
       }).join("\n");
@@ -589,10 +631,11 @@
       (p.checks || []).forEach(c => { if (!latest[c.kind]) latest[c.kind] = c; });
       const ckLines = Object.values(latest).map(c => c.label + "：" + (c.stats && c.stats.problem != null ? (c.stats.problem ? c.stats.problem + " 项待处理" : "通过") + "（" + c.ts + "）" : c.ts));
       const ckDecl = ckLines.length ? '<h2>校验记录（最近）</h2><p style="font-size:10.5pt;color:#555">' + ckLines.map(esc2).join("<br>") + "</p>" : "";
-      const refs = p.papers.length ? "<h2>参考文献</h2><p style=\"font-size:10.5pt;line-height:1.4\">" +
-        p.papers.map((f, i) => "[" + (i + 1) + "] " + esc2(f.author || "作者待补") + ". " + esc2(f.title) + "[" + (f.type || "J") + "]. " + esc2(f.venue || "出处待补") + ", " + esc2(f.year || "年份待补") + (f.doi ? ". DOI:" + esc2(f.doi) : "") + ".").join("<br>") + "</p>" : "";
-      const css = (window.WQTemplate && WQTemplate.activeCss()) || EXP_CSS[$("expFmt") ? $("expFmt").value : "plain"] || EXP_CSS.plain;
-      const html = `<html><head><meta charset="utf-8"><style>${css}table{border-collapse:collapse}th,td{border:1px solid #999;padding:4px 8px}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}${aiDecl}${ckDecl}<p style="color:#888">—— 由研墨工作台辅助完成（${WQCore.stamp()}）；引用与数据请人工核对 ——</p></body></html>`;
+      /* v1.1.0：参考文献按 GB/T 7714 生成 */
+      const refLines = window.YMBib ? YMBib.gbList(p.papers) : p.papers.map((f, i) => "[" + (i + 1) + "] " + refTxt(f));
+      const refs = p.papers.length ? "<h2>参考文献</h2><p style=\"font-size:10.5pt;line-height:1.4\">" + refLines.map(esc2).join("<br>") + "</p>" : "";
+      const css = cleanCss((window.WQTemplate && WQTemplate.activeCss()) || EXP_CSS[$("expFmt") ? $("expFmt").value : "plain"] || EXP_CSS.plain);
+      const html = `<html><head><meta charset="utf-8"><style>${css}table{border-collapse:collapse}th,td{border:1px solid #999;padding:4px 8px}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}${aiDecl}${ckDecl}<p style="color:#888">—— 由${esc2((window.YANMO && YANMO.label) || "研墨")}辅助完成（${WQCore.stamp()}）；引用与数据请人工核对 ——</p></body></html>`;
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" }));
       a.download = (p.topic || p.name || "论文全文").replace(/[\\/:*?"<>|]/g, "_") + ".doc";
@@ -680,6 +723,8 @@
   }
 
   function refTxt(f) {
+    /* v1.1.0：有 ym-bib 时按 GB/T 7714 输出（含卷期页码等结构化题录），去掉开头的 [n] */
+    if (window.YMBib) { try { return YMBib.gbEntry(YMBib.paperToCSL(f), 0).replace(/^\[0\]\s*/, ""); } catch (e) {} }
     return (f.author ? f.author + ". " : "") + f.title + "[" + (f.type || "J") + "]. " +
       (f.venue || "出处待补") + ", " + (f.year || "年份待补") + (f.doi ? ". DOI: " + f.doi : "") + ".";
   }
@@ -816,13 +861,14 @@
   })();
 
 
-  /* ---- v1.0.5（QA二轮 P3）：有未保存修改时，离开页面前提示 ---- */
+  /* ---- v1.0.5（QA二轮 P3）：有未保存修改时，离开页面前提示（v1.1.0：富文本模式也算，且只注册一次） ---- */
   window.addEventListener("beforeunload", function (e) {
     try {
-      const m = document.getElementById("wbMine");
-      if (m && m.value.trim() && m.value !== (wbState.lastSaved || "")) {
-        e.preventDefault(); e.returnValue = "";
-      }
+      if (!has("wbMine") || $("wbMain").hidden) return;
+      const p = P(), sec = wbState.sec;
+      const saved = (p && p.draft && sec && p.draft[sec]) || "";
+      const mine = currentMine();
+      if (mine.trim() && mine !== saved) { e.preventDefault(); e.returnValue = ""; }
     } catch (err) {}
   });
 
@@ -832,15 +878,16 @@
    * 纯文本派生存 p.draft[sec]（diff/账本/校验逻辑不变）。导出优先用富文本。
    * ================================================================ */
   function htmlToPlain(html) {
-    /* v1.0.7：用 div 真正解析 HTML（textarea.innerHTML 不解析标签，会把 <p> 漏进纯文本）；
-       段落闭合转双换行，保证 diff/归属账本的段落切分准确 */
-    const d = document.createElement("div");
-    d.innerHTML = String(html || "")
+    /* v1.0.7：真正解析 HTML（textarea.innerHTML 不解析标签，会把 <p> 漏进纯文本）；
+       段落闭合转双换行，保证 diff/归属账本的段落切分准确。
+       v1.1.0：改用 DOMParser 的惰性文档解析——普通 div 解析时 <img onerror> 之类会被执行 */
+    const src = String(html || "")
       .replace(/<\s*(\/p|\/div|\/h[1-6]|\/blockquote)[^>]*>/gi, "\n\n")
       .replace(/<\s*br[^>]*>/gi, "\n")
       .replace(/<\s*\/li[^>]*>/gi, "\n")
       .replace(/<li[^>]*>/gi, "• ");
-    return (d.textContent || "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    const doc = new DOMParser().parseFromString("<body>" + src + "</body>", "text/html");
+    return ((doc.body && doc.body.textContent) || "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   }
   function plainToRich(text) {
     return String(text || "").split(/\n{2,}|\n/).map(x => x.trim()).filter(Boolean)
@@ -861,7 +908,7 @@
     if (!mine || !box) return;
     if (rich) {
       const saved = (p.draftRich || {})[sec];
-      box.innerHTML = saved || plainToRich(mine.value);
+      box.innerHTML = (saved && sanitizeRich(saved)) || plainToRich(mine.value);
       box.style.display = ""; mine.style.display = "none";
     } else {
       if (box.innerHTML && !mine.value.trim()) mine.value = htmlToPlain(box.innerHTML);
@@ -906,6 +953,14 @@
     box.style.cssText = "border:1px solid var(--line);border-radius:10px;padding:10px;min-height:280px;max-height:520px;overflow:auto;font-size:13px;line-height:1.7;background:#fff";
     $("wbMine").before(box);
     $("wbMine").style.display = "none";
+    /* v1.1.0：粘贴进富文本时先清洗（网页/Word 里复制来的内容可能带脚本、事件属性或大段样式） */
+    box.addEventListener("paste", function (e) {
+      const dt = e.clipboardData; if (!dt) return;
+      const html = dt.getData("text/html");
+      if (!html) return;   // 纯文本粘贴交给浏览器
+      e.preventDefault();
+      document.execCommand("insertHTML", false, sanitizeRich(html));
+    });
     setEditorMode(editorIsRich(), $("wbSec").value);
     /* 保存：富文本派生纯文本 */
     const origSave = saveDraft;
@@ -917,7 +972,7 @@
       p.draft[sec] = v;
       if (editorIsRich()) {
         p.draftRich = p.draftRich || {};
-        p.draftRich[sec] = editorRich().innerHTML;
+        p.draftRich[sec] = sanitizeRich(editorRich().innerHTML);
       } else {
         p.draftRich = p.draftRich || {};
         delete p.draftRich[sec];
@@ -953,7 +1008,7 @@
   }
   function tplActiveCss() {
     const act = localStorage.getItem(TPL_ACTIVE);
-    if (act) { const t = tplAll().find(x => x.id === act); if (t) return t.css; }
+    if (act) { const t = tplAll().find(x => x.id === act); if (t) return cleanCss(t.css); }
     return null;
   }
   function tplCssFromParams(j) {
@@ -1026,7 +1081,7 @@
         })();
         if (!j || !j.css) { $m("tplMsg").textContent = "AI 返回格式异常，请重试"; return; }
         const list = tplMineList();
-        const t = { id: "t" + Date.now(), name: (j.name || namePrefix).slice(0, 40), css: j.css, source: "AI草稿·以官方规范为准", ts: WQCore.stamp() };
+        const t = { id: "t" + Date.now(), name: String(j.name || namePrefix).slice(0, 40), css: cleanCss(j.css), source: "AI草稿·以官方规范为准", ts: WQCore.stamp() };
         list.unshift(t);
         localStorage.setItem(TPL_KEY, JSON.stringify(list));
         $m("tplMsg").textContent = "✓ 已存入「我的模板」（务必对照官方规范核对）";
@@ -1061,7 +1116,7 @@
         const list = tplMineList();
         const t = list.find(x => x.id === id);
         const ta = $m("tplList").querySelector('[data-tplcss="' + id + '"]');
-        if (t && ta) { t.css = ta.value; localStorage.setItem(TPL_KEY, JSON.stringify(list)); toast("已保存"); }
+        if (t && ta) { t.css = cleanCss(ta.value); localStorage.setItem(TPL_KEY, JSON.stringify(list)); toast(t.css === ta.value ? "已保存" : "已保存（已去掉不允许的内容：<、@import、url( 等）"); }
         drawList();
       }
     });
@@ -1088,7 +1143,11 @@
         const arr = JSON.parse(txt);
         if (!Array.isArray(arr)) throw new Error("格式不对");
         const list = tplMineList();
-        arr.forEach(function (t) { if (t && t.name && t.css) { t.id = t.id || "t" + Date.now() + Math.floor(Math.random() * 999); list.unshift(t); } });
+        arr.forEach(function (t) {
+          if (!t || !t.name || !t.css) return;
+          /* v1.1.0：别人分享的模板只取名称与清洗后的 CSS，其余字段一律不要 */
+          list.unshift({ id: "t" + Date.now() + Math.floor(Math.random() * 99999), name: String(t.name).slice(0, 40), css: cleanCss(t.css), source: "导入", ts: WQCore.stamp() });
+        });
         localStorage.setItem(TPL_KEY, JSON.stringify(list));
         drawList(); toast("导入完成");
       }).catch(function (e) { toast("导入失败：" + e.message); });
@@ -1186,16 +1245,6 @@
     } catch (e) { box.textContent = "失败：" + e.message; }
   }
 
-
-  /* ---- v1.0.5：有未保存修改时，离开页面前提示 ---- */
-  window.addEventListener("beforeunload", function (e) {
-    try {
-      const m = document.getElementById("wbMine");
-      if (m && m.value.trim() && m.value !== (wbState.lastSaved || "")) {
-        e.preventDefault(); e.returnValue = "";
-      }
-    } catch (err) {}
-  });
 
   /* v1.0.7（QA三轮 P1-2）：存量项目批量补作者（Crossref 按 DOI，一次 ≤25 篇） */
   $("btnFillAuthors") && $("btnFillAuthors").addEventListener("click", () => withBusy($("btnFillAuthors"), async () => {

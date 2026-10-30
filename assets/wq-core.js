@@ -6,15 +6,20 @@
  *   4) WQDiff  —— 段落级 diff（含段内字符级 LCS）
  *   5) WQLedger —— 归属账本：段落来源判定（ai_ref / mixed / user）与本人贡献度
  * 约定：本文件先于 wq-ui.js 加载；quick.html 也可单独使用（不依赖 studio.js）。
+ * v1.1.0：载入时校验项目结构；多标签页按「本页是否改过」合并、删除留墓碑；版本档案不再截断、归档用唯一键；
+ *         备份含归档正文（buildBackup/parseBackup）；Key 可只存本次会话；超时与手动停止分开提示；用量按本地日期。
+ * 存储键名（wenqu_*、wenqu-idb）沿用旧名，不能改——改了用户已有数据会“消失”。
  */
 (function () {
   "use strict";
 
   var LS_DB = "wenqu_studio";   // 与 studio.js 同一把钥匙：快速模式与工作台共享项目库
   var LS_AI = "wenqu_ai";
+  var LS_AI_SESSION = "wenqu_ai_session";   // v1.1.0：「仅本次会话保存 Key」存在 sessionStorage
   var LS_USAGE = "wenqu_usage";
   var IDB_NAME = "wenqu-idb";
   var IDB_VER = 1;
+  var APP_VERSION = (window.YANMO && window.YANMO.version) || "1.1.0";
 
   var esc = function (s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -29,13 +34,75 @@
   function uid(pre) { return (pre || "x") + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
   /* ================= 1) 存储层 ================= */
-  function loadLocal() {
-    var empty = { projects: [], cur: null, _loadedAt: Date.now() };
+  /* v1.1.0：结构校验——导入的坏备份、旧版本残留的异常字段不再让页面崩溃（渲染处大量假定字段类型） */
+  function asArr(x) { return Array.isArray(x) ? x : []; }
+  function asObj(x) { return x && typeof x === "object" && !Array.isArray(x) ? x : {}; }
+  function asStr(x) { return typeof x === "string" ? x : (x == null ? "" : String(x)); }
+  function sanitizeProject(p, i) {
+    if (!p || typeof p !== "object" || Array.isArray(p)) return null;
+    if (typeof p.id !== "string" || !p.id) p.id = uid("p") + "_" + (i || 0);
+    p.name = asStr(p.name || p.topic || "未命名项目");
+    p.topic = asStr(p.topic);
+    p.status = asStr(p.status || "选题中");
+    p.papers = asArr(p.papers).filter(function (f) { return f && typeof f === "object" && !Array.isArray(f); }).map(function (f, j) {
+      if (typeof f.id !== "string" || !f.id) f.id = "f" + uid("") + "_" + j;
+      f.title = asStr(f.title);
+      ["author", "venue", "doi", "abs", "type"].forEach(function (k) { if (f[k] != null && typeof f[k] !== "string") f[k] = asStr(f[k]); });
+      if (f.year != null && typeof f.year !== "string") f.year = asStr(f.year);
+      if (f.annots != null) f.annots = asArr(f.annots).filter(function (a) { return a && typeof a === "object"; });
+      return f;
+    });
+    p.versions = asArr(p.versions).filter(function (v) { return v && typeof v === "object" && !Array.isArray(v); }).map(function (v) {
+      v.content = asStr(v.content); v.kind = asStr(v.kind); v.ts = asStr(v.ts); v.field = asStr(v.field);
+      return v;
+    });
+    p.trail = asArr(p.trail).filter(function (t) { return t && typeof t === "object"; });
+    p.draft = asObj(p.draft);
+    Object.keys(p.draft).forEach(function (k) { p.draft[k] = asStr(p.draft[k]); });
+    if (p.draftRich != null) p.draftRich = asObj(p.draftRich);
+    p.outs = asObj(p.outs);
+    ["selection", "matrix", "outline", "design"].forEach(function (k) { if (p[k] != null && typeof p[k] !== "string") p[k] = asStr(p[k]); });
+    if (p.trend != null) p.trend = Array.isArray(p.trend) ? p.trend.filter(function (g) { return g && typeof g.key === "string"; }) : null;
+    if (p.ref != null && (typeof p.ref !== "object" || Array.isArray(p.ref))) delete p.ref;
+    if (p.ref) { p.ref.sections = asObj(p.ref.sections); if (!Array.isArray(p.ref.order)) p.ref.order = Object.keys(p.ref.sections); }
+    if (p.refDraft != null) p.refDraft = asObj(p.refDraft);
+    ["ledger", "nummap", "mapState"].forEach(function (k) { if (p[k] != null) p[k] = asObj(p[k]); });
+    ["journal", "checks", "datacards", "reflows"].forEach(function (k) { if (p[k] != null) p[k] = asArr(p[k]); });
+    return p;
+  }
+  function sanitizeDB(d) {
+    d = d && typeof d === "object" && !Array.isArray(d) ? d : {};
+    var seen = {}, out = [];
+    asArr(d.projects).forEach(function (p, i) {
+      var q = sanitizeProject(p, i);
+      if (!q) return;
+      if (seen[q.id]) q.id = q.id + "_" + i;
+      seen[q.id] = 1; out.push(q);
+    });
+    d.projects = out;
+    if (d.cur != null && typeof d.cur !== "string") d.cur = null;
+    d.deleted = asObj(d.deleted);
+    return d;
+  }
+  /* 删除墓碑：别的标签页的旧快照不能把已删除的项目写回来；30 天后清理 */
+  function pruneDeleted(del) {
+    var out = {}, now = Date.now();
+    Object.keys(asObj(del)).forEach(function (k) { var t = +del[k] || 0; if (now - t < 30 * 86400000) out[k] = t; });
+    return out;
+  }
+
+  var BASE_RAW = null;   /* v1.1.0：本页最近一次读/写的磁盘原文——用来判断“本页改过哪些项目” */
+  /* opts.peek=true：只读一眼（备份/同步用），不改变本页的合并基准 */
+  function loadLocal(opts) {
+    var peek = !!(opts && opts.peek);
+    var empty = { projects: [], cur: null, deleted: {}, _loadedAt: Date.now() };
+    var raw = null;
+    try { raw = localStorage.getItem(LS_DB); } catch (e) { return empty; }
+    if (!raw) { if (!peek) BASE_RAW = null; return empty; }
     try {
-      var raw = localStorage.getItem(LS_DB);
-      if (!raw) return empty;
       var d = JSON.parse(raw);
       if (d && Array.isArray(d.projects)) {
+        sanitizeDB(d);
         /* v1.0.5：页面中途被关/刷新会留下 pipeline.status="running" 的僵尸——
            载入时统一改判为可续跑的中断，否则永远显示"生成中"且状态误导 */
         d.projects.forEach(function (p0) {
@@ -45,49 +112,100 @@
             if (p0.status === "参考稿生成中") p0.status = "参考稿中断（可续跑）";
           }
         });
+        if (!peek) BASE_RAW = raw;
         d._loadedAt = Date.now();
         return d;
       }
-    } catch (e) { /* 损坏由 studio.js 统一处理；快速模式读到损坏就当空库 */ }
-    return empty;
+      throw new Error("结构异常");
+    } catch (e) {
+      if (peek) return empty;
+      /* 损坏原文先另存一份，绝不静默丢弃（v1.1.0：从 studio.js 收拢到这里，所有页面同一口径） */
+      try { localStorage.setItem(LS_DB + ".bak-" + Date.now(), raw); } catch (e2) {}
+      try { console.warn("[研墨] 项目库损坏，原文已另存为 " + LS_DB + ".bak-*"); } catch (e3) {}
+      BASE_RAW = null;
+      return empty;
+    }
+  }
+  /* v1.1.0（多标签页合并）：别的标签页在本页上次读写之后保存过时，逐项目决定用谁——
+     本页没改过的项目 → 用磁盘版（别人可能刚改过）；本页改过的 → 用本页版；
+     本页删过的 → 不写回；别处删过、本页没改过的 → 尊重删除。 */
+  function mergeProjects(db, disk) {
+    var base = null;
+    try { base = BASE_RAW ? sanitizeDB(JSON.parse(BASE_RAW)) : null; } catch (e) { base = null; }   /* 与内存版同一口径规整后再比 */
+    var baseJ = {};
+    asArr(base && base.projects).forEach(function (p) { if (p && p.id) baseJ[p.id] = JSON.stringify(p); });
+    var changed = function (p) { return !(p.id in baseJ) || JSON.stringify(p) !== baseJ[p.id]; };
+    var delDisk = asObj(disk.deleted), delMine = asObj(db.deleted);
+    var mine = {};
+    asArr(db.projects).forEach(function (p) { mine[p.id] = p; });
+    var out = [], seen = {};
+    asArr(disk.projects).forEach(function (dp) {
+      if (!dp || !dp.id) return;
+      seen[dp.id] = 1;
+      if (delMine[dp.id] && !mine[dp.id]) return;
+      var mp = mine[dp.id];
+      out.push(mp && changed(mp) ? mp : dp);
+    });
+    asArr(db.projects).forEach(function (mp) {
+      if (seen[mp.id]) return;
+      if (delDisk[mp.id] && !changed(mp)) return;
+      if ((mp.id in baseJ) && !changed(mp)) return;   /* 本页读到过、没改过、磁盘上已没有 → 是别处删除的 */
+      out.unshift(mp);
+    });
+    return out;
   }
   function saveLocal(db) {
-    /* v1.0.5（QA二轮 P1-1）：跨标签保护——磁盘快照比本内存快照新（别的标签页刚保存过）时，
-       按项目合并后再写：以磁盘为底、本快照同 id 项目覆盖、本快照独有项目插到最前。
-       这样 studio 侧的新修改不会被 quick 侧的旧快照整体冲掉。 */
-    var disk = null;
-    try {
-      var raw = localStorage.getItem(LS_DB);
-      if (raw) disk = JSON.parse(raw);
-    } catch (e) { disk = null; }
-    if (disk && Array.isArray(disk.projects) && (db.projects || []).length >= 0 &&
-        (disk.savedAt || 0) > (db._loadedAt || 0) + 1500) {
-      var byId = {};
-      (db.projects || []).forEach(function (p) { byId[p.id] = p; });
-      var merged = [], seen = {};
-      (disk.projects || []).forEach(function (p) { merged.push(byId[p.id] || p); seen[p.id] = 1; });
-      (db.projects || []).forEach(function (p) {
-        if (!seen[p.id]) { merged.unshift(p); seen[p.id] = 1; }
-      });
-      db.projects = merged;
+    var raw = null, disk = null;
+    try { raw = localStorage.getItem(LS_DB); if (raw) disk = JSON.parse(raw); } catch (e) { disk = null; }
+    if (disk && Array.isArray(disk.projects) && raw !== BASE_RAW) {
+      db.projects = mergeProjects(db, disk);
       if (!db.cur && disk.cur) db.cur = disk.cur;
     }
+    db.deleted = pruneDeleted(Object.assign({}, asObj(disk && disk.deleted), asObj(db.deleted)));
+    /* 仍在列表里的项目不算删除（导入恢复、明确改过后保留的情况） */
+    asArr(db.projects).forEach(function (p) { if (p && p.id) delete db.deleted[p.id]; });
     db.savedAt = Date.now();
     db._loadedAt = db.savedAt;
     try {
-      localStorage.setItem(LS_DB, JSON.stringify(db));
+      var s = JSON.stringify(db);
+      localStorage.setItem(LS_DB, s);
+      BASE_RAW = s;
       WQStore.mirror(db);           // 异步镜像，失败静默
       return { ok: true };
     } catch (e) {
       return { ok: false, err: e };
     }
   }
+  /* 删除项目：记墓碑，防止其他标签页的旧快照把它写回来 */
+  function markDeleted(db, pid) {
+    db.deleted = asObj(db.deleted);
+    db.deleted[pid] = Date.now();
+  }
+
+  /* v1.1.0：备份格式 2——仍以 projects/cur 为根（旧版本能直接读），另附归档到 IndexedDB 的版本正文 */
+  function buildBackup(db) {
+    var src = db || loadLocal({ peek: true });
+    var out = {
+      format: "yanmo-backup", formatVersion: 2, app: "研墨", appVersion: APP_VERSION, exportedAt: stamp(),
+      cur: src.cur || null, projects: src.projects || [], deleted: asObj(src.deleted), archives: {}
+    };
+    return WQStore.exportArchives(out).then(function (arc) { out.archives = arc || {}; return out; }, function () { return out; });
+  }
+  function parseBackup(d) {
+    if (!d || typeof d !== "object" || !Array.isArray(d.projects)) throw new Error("不是研墨的备份文件（缺少 projects 列表）");
+    var archives = asObj(d.archives);
+    var clean = sanitizeDB({ projects: d.projects, cur: d.cur });
+    return { projects: clean.projects, cur: clean.cur, archives: archives, appVersion: asStr(d.appVersion), format: asStr(d.format) };
+  }
 
   var WQStore = {
     mirror: function (db) { return idbCall("mirror", db); },       // 防抖镜像当前库
     hydrate: function () { return idbCall("hydrate"); },          // 页面启动时用 IDB 自愈 localStorage
     archiveVersions: function (db) { return idbCall("archive", db); }, // 配额满：版本正文归档到 IDB
-    getVersion: function (pid, idx) { return idbCall("getVer", { pid: pid, idx: idx }); },
+    /* v1.1.0：传版本对象（按 archiveKey 取）；兼容旧调用传下标 */
+    getVersion: function (pid, ref) { return idbCall("getVer", { pid: pid, ref: ref }); },
+    exportArchives: function (db) { return idbCall("expArc", db); },
+    importArchives: function (map) { return idbCall("impArc", map); },
     available: false
   };
   var idbP = null, mirrorTimer = null, pendingDb = null;
@@ -130,7 +248,7 @@
     }
     if (op === "hydrate") {
       return tx("kv", "readonly", function (s) { return s.get("db"); }).then(function (rec) {
-        var local = loadLocal();
+        var local = loadLocal({ peek: true });
         if (!rec || !rec.db || !Array.isArray(rec.db.projects)) return { adopted: false, reason: "idb-empty" };
         var lAt = +local.savedAt || 0, iAt = +rec.savedAt || 0;
         var localEmpty = !local.projects.length;
@@ -148,10 +266,11 @@
       var db = arg, moved = 0, freed = 0;
       var jobs = [];
       (db.projects || []).forEach(function (p) {
-        (p.versions || []).forEach(function (v, i) {
+        (p.versions || []).forEach(function (v) {
           if (v.archived || !v.content || v.content.length < 3000) return;
           freed += v.content.length; moved++;
-          var key = p.id + ":" + i;
+          /* v1.1.0：唯一键（旧版用「项目:序号」，版本列表一移位就会互相覆盖） */
+          var key = p.id + ":" + uid("v");
           var content0 = v.content;   /* v3.2（P0 修复）：先捕获——tx 回调异步执行时 v.content 已被截成预览（v30 闭包 bug，曾把预览当全文存进 IDB） */
           jobs.push(tx("vers", "readwrite", function (s) { s.put(content0, key); }));
           v.archived = true; v.archiveKey = key;
@@ -162,20 +281,97 @@
         .catch(function () { return { moved: 0, freedChars: 0 }; });
     }
     if (op === "getVer") {
-      return tx("vers", "readonly", function (s) { return s.get(arg.pid + ":" + arg.idx); })
-        .then(function (c) { return c || null; }).catch(function () { return null; });
+      var ref = arg.ref;
+      var vkey = (ref && typeof ref === "object") ? (ref.archiveKey || "") : (arg.pid + ":" + ref);
+      if (!vkey) return Promise.resolve(null);
+      return tx("vers", "readonly", function (s) { return s.get(vkey); })
+        .then(function (c) { return typeof c === "string" ? c : null; }).catch(function () { return null; });
+    }
+    if (op === "expArc") {
+      /* 备份前把归档正文一次性读出来（单个只读事务） */
+      var keys = [];
+      asArr(arg && arg.projects).forEach(function (p) {
+        asArr(p.versions).forEach(function (v) { if (v.archived && v.archiveKey) keys.push(v.archiveKey); });
+      });
+      if (!keys.length) return Promise.resolve({});
+      return idbOpen().then(function (idb) {
+        return new Promise(function (resolve) {
+          var out = {};
+          var t = idb.transaction("vers", "readonly"), s = t.objectStore("vers");
+          keys.forEach(function (k) {
+            var r = s.get(k);
+            r.onsuccess = function () { if (typeof r.result === "string") out[k] = r.result; };
+          });
+          t.oncomplete = function () { resolve(out); };
+          t.onerror = function () { resolve(out); };
+        });
+      }).catch(function () { return {}; });
+    }
+    if (op === "impArc") {
+      var map = asObj(arg), ks = Object.keys(map).filter(function (k) { return typeof map[k] === "string"; });
+      if (!ks.length) return Promise.resolve(0);
+      return tx("vers", "readwrite", function (s) { ks.forEach(function (k) { s.put(map[k], k); }); })
+        .then(function () { return ks.length; }).catch(function () { return 0; });
     }
     return Promise.resolve(null);
   }
 
   /* ================= 2) AI：流式 + 计量 ================= */
   var AI_DEF = { base: "https://yingcompute.com/v1", model: "glm-5.3-flash" };
-  function conf() {
+  function storedConf() {
     try { return Object.assign({}, AI_DEF, JSON.parse(localStorage.getItem(LS_AI) || "{}")); }
     catch (e) { return Object.assign({}, AI_DEF); }
   }
+  /* v1.1.0：Key 可只存 sessionStorage（关浏览器即失效）；读配置时会话 Key 优先 */
+  function conf() {
+    var c = storedConf();
+    try {
+      var s = JSON.parse(sessionStorage.getItem(LS_AI_SESSION) || "null");
+      if (s && s.key) { c.key = s.key; c.sessionKey = true; }
+    } catch (e) {}
+    return c;
+  }
+  function isSessionMode() { try { return !!sessionStorage.getItem(LS_AI_SESSION); } catch (e) { return false; } }
   function setConf(o) {
-    try { localStorage.setItem(LS_AI, JSON.stringify(Object.assign({}, conf(), o || {}))); return true; } catch (e) { return false; }
+    o = Object.assign({}, o || {});
+    var withKey = Object.prototype.hasOwnProperty.call(o, "key"), key = o.key;
+    delete o.key; delete o.sessionKey;
+    try {
+      var c = storedConf();
+      Object.assign(c, o);
+      delete c.sessionKey;
+      localStorage.setItem(LS_AI, JSON.stringify(c));
+    } catch (e) { return false; }
+    /* 带 Key 保存时沿用当前的保存方式（会话 / 本机），不悄悄改变用户的选择 */
+    return withKey ? setKey(key, isSessionMode()) : true;
+  }
+  /* 保存 Key：sessionOnly=true 时只存本次会话，并清掉 localStorage 里的旧 Key */
+  function setKey(key, sessionOnly) {
+    try {
+      var c = storedConf();
+      if (sessionOnly) {
+        sessionStorage.setItem(LS_AI_SESSION, JSON.stringify({ key: String(key || "") }));
+        delete c.key;
+      } else {
+        sessionStorage.removeItem(LS_AI_SESSION);
+        c.key = String(key || "");
+      }
+      delete c.sessionKey;
+      localStorage.setItem(LS_AI, JSON.stringify(c));
+      return true;
+    } catch (e) { return false; }
+  }
+  /* API 地址安全检查：非 HTTPS（本机地址除外）时 Key 会明文传输 */
+  function baseWarning(base) {
+    var b = String(base || "").trim();
+    if (!b) return "";
+    if (/^https:\/\//i.test(b)) return "";
+    if (/^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(b)) return "";
+    return "API 地址不是 HTTPS，Key 和论文内容会以明文在网络上传输——请确认这是你信任的服务";
+  }
+  function localDay() {
+    var d = new Date(), p = function (n) { return String(n).padStart(2, "0"); };
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
   }
   /* token 估算：CJK 约 1 字≈1 token，拉丁约 4 字符≈1 token（保守取整） */
   function estimateTokens(text) {
@@ -189,7 +385,7 @@
   function usageTodayAdd(inTok, outTok) {
     var all = {};
     try { all = JSON.parse(localStorage.getItem(LS_USAGE) || "{}"); } catch (e) {}
-    var day = new Date().toISOString().slice(0, 10);
+    var day = localDay();   /* v1.1.0：按本地日期（原 UTC 会把北京时间 0-8 点算进前一天） */
     var d = all[day] || { inTok: 0, outTok: 0, calls: 0 };
     d.inTok += inTok || 0; d.outTok += outTok || 0; d.calls++;
     all[day] = d;
@@ -199,7 +395,7 @@
   function usageToday() {
     try {
       var all = JSON.parse(localStorage.getItem(LS_USAGE) || "{}");
-      var d = all[new Date().toISOString().slice(0, 10)] || { inTok: 0, outTok: 0, calls: 0 };
+      var d = all[localDay()] || { inTok: 0, outTok: 0, calls: 0 };
       d.price = priceOf(d);
       return d;
     } catch (e) { return { inTok: 0, outTok: 0, calls: 0, price: null }; }
@@ -252,7 +448,12 @@
       stream: true, stream_options: { include_usage: true }
     };
     var ctl = new AbortController();
-    var timer = setTimeout(function () { ctl.abort(); }, opts.timeout || 240000);
+    var limitMs = opts.timeout || 240000, timedOut = false;
+    var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, limitMs);
+    var timeoutMsg = function (got) {
+      return "请求超时：" + Math.round(limitMs / 1000) + " 秒内没有完成" + (got ? "（已收到 " + got + " 字）" : "") +
+        "——可能是网络中断或模型输出过慢，请重试，或换更快的模型";
+    };
     if (opts.signal) { /* 外部停止按钮：用户点「停止」时中断当前请求 */
       if (opts.signal.aborted) ctl.abort();
       else opts.signal.addEventListener("abort", function () { ctl.abort(); }, { once: true });
@@ -267,7 +468,7 @@
     } catch (e) {
       clearTimeout(timer);
       if (opts.signal && opts.signal.aborted) throw new Error("已手动停止");
-      throw new Error(e && e.name === "AbortError" ? "请求超时" : ("网络失败：" + (e && e.message)));
+      throw new Error(timedOut ? timeoutMsg(0) : ("网络失败：" + (e && e.message)));
     }
     if (!res.ok) {
       clearTimeout(timer);
@@ -308,8 +509,11 @@
           }
         }
       } catch (e) {
-        /* v1.0.1 修复（QA P0-3）：读流阶段的中止（最常见的停止点）也要映射成人话 */
-        if ((opts.signal && opts.signal.aborted) || (e && e.name === "AbortError")) throw new Error("已手动停止");
+        /* v1.0.1 修复（QA P0-3）：读流阶段的中止（最常见的停止点）也要映射成人话；
+           v1.1.0：超时与手动停止分开提示（原来超时也显示「已手动停止」） */
+        if (opts.signal && opts.signal.aborted) throw new Error("已手动停止");
+        if (timedOut) { var te = new Error(timeoutMsg(text.length)); te.partial = text; throw te; }
+        if (e && e.name === "AbortError") throw new Error("已手动停止");
         throw e;
       } finally { clearTimeout(timer); }
     }
@@ -711,7 +915,8 @@
     var res = { changed: old !== txt, cite: citeDiff(old, txt), migrated: 0, autoSaved: false };
     if (!res.changed) return res;
     if (o.autoSaveCurrent !== false && String(old || "").trim()) {
-      versionPush(p, { ts: stamp(), kind: o.autoSaveKind || "覆盖前自动存档", content: String(old).slice(0, 12000), field: f });
+      /* v1.1.0：不再截断到 12000 字（长章节恢复会拿回残稿）；体积由配额自愈归档兜底 */
+      versionPush(p, { ts: stamp(), kind: o.autoSaveKind || "覆盖前自动存档", content: String(old), field: f });
       res.autoSaved = true;
     }
     applyField(p, f, txt);
@@ -723,7 +928,7 @@
       if (p.ledger[f.slice(6)].length > 100) p.ledger[f.slice(6)].length = 100;
     }
     if (!o.skipVersion) {
-      var dropped = versionPush(p, { ts: stamp(), kind: o.kind || "更新", content: txt.slice(0, 12000), field: f });
+      var dropped = versionPush(p, { ts: stamp(), kind: o.kind || "更新", content: txt, field: f });
       if (dropped && typeof wqNotice === "function") wqNotice("较早的 " + dropped + " 条版本已移出档案（⭐星标版本保留）");
     }
     journalAppend(p, { actor: o.actor, action: o.kind || "更新", target: fieldLabelCore(f), model: o.model || "", cost: o.cost || "", note: o.note || (o.actor === "ai" ? "AI 产出，经用户采纳" : "") });
@@ -735,12 +940,14 @@
 
   /* ================= 导出到 window ================= */
   window.WQCore = {
-    version: "1.0.0",
+    version: APP_VERSION,
     LS_DB: LS_DB, LS_AI: LS_AI,
-    esc: esc, sleep: sleep, stamp: stamp, uid: uid,
+    esc: esc, sleep: sleep, stamp: stamp, uid: uid, localDay: localDay,
     loadLocal: loadLocal, saveLocal: saveLocal,
+    sanitizeDB: sanitizeDB, sanitizeProject: sanitizeProject, markDeleted: markDeleted,
+    buildBackup: buildBackup, parseBackup: parseBackup,
     ai: {
-      conf: conf, setConf: setConf, estimateTokens: estimateTokens,
+      conf: conf, setConf: setConf, setKey: setKey, baseWarning: baseWarning, estimateTokens: estimateTokens,
       stream: streamAI, call: callAI, usageToday: usageToday, estCostText: estCostText, probeModels: probeModels,
       usageAll: function () { try { return JSON.parse(localStorage.getItem(LS_USAGE) || "{}"); } catch (e) { return {}; } }
     },
