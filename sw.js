@@ -5,7 +5,7 @@
  *       版本一变缓存名就变：新 SW 安装时重新下载全部资源，激活后清理旧缓存，页面上会提示「刷新」。
  */
 "use strict";
-const VERSION = "1.2.0";
+const VERSION = "1.2.1";
 const CACHE = "yanmo-v" + VERSION;
 const OWN = /^(wenqu|yanmo)-v/;   // 只清理研墨自己的旧缓存：github.io 同源下可能还有别的项目
 const SHELL = [

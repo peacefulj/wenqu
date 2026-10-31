@@ -4,6 +4,12 @@
 
 ## [未发布]
 
+## [1.2.1] - 2026-10-31
+
+### 变更
+
+- 参考稿页「注册研墨（新人礼包）」链接改为萤算官网首页 https://yingcompute.com/（原来指向注册页）。
+
 ## [1.2.0] - 2026-10-30
 
 ### 新增
@@ -91,7 +97,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.2.0...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/peacefulj/wenqu/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/peacefulj/wenqu/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/peacefulj/wenqu/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/peacefulj/wenqu/compare/v1.0.0...v1.0.1
