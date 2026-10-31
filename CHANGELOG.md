@@ -4,6 +4,24 @@
 
 ## [未发布]
 
+## [1.3.0] - 2026-10-31
+
+### 新增
+
+- **AI 接口格式**（工作台「⚙️ AI / 接口设置」）：可选「OpenAI 兼容 · 通用」「thinking 开关（DeepSeek / 智谱 GLM / 豆包）」「enable_thinking（通义千问 / 硅基流动）」「OpenAI 推理模型（reasoning_effort）」「Anthropic Messages（Claude 原生，或 DeepSeek 的 …/anthropic 接口）」。默认「自动识别」：DeepSeek 官方地址用 thinking 开关，Anthropic 地址用 Messages 格式，其他服务商按通用格式、不加额外参数。
+- **思考模式开关**（默认关）：关闭时按所选格式告诉模型直接回答，避免思考 token 占满输出额度、正文为空；需要时可以打开（DeepSeek 打开时自动多留 16K 输出额度）。
+- **上下文自动压缩**：输入超过模型上下文时，从最长的那段材料中间截掉一部分（保留开头的要求和结尾的格式说明），并给输出留足空间；接口报「上下文超限」时，按它给出的上限压缩后自动重试一次。上限可以在设置里填，留空按模型名判断（一般按 128K）。
+- **AI 调试**（试用页 `try.html#ai-debug`，AI 设置里有入口）：显示实际使用的接口格式、思考参数和上下文上限；一键实测流式 / 非流式调用；列出最近 40 次 AI 请求（格式、模型、状态码、耗时、token、结束原因、是否压缩、报错原因），可以复制调试信息（不含 Key）。页面地址加 `?debug=1` 时，浏览器控制台会打印每次请求的参数。
+- **桌面版调试模式**：用 `研墨.exe --debug` 启动，或在数据文件夹里放 `debug-port.txt`，会打开 WebView2 调试端口 9330（只监听本机，窗口标题会注明），出问题时可以连上排查；也可以在试用页「AI 调试」里开关。
+
+### 修复
+
+- DeepSeek（deepseek-flash / deepseek-v4-pro）默认开思考模式，思考 token 算在输出额度里，研究设计审查、引用-论断抽查、数据卡分析代码、投稿策略、引用溯源判断、PDF AI 精读、论文矩阵 AI 抽取、参考稿「帮我想题目」和提纲经常返回空正文——现在默认关闭思考。
+- ④ 分节起草：本节原来是空的时候，AI 成稿里的引用编号全被算作「新增」，采纳按钮锁死，新写的一节没法直接采纳；现在新节只拦截超出文献库范围的编号。
+- 项目导图：AI 扩写 / 缩写后点「放弃」或「采纳」，按钮文字会变成「🤖 改写」。
+- 工作台、工具台里非流式的 AI 功能没有计入「本机今日用量」。
+- AI 接口返回 404 时不再误报成「模型没有可用渠道」，改为提示检查 API 地址和接口格式；401、429 和「服务商不认识某个参数」也会给出对应的处理建议。
+
 ## [1.2.1] - 2026-10-31
 
 ### 变更
@@ -97,7 +115,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.2.1...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/peacefulj/wenqu/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/peacefulj/wenqu/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/peacefulj/wenqu/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/peacefulj/wenqu/compare/v1.0.1...v1.1.0

@@ -1,8 +1,10 @@
 /* 研墨 · 功能自测用例 ym-selftest.js（v1.2.0 新增）
  * 文献格式（ym-bib.js）与 Markdown / LaTeX 导出（ym-export.js）的单元测试。
  * 发布前自检（scripts/check.mjs，Node）和试用页（try.html，浏览器）跑的是同一批用例。
- * 用法：YMSelfTest.run(YMBib, YMExport, samples) → [{ name, ok, detail }]
- *       samples 可选：{ bib, ris, csl } 为 assets/demo/ 下示例文件的文本，用来确认示例文件本身能被正确解析。
+ * v1.3.0 起还测 AI 接口适配（ym-ai.js）。
+ * 用法：YMSelfTest.run(YMBib, YMExport, samples, YMAI) → [{ name, ok, detail }]
+ *       samples 可选：{ bib, ris, csl } 为 assets/demo/ 下示例文件的文本，用来确认示例文件本身能被正确解析；
+ *       YMAI 可选，不传就跳过 AI 接口适配用例。
  */
 (function (root, factory) {
   var api = factory();
@@ -28,7 +30,7 @@
   var RIS = ["TY  - JOUR", "AU  - Harris, Charles R.", "TI  - Array programming with NumPy", "T2  - Nature", "PY  - 2020",
     "VL  - 585", "IS  - 7825", "SP  - 357", "EP  - 362", "DO  - 10.1038/s41586-020-2649-2", "ER  - ", ""].join("\n");
 
-  function run(Bib, X, samples) {
+  function run(Bib, X, samples, AI) {
     var out = [];
     /* 每个用例返回 [是否通过, 失败时的说明] */
     var t = function (name, fn) {
@@ -94,6 +96,72 @@
       var r = X.buildMarkdown({ name: "P", topic: "T", papers: copy(papersX) }, envX("第一段[1]\n第二段\n## 小节\n内容"));
       return [r.text.indexOf('---\ntitle: "T"') === 0 && r.text.indexOf("第一段[1]\n\n第二段") >= 0 && r.text.indexOf("### 小节") >= 0 && r.text.indexOf("## 参考文献") >= 0, r.text.slice(0, 300)];
     });
+
+    /* ---------- AI 接口适配（v1.3.0，ym-ai.js） ---------- */
+    if (AI) {
+      var M = [{ role: "user", content: "hi" }];
+      t("接口格式：自动识别 DeepSeek / Anthropic / 其他服务商", function () {
+        var r = [AI.resolve({ base: "https://api.deepseek.com" }), AI.resolve({ base: "https://api.deepseek.com/anthropic/" }), AI.resolve({ base: "https://api.anthropic.com" }),
+          AI.resolve({ base: "https://yingcompute.com/v1" }), AI.resolve({ base: "https://api.deepseek.com", format: "openai" }), AI.resolve({ base: "https://x.com/v1", format: "bogus" })];
+        return [r.join() === "thinking,anthropic,anthropic,openai,openai,openai", r.join()];
+      });
+      t("接口地址与请求头：OpenAI 兼容用 Bearer，Anthropic 用 x-api-key", function () {
+        var u = [AI.endpoint("openai", "https://yingcompute.com/v1/", "chat"), AI.endpoint("anthropic", "https://api.deepseek.com/anthropic", "chat"), AI.endpoint("anthropic", "https://api.anthropic.com/v1", "models")];
+        var h1 = AI.headers("thinking", "k", true), h2 = AI.headers("anthropic", "k", true);
+        return [u.join() === "https://yingcompute.com/v1/chat/completions,https://api.deepseek.com/anthropic/v1/messages,https://api.anthropic.com/v1/models" &&
+          h1.Authorization === "Bearer k" && h2["x-api-key"] === "k" && !!h2["anthropic-version"] && !h2.Authorization, JSON.stringify({ u: u, h1: h1, h2: h2 })];
+      });
+      t("思考模式默认关闭，各格式的思考参数正确", function () {
+        var ds = { base: "https://api.deepseek.com" }, b = { model: "m", messages: M, max_tokens: 100 };
+        var off = AI.body("thinking", ds, b), on = AI.body("thinking", { base: ds.base, thinking: true }, b);
+        var q = AI.body("enable_thinking", {}, b), o = AI.body("openai", { thinking: true }, b), r = AI.body("openai_reasoning", {}, b);
+        return [off.thinking.type === "disabled" && off.max_tokens === 100 && off.temperature === 0.3 && on.thinking.type === "enabled" && on.max_tokens === 100 + 16384 &&
+          q.enable_thinking === false && !("thinking" in o) && !("enable_thinking" in o) && o.max_tokens === 100 &&
+          r.reasoning_effort === "low" && r.max_completion_tokens === 2148 && !("max_tokens" in r) && !("temperature" in r), JSON.stringify({ off: off, on: on.max_tokens, q: q.enable_thinking, r: r })];
+      });
+      t("Anthropic 请求体：system 单独放、同角色消息合并", function () {
+        var a = AI.body("anthropic", {}, { model: "m", max_tokens: 50, stream: true, messages: [{ role: "system", content: "S" }, { role: "user", content: "a" }, { role: "user", content: "b" }] });
+        var on = AI.body("anthropic", { thinking: true }, { model: "m", max_tokens: 2000, messages: M });
+        return [a.system === "S" && a.messages.length === 1 && a.messages[0].content === "a\n\nb" && a.thinking.type === "disabled" && a.stream === true && a.temperature === 0.3 &&
+          on.thinking.budget_tokens === 2000 && on.max_tokens === 4000 && !("temperature" in on), JSON.stringify({ a: a, on: on })];
+      });
+      t("响应解析：OpenAI / Anthropic（思考内容不混进正文）", function () {
+        var p1 = AI.parse("openai", { choices: [{ message: { content: "x", reasoning_content: "r" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 2, completion_tokens_details: { reasoning_tokens: 1 } } });
+        var p2 = AI.parse("anthropic", { content: [{ type: "thinking", thinking: "t" }, { type: "text", text: "y" }], stop_reason: "max_tokens", usage: { input_tokens: 3, output_tokens: 4 } });
+        var p3 = AI.parse("openai", { error: { message: "bad key" } });
+        return [p1.text === "x" && p1.reasoning === "r" && p1.usage.completion_tokens === 2 && p1.usage.reasoning_tokens === 1 &&
+          p2.text === "y" && p2.reasoning === "t" && p2.finish === "length" && p2.usage.prompt_tokens === 3 && p2.usage.completion_tokens === 4 && p3.error === "bad key", JSON.stringify([p1, p2, p3])];
+      });
+      t("流式解析：OpenAI 增量与 Anthropic 事件", function () {
+        var a1 = AI.newAcc(), s1 = "";
+        [{ choices: [{ delta: { reasoning_content: "想" } }] }, { choices: [{ delta: { content: "你" } }] }, { choices: [{ delta: { content: "好" }, finish_reason: "stop" }] }, { choices: [], usage: { prompt_tokens: 5, completion_tokens: 3 } }]
+          .forEach(function (o) { s1 += AI.delta("openai", o, a1); });
+        var a2 = AI.newAcc(), s2 = "";
+        [{ type: "message_start", message: { usage: { input_tokens: 10, output_tokens: 0 } } }, { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "嗯" } },
+          { type: "content_block_delta", delta: { type: "text_delta", text: "你好" } }, { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 5 } }]
+          .forEach(function (o) { s2 += AI.delta("anthropic", o, a2); });
+        var a3 = AI.newAcc(); AI.delta("anthropic", { type: "error", error: { type: "overloaded_error", message: "Overloaded" } }, a3);
+        return [s1 === "你好" && a1.reasoning === "想" && a1.finish === "stop" && a1.usage.prompt_tokens === 5 &&
+          s2 === "你好" && a2.reasoning === "嗯" && a2.finish === "end_turn" && a2.usage.prompt_tokens === 10 && a2.usage.completion_tokens === 5 && a3.error === "Overloaded", JSON.stringify({ s1: s1, a1: a1, s2: s2, a2: a2, a3: a3 })];
+      });
+      t("上下文自动压缩：超长输入从中间截断，留出输出空间；没超就原样发送", function () {
+        var long = "开头要求" + new Array(30001).join("文") + "结尾格式";
+        var f = AI.fit([{ role: "user", content: long }], 6000, 8000), c = f.messages[0].content;
+        var small = AI.fit(M, 1000, 128000);
+        return [f.max_tokens === 4000 && f.after <= Math.floor(8000 * 0.95) - 4000 - 512 && c.indexOf(AI.CUT_NOTE) > 0 && c.indexOf("开头要求") === 0 && c.slice(-4) === "结尾格式" &&
+          small.messages === M && small.cut === 0, JSON.stringify({ mt: f.max_tokens, before: f.before, after: f.after, len: c.length, smallCut: small.cut })];
+      });
+      t("识别「上下文超限」报错（OpenAI / Anthropic / 通义），不误判输出上限错误", function () {
+        var r = [AI.ctxError(400, "This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens."),
+          AI.ctxError(400, "prompt is too long: 215000 tokens > 200000 maximum"), AI.ctxError(400, "Range of input length should be [1, 30720]"),
+          AI.ctxError(400, "Invalid max_tokens value, the valid range of max_tokens is [1, 393216]"), AI.ctxError(401, "maximum context length is 8192"), AI.ctxError(400, "上下文长度超过限制")];
+        return [r.join() === "8192,200000,30720,0,0,-1", r.join()];
+      });
+      t("模型上下文：按设置 / 模型名推断", function () {
+        var r = [AI.ctxWindow({ ctxK: "32" }, "x"), AI.ctxWindow({}, "moonshot-v1-8k"), AI.ctxWindow({}, "claude-sonnet-4-5"), AI.ctxWindow({}, "deepseek-flash"), AI.ctxWindow({ ctxK: "" }, "gemini-2.5-flash")];
+        return [r.join() === "32000,8000,200000,128000,1000000", r.join()];
+      });
+    }
     return out;
   }
 

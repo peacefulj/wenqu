@@ -1,5 +1,6 @@
 /* 研墨 · 试用与测试页 ym-try.js（v1.2.0 新增）
- * try.html：一键创建演示项目、浏览器能力检测、网络 / AI 接口测试、功能自测（assets/ym-selftest.js，与发布前自检同一批用例）、复制检测报告。
+ * try.html：一键创建演示项目、浏览器能力检测、网络 / AI 接口测试、AI 调试（v1.3.0：格式 / 思考 / 上下文 / 请求记录 / 桌面版调试端口）、
+ * 功能自测（assets/ym-selftest.js，与发布前自检同一批用例）、复制检测报告。
  * 只会写入「演示项目」这一个项目（固定 id，重建会覆盖它），不动用户的其他项目；
  * 打开页面时不发任何外部请求——网络和 AI 接口测试要用户点按钮。
  */
@@ -237,6 +238,85 @@
     paint("tryNetOut", L); $("tryNetMsg").textContent = ""; btn.disabled = false;
   }
 
+  /* ================= AI 调试（v1.3.0） ================= */
+  const fmtTime = (t) => String(t || "").replace("T", " ").slice(5, 19);
+  const kt = (n) => (n >= 1000 ? Math.round(n / 100) / 10 + "K" : String(n || 0));
+  function thinkParam(f, on) {
+    return { thinking: "发送 thinking: " + (on ? "enabled" : "disabled"), enable_thinking: "发送 enable_thinking: " + on, anthropic: "发送 thinking: " + (on ? "enabled" : "disabled"),
+      openai_reasoning: on ? "reasoning_effort 用服务商默认" : "发送 reasoning_effort: low" }[f] || "这种格式不发思考参数";
+  }
+  function aiCfgRows() {
+    const c = WQCore.ai.conf(), f = WQCore.ai.format(c), L = [];
+    row(L, "info", "接口格式", (c.format && c.format !== "auto" ? "手动选择：" : "自动识别 → ") + WQCore.ai.formatName(f));
+    row(L, c.key ? "info" : "warn", "请求地址", c.key ? hostOf(c.base) + "（" + (f === "anthropic" ? "/v1/messages" : "/chat/completions") + "）· 模型 " + (c.model || "默认") : "还没配置 Key");
+    row(L, c.thinking ? "warn" : "ok", "思考模式", (c.thinking ? "开：更慢、更费 token；思考 token 算在输出额度里的服务商可能出现正文为空" : "关（默认，更稳）") + " · " + thinkParam(f, !!c.thinking));
+    row(L, "info", "上下文上限", Math.round(WQCore.ai.ctxWindow(c) / 1000) + "K token" + (c.ctxK ? "（设置里填的）" : "（自动）") + " · 输入超出时自动从中间压缩；接口报超限时压缩后重试一次");
+    const log = WQCore.ai.debugLog(), bad = log.filter(x => x.err).length;
+    row(L, bad ? "warn" : "info", "最近请求", log.length ? log.length + " 条，其中失败 " + bad + " 条" : "还没有记录（用过 AI 功能后这里会出现）");
+    return L;
+  }
+  function logRows(n) {
+    return WQCore.ai.debugLog().slice(0, n).map(x => {
+      const st = x.err ? "bad" : (x.cut || x.retry || x.finish === "length") ? "warn" : "ok";
+      const parts = [x.fmt + (x.think ? "·思考开" : ""), x.model, x.status ? "HTTP " + x.status : "", (x.ms / 1000).toFixed(1) + " s",
+        (x.inTok || x.outTok) ? "入 " + kt(x.inTok) + " / 出 " + kt(x.outTok) + (x.real === false ? "（估算）" : "") + (x.rTok ? "（含思考 " + kt(x.rTok) + "）" : "") : "",
+        x.finish ? "结束：" + x.finish : "", x.cut ? "已压缩约 " + kt(x.cut) + " token" : "", x.retry || ""].filter(Boolean);
+      return { st: st, name: fmtTime(x.t) + " · " + x.page, info: parts.join(" · ") + (x.err ? " —— " + x.err : x.ans ? " —— " + x.ans.slice(0, 60) : "") };
+    });
+  }
+  function aiDebugRender() {
+    R.ai = aiCfgRows();
+    paint("tryAICfg", R.ai);
+    const rows = logRows(15);
+    if (rows.length) paint("tryDbgLog", rows); else $("tryDbgLog").innerHTML = '<p class="hint" style="margin:8px 12px">还没有记录</p>';
+    deskRender();
+  }
+  async function aiCallTest() {
+    const btn = $("tryAICall"), L = R.aiCall = [];
+    if (!WQCore.ai.conf().key) { row(L, "info", "AI 调用", "还没配置 Key：先点「⚙️ 调整 AI 设置」填写"); paint("tryAICallOut", L); return; }
+    btn.disabled = true; $("tryDbgMsg").textContent = "调用中…";
+    const ask = "请只回复两个字母：OK", opt = { max_tokens: 16, temperature: 0, timeout: 60000 };
+    for (const [name, fn] of [["流式调用", () => WQCore.ai.stream(ask, opt)], ["非流式调用", () => WQCore.ai.complete(ask, opt)]]) {
+      const t0 = performance.now();
+      try {
+        const r = await fn(), u = r.usage || {};
+        row(L, "ok", name, Math.round(performance.now() - t0) + " ms · 回复「" + String(r.text).trim().slice(0, 20) + "」 · " + ((u.inTok || 0) + (u.outTok || 0)) + " token" + (u.real ? "" : "（估算）") + (r.finish ? " · 结束：" + r.finish : ""));
+      } catch (e) { row(L, "bad", name, e.message); }
+      paint("tryAICallOut", L);
+    }
+    $("tryDbgMsg").textContent = ""; btn.disabled = false;
+    aiDebugRender();
+  }
+  function debugText() {
+    const lines = ["研墨 v" + VER + " AI 调试信息", "时间：" + WQCore.stamp(), "页面：" + location.href.split("#")[0], "UA：" + navigator.userAgent];
+    const d = window.YANMO_DESKTOP;
+    if (d) lines.push("桌面版：v" + (d.version || "") + " · 调试端口 " + (d.debugPort || "未开启"));
+    (R.ai || aiCfgRows()).concat(R.aiCall || []).forEach(x => lines.push(ICON[x.st] + " " + x.name + "：" + x.info));
+    lines.push("", "最近请求（新 → 旧，不含 Key）：");
+    WQCore.ai.debugLog().slice(0, 20).forEach(x => lines.push(JSON.stringify(x)));
+    return lines.join("\n");
+  }
+  /* 桌面版（exe）：显示调试端口状态，可在这里开关（写数据目录里的 debug-port.txt，重启后生效） */
+  function deskRender() {
+    const d = window.YANMO_DESKTOP, box = $("tryDesk");
+    if (!d || !(window.chrome && chrome.webview)) { box.hidden = true; return; }
+    box.hidden = false;
+    $("tryDeskInfo").textContent = "桌面版 v" + (d.version || "") + " · 调试端口：" + (d.debugPort ? "已开启（127.0.0.1:" + d.debugPort + "，窗口标题会注明）" : "未开启") + (d.pending ? " · " + d.pending : "");
+    $("tryDeskDbg").textContent = d.debugFile ? "关闭调试端口（重启研墨后生效）" : "开启调试端口（重启研墨后生效）";
+    $("tryDeskDbg").title = "调试端口只监听本机（127.0.0.1），开着时本机的其他程序可以连上研墨查看页面和数据（包括 Key），排查完问题建议关掉";
+  }
+  if (window.chrome && chrome.webview) {
+    chrome.webview.addEventListener("message", (e) => {
+      const m = String(e.data || ""), d = window.YANMO_DESKTOP;
+      if (m.indexOf("debug:") !== 0 || !d) return;
+      if (m.indexOf("debug:status:") === 0) { const p = m.split(":"); d.debugPort = +p[2] || 0; d.debugFile = p[3] === "1"; }
+      else if (m === "debug:on:ok" || m === "debug:off:ok") { d.debugFile = m === "debug:on:ok"; d.pending = (d.debugFile ? "已开启" : "已关闭") + "，重启研墨后生效"; }
+      else d.pending = "设置失败：" + m.replace(/^debug:(on|off):/, "");
+      deskRender();
+    });
+    if (window.YANMO_DESKTOP) chrome.webview.postMessage("debug:status");
+  }
+
   /* ================= 功能自测 ================= */
   async function selfTest() {
     const btn = $("trySelf"); btn.disabled = true; $("trySelfSum").textContent = "运行中…";
@@ -247,7 +327,7 @@
     let res;
     try {
       if (!window.YMSelfTest || !window.YMBib || !window.YMExport) throw new Error("自测脚本没有加载完整");
-      res = YMSelfTest.run(YMBib, YMExport, samples);
+      res = YMSelfTest.run(YMBib, YMExport, samples, window.YMAI);
     } catch (e) { res = [{ name: "运行自测", ok: false, detail: e.message }]; }
     R.self = res.map(x => ({ st: x.ok ? "ok" : "bad", name: x.name, info: x.ok ? "" : String(x.detail).slice(0, 300) }));
     paint("trySelfOut", R.self);
@@ -260,17 +340,21 @@
   function report() {
     const sec = (title, list) => list.length ? "\n\n[" + title + "]\n" + list.map(x => ICON[x.st] + " " + x.name + (x.info ? "：" + x.info : "")).join("\n") : "";
     return "研墨 v" + VER + " 试用与测试报告\n时间：" + WQCore.stamp() + "\n页面：" + location.href.split("#")[0] + "\nUA：" + navigator.userAgent +
-      sec("浏览器检测", R.env) + sec("网络 / AI 接口", R.net) + sec("功能自测", R.self) + "\n";
+      sec("浏览器检测", R.env) + sec("网络 / AI 接口", R.net) + sec("AI 调试", (R.ai || []).concat(R.aiCall || [])) + sec("功能自测", R.self) + "\n";
   }
-  function copyReport() {
-    const text = report(), done = () => { $("tryCopyMsg").textContent = "已复制 ✓ 可以粘贴到反馈里"; };
+  function clip(text, msgId, okText) {
+    const done = () => { $(msgId).textContent = okText; };
     const fallback = () => {
       const ta = document.createElement("textarea"); ta.value = text; ta.style.cssText = "position:fixed;opacity:0";
       document.body.appendChild(ta); ta.select();
-      try { document.execCommand("copy"); done(); } catch (e) { $("tryCopyMsg").textContent = "浏览器不允许复制，请手动选择下面的文字"; }
+      try { document.execCommand("copy"); done(); } catch (e) { $(msgId).textContent = "浏览器不允许复制，请手动选择下面的文字"; }
       ta.remove();
     };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+  }
+  function copyReport() {
+    const text = report();
+    clip(text, "tryCopyMsg", "已复制 ✓ 可以粘贴到反馈里");
     $("tryReport").textContent = text; $("tryReport").hidden = false;
   }
   function issueLink(e) {
@@ -285,7 +369,13 @@
   $("trySelf").addEventListener("click", selfTest);
   $("tryCopy").addEventListener("click", copyReport);
   $("tryIssue").addEventListener("click", issueLink);
+  $("tryAICall").addEventListener("click", aiCallTest);
+  $("tryDbgCopy").addEventListener("click", () => clip(debugText(), "tryDbgMsg", "已复制 ✓（不含 Key）"));
+  $("tryDbgClear").addEventListener("click", () => { WQCore.ai.debugClear(); R.aiCall = []; paint("tryAICallOut", []); aiDebugRender(); $("tryDbgMsg").textContent = "已清空"; });
+  $("tryDeskDbg").addEventListener("click", () => { const d = window.YANMO_DESKTOP; if (d && window.chrome && chrome.webview) chrome.webview.postMessage(d.debugFile ? "debug:off" : "debug:on"); });
+  addEventListener("storage", (e) => { if (e.key === "yanmo_ai_debug") aiDebugRender(); });
   showDemoState(false);
+  aiDebugRender();
   envChecks().then(selfTest, selfTest);
-  window.YMTry = { demoProject: demoProject, createDemo: createDemo, report: report, results: R };
+  window.YMTry = { demoProject: demoProject, createDemo: createDemo, report: report, results: R, debugText: debugText };
 })();

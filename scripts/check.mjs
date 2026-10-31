@@ -35,6 +35,9 @@ for (const f of jsFiles) {
 }
 check(!syntaxBad.length, jsFiles.length + " 个脚本 node --check 通过", syntaxBad.join("\n"));
 const htmls = list(".", /\.html$/);
+/* 写文件中途被打断会留下空文件或半截文件（v1.3.0 发版时 studio.html 被清空过） */
+const truncated = htmls.filter(h => { const t = read(h); return t.length < 200 || !/<html[\s>]/i.test(t) || !/<\/(html|body|script)>\s*$/i.test(t); });
+check(!truncated.length, htmls.length + " 个页面完整（没有空文件、半截文件）", truncated.join("，"));
 const inlineBad = [];
 let inlineN = 0;
 for (const h of htmls) {
@@ -86,6 +89,7 @@ for (const h of htmls) {
   if (at("studio.js") >= 0 && !(at("ym-bib.js") >= 0 && at("ym-bib.js") < at("studio.js"))) orderBad.push(h + "：ym-bib.js 要在 studio.js 之前");
   ["ym-refs.js", "ym-pdf.js", "ym-export.js"].forEach(m => { if (at(m) >= 0 && at(m) < at("wb.js")) orderBad.push(h + "：" + m + " 要在 wb.js 之后"); });
   if (at("ym-sync.js") >= 0 && at("ym-sync.js") < at("wq-core.js")) orderBad.push(h + "：ym-sync.js 要在 wq-core.js 之后");
+  if (at("wq-core.js") >= 0 && !(at("ym-ai.js") >= 0 && at("ym-ai.js") < at("wq-core.js"))) orderBad.push(h + "：ym-ai.js 要在 wq-core.js 之前");
 }
 const missingRef = [...refs].filter(u => !existsSync(join(ROOT, u)));
 check(!missingRef.length, "页面引用的 " + refs.size + " 个本地文件都存在", missingRef.join("，"));
@@ -102,7 +106,8 @@ const X = require(join(ROOT, "assets/ym-export.js"));
 const samples = {};
 [["bib", "sample.bib"], ["ris", "sample.ris"], ["csl", "sample-csl.json"]].forEach(([k, f]) => { if (existsSync(join(ROOT, "assets/demo", f))) samples[k] = read("assets/demo/" + f); });
 check(Object.keys(samples).length === 3, "示例文件 assets/demo/sample.bib / sample.ris / sample-csl.json 都在");
-for (const r of require(join(ROOT, "assets/ym-selftest.js")).run(Bib, X, samples)) check(r.ok, r.name, r.detail);
+const AI = require(join(ROOT, "assets/ym-ai.js"));
+for (const r of require(join(ROOT, "assets/ym-selftest.js")).run(Bib, X, samples, AI)) check(r.ok, r.name, r.detail);
 const demoPdf = existsSync(join(ROOT, "assets/demo/demo-paper.pdf")) ? readFileSync(join(ROOT, "assets/demo/demo-paper.pdf")) : null;
 check(!!demoPdf && demoPdf.subarray(0, 5).toString("latin1") === "%PDF-" && /\/Count 2\b/.test(demoPdf.toString("latin1")), "示例 PDF assets/demo/demo-paper.pdf 有效（2 页）");
 

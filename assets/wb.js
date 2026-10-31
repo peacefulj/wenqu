@@ -270,7 +270,24 @@ function loadAI() {
   $("aiModel").value = s.model || AI_DEF.model;
   if ($("aiConfirmChk")) $("aiConfirmChk").checked = s.confirm !== false;
   if ($("aiKeySession")) $("aiKeySession").checked = !!s.sessionKey;
+  /* v1.3.0：接口格式 / 思考模式 / 上下文上限 */
+  const fs = $("aiFormat");
+  if (fs && window.WQCore && WQCore.ai.formats) {
+    if (!fs.options.length) fs.innerHTML = WQCore.ai.formats().map(f => `<option value="${f.id}">${esc(f.name)}</option>`).join("");
+    fs.value = s.format || "auto";
+    if (!fs.value) fs.value = "auto";
+  }
+  if ($("aiThinking")) $("aiThinking").checked = !!s.thinking;
+  if ($("aiCtx")) $("aiCtx").value = s.ctxK || "";
   renderBaseWarn();
+}
+/* 「自动」时告诉用户实际按哪种格式发、思考开关会发什么参数 */
+function renderFmtHint() {
+  const box = $("aiFmtHint"); if (!box || !(window.WQCore && WQCore.ai.format)) return;
+  const c = { base: $("aiBase").value.trim() || AI_DEF.base, format: $("aiFormat") ? $("aiFormat").value : "auto", thinking: $("aiThinking") && $("aiThinking").checked, ctxK: $("aiCtx") ? $("aiCtx").value.trim() : "", model: $("aiModel").value.trim() };
+  const f = WQCore.ai.format(c);
+  const sent = { thinking: c.thinking ? "thinking: enabled" : "thinking: disabled", enable_thinking: "enable_thinking: " + !!c.thinking, openai_reasoning: c.thinking ? "reasoning_effort 用默认" : "reasoning_effort: low", anthropic: c.thinking ? "thinking: enabled" : "thinking: disabled" }[f];
+  box.textContent = (c.format === "auto" ? "实际使用：" + WQCore.ai.formatName(f) : "") + (sent ? (c.format === "auto" ? "；" : "") + "思考参数 " + sent : (c.format === "auto" ? "；不加思考参数" : "不加思考参数")) + "；上下文按 " + Math.round(WQCore.ai.ctxWindow(c) / 1000) + "K token";
 }
 function getAI() {
   const s = readAIConf();
@@ -281,17 +298,22 @@ function renderBaseWarn() {
   const w = (window.WQCore && WQCore.ai.baseWarning) ? WQCore.ai.baseWarning($("aiBase").value) : "";
   box.hidden = !w; box.textContent = w ? "⚠ " + w : "";
 }
-$("aiBase").addEventListener("input", renderBaseWarn);
+$("aiBase").addEventListener("input", () => { renderBaseWarn(); renderFmtHint(); });
+["aiFormat", "aiThinking", "aiCtx", "aiModel"].forEach(id => { const el = $(id); if (el) el.addEventListener(el.tagName === "INPUT" && el.type === "text" ? "input" : "change", renderFmtHint); });
 $("aiSave").addEventListener("click", () => {
   /* v1.0 合并式保存：保留扩展字段（priceIn/priceOut 等由 wq-ui 写入），避免被整体覆写 */
   const sessionOnly = $("aiKeySession") ? $("aiKeySession").checked : false;
   let ok = true;
   if (window.WQCore && WQCore.ai.setConf) {
     const prev = readAIConf();
+    const ctxK = $("aiCtx") ? parseFloat($("aiCtx").value) : NaN;
     ok = WQCore.ai.setConf({
       base: $("aiBase").value.trim() || AI_DEF.base,
       model: $("aiModel").value.trim() || prev.model || AI_DEF.model,
       confirm: $("aiConfirmChk") ? $("aiConfirmChk").checked : true,
+      format: $("aiFormat") ? ($("aiFormat").value || "auto") : (prev.format || "auto"),
+      thinking: $("aiThinking") ? $("aiThinking").checked : !!prev.thinking,
+      ctxK: isFinite(ctxK) && ctxK > 0 ? String(ctxK) : "",
     }) && WQCore.ai.setKey($("aiKey").value.trim(), sessionOnly);
   } else {
     let prev = {};
@@ -305,37 +327,27 @@ $("aiSave").addEventListener("click", () => {
   lsSet("wenqu_email", $("upEmail").value.trim());
   lsSet("wenqu_grobid", $("grobidUrl").value.trim());
   oaMail = $("upEmail").value.trim(); // 立即生效，不必刷新页面
-  renderBaseWarn();
+  renderBaseWarn(); renderFmtHint();
   $("aiSave").textContent = sessionOnly ? "已保存 ✓（Key 仅本次会话）" : "已保存 ✓"; setTimeout(() => $("aiSave").textContent = "保存设置", 1800);
   if (typeof refreshAIButtons === "function") refreshAIButtons(); // 合并平台：保存后即时解除 AI 按钮置灰
 });
 $("btnSet").addEventListener("click", () => { $("setPanel").hidden = !$("setPanel").hidden; });
-loadAI();
+loadAI(); renderFmtHint();
+if (/[?&]set=ai(&|$)/.test(location.search)) $("setPanel").hidden = false;   // v1.3.0：试用页「调整 AI 设置」直达
 $("upEmail").value = localStorage.getItem("wenqu_email") || "";
 $("grobidUrl").value = localStorage.getItem("wenqu_grobid") || "";
 /* Unpaywall 条款要求真实邮箱：默认不发 mailto，用户填了真实邮箱才附 */
 let oaMail = localStorage.getItem("wenqu_email") || "";
 const mto = () => oaMail ? "&mailto=" + encodeURIComponent(oaMail) : "";
 
+/* v1.3.0：统一走 WQCore.ai.complete（接口格式、思考开关、上下文压缩、计量、调试日志都在那里） */
 async function callAI(userMsg, opts = {}) {
-  const { base, key, model } = getAI();
+  const { key } = getAI();
   if (!key) throw new Error("未配置 API Key：页头「AI / 接口设置」里填入并保存");
-  const body = {
-    model, temperature: opts.temperature ?? 0.3, max_tokens: opts.max_tokens ?? 4096,
-    messages: Array.isArray(userMsg) ? userMsg : [{ role: "user", content: userMsg }],
-  };
-  const r = await fetchJSON(`${base}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
-    body: JSON.stringify(body),
-  }, opts.timeout ?? 180000);
-  const ch = r.choices?.[0];
-  const txt = ch?.message?.content;
-  if (!txt) {
-    if (ch?.message?.reasoning_content) throw new Error("模型把 token 全花在思维链上、正文为空——换非推理模型，或降低任务量后重试");
-    throw new Error("模型返回为空（检查 Key / 模型名 / 余额）");
-  }
-  return txt;
+  const r = await WQCore.ai.complete(Array.isArray(userMsg) ? userMsg : [{ role: "user", content: userMsg }], {
+    temperature: opts.temperature ?? 0.3, max_tokens: opts.max_tokens ?? 4096, timeout: opts.timeout ?? 180000,
+  });
+  return r.text;
 }
 function parseJSONLoose(txt) {
   let s = txt.trim().replace(/^```(json)?/i, "").replace(/```$/, "").trim();

@@ -888,7 +888,7 @@
       /* 建议态：diff 弹窗开着时保持 busy，采纳/放弃才解除 */
       ST.busy = !!ST.suggest; stopBtn.remove();
       try { stopPulse(); } catch (e) {}
-      if (btn) { btn.textContent = btn.dataset.verb === "改写" ? "🤖 改写" : btn.dataset.verb === "扩写" ? "➕ 扩写" : "➖ 缩写"; btn.disabled = false; }
+      if (btn) { btn.textContent = verbLabel(btn.dataset.verb); btn.disabled = false; }
       /* busy 期间用户切到了别的节点卡：那张卡的置灰按钮需要解除 */
       if (ST.selId && ST.selId !== d.id && ST.cy && ST.cy.getElementById(ST.selId).nonempty()) showCard(ST.selId);
     }
@@ -896,6 +896,8 @@
 
   /* ---- B1 建议态：AI 产出的 diff 预览（诚信专家"只改一件事"+HCI#7 殊途同归）----
      旧左新右段落对照 + [n] 集合差硬闸 + 采纳才写回；放弃不写回不存版（token 已花） */
+  /* v1.3.0：采纳 / 放弃后按钮恢复成各自的文字（原来一律变成「🤖 改写」） */
+  function verbLabel(v) { return v === "扩写" ? "➕ 扩写" : v === "缩写" ? "➖ 缩写" : "🤖 改写"; }
   function openSuggestView(d, newText, verb, usage, btn) {
     var oldText = d.body || "";
     var gate = citeDiff(oldText, newText);
@@ -934,7 +936,7 @@
       var ok = await confirmBox({ title: "放弃本次 AI 建议？", lines: ["不写回正文、不存版本；本次生成的 token 不退"] });
       if (!ok) return;
       closeS();
-      if (btn) { btn.textContent = "🤖 改写"; btn.disabled = false; }
+      if (btn) { btn.textContent = verbLabel(verb); btn.disabled = false; }
       toast("已放弃，未写回正文");
     }
     m.querySelector("#svX").addEventListener("click", discard);
@@ -948,7 +950,7 @@
       });
       saveDB();
       closeS();
-      if (btn) { btn.textContent = "🤖 改写"; btn.disabled = false; }
+      if (btn) { btn.textContent = verbLabel(verb); btn.disabled = false; }
       rebuild(false, true);
       showCard(d.id);
       toast("已采纳写回 ✓ " + cost + (moved ? "（迁移 " + moved + " 处数字绑定，已标待复核）" : ""));

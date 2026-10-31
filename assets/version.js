@@ -5,7 +5,7 @@
  */
 (function (g) {
   "use strict";
-  var INFO = { version: "1.2.1", date: "2026-10-31", repo: "https://github.com/peacefulj/wenqu" };
+  var INFO = { version: "1.3.0", date: "2026-10-31", repo: "https://github.com/peacefulj/wenqu" };
   var Y = g.YANMO = g.YANMO || {};
   Y.version = INFO.version;
   Y.date = INFO.date;

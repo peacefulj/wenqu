@@ -418,10 +418,11 @@
   /* v1.0.2：探测服务商可用模型——只填 Key 的用户留空模型名时自动选择 */
   var MODEL_PREFS = ["kimi-k2.6", "kimi-k2", "glm-5.3-flash", "glm-5.2", "deepseek-v3", "deepseek-chat", "gpt-4o-mini", "gpt-4.1-mini", "claude-3-5-haiku", "qwen-plus"];
   async function probeModels(base, key) {
-    base = String(base || conf().base || "").replace(/\/+$/, "");
-    var headers = key ? { Authorization: "Bearer " + key } : {};
-    var r = await fetch(base + "/models", { headers: headers });
-    if (!r.ok) throw new Error("HTTP " + r.status);
+    var c = conf(), X = AIX();
+    base = String(base || c.base || "").replace(/\/+$/, "");
+    var fmt = X.resolve({ base: base, format: c.format });   /* v1.3.0：Anthropic 格式用 x-api-key 读 /v1/models */
+    var r = await fetch(X.endpoint(fmt, base, "models"), { headers: X.headers(fmt, key, false) });
+    if (!r.ok) throw new Error("HTTP " + r.status + (r.status === 404 ? "（这个接口不提供模型列表，可以直接试一次 AI 功能）" : ""));
     var j = await r.json();
     var ids = (j.data || []).map(function (m) { return m.id; });
     var pick = null;
@@ -434,19 +435,108 @@
     return { pick: pick, list: ids };
   }
 
-  /* 流式调用；onDelta 可选。返回 {text, usage, est} */
+  /* ================= 2.1) v1.3.0：接口格式 · 思考开关 · 上下文自动压缩 · 调试日志 =================
+     拼请求体、解析响应这些纯函数在 ym-ai.js（window.YMAI）；这里负责发请求、重试、计量和记日志。 */
+  var LS_AI_DEBUG = "yanmo_ai_debug";   // 最近 40 次 AI 请求的摘要（不含 Key），试用页「AI 调试」里查看
+  function AIX() {
+    if (!window.YMAI) throw new Error("页面缺少 assets/ym-ai.js——请刷新页面（或清除缓存后重开）");
+    return window.YMAI;
+  }
+  function debugVerbose() {   /* 页面地址带 ?debug=1（或 localStorage yanmo_debug=1）时，控制台打印每次请求 */
+    try { return /[?&]debug=1(&|$)/.test(location.search) || localStorage.getItem("yanmo_debug") === "1"; } catch (e) { return false; }
+  }
+  function hostPath(u) { try { var x = new URL(u); return x.host + x.pathname; } catch (e) { return String(u || "").slice(0, 80); } }
+  function debugStart(c, fmt, model, url, req) {
+    var last = null;
+    (req.messages || []).forEach(function (m) { if (m && m.role !== "system") last = m; });
+    return {
+      t: stamp(), page: location.pathname.split("/").pop() || "index.html", fmt: fmt, set: c.format || "auto", url: hostPath(url),
+      model: model, stream: !!req.stream, think: !!c.thinking, win: 0, inEst: 0, cut: 0, max: 0, status: 0, ms: 0,
+      ask: String((last && last.content) || "").replace(/\s+/g, " ").slice(0, 80), _t0: Date.now()
+    };
+  }
+  function debugDone(log, x) {
+    if (!log || log._done) return;
+    log._done = true;
+    var rec = Object.assign({}, log, x || {});
+    rec.ms = Date.now() - log._t0;
+    delete rec._t0; delete rec._done;
+    try {
+      var all = JSON.parse(localStorage.getItem(LS_AI_DEBUG) || "[]");
+      if (!Array.isArray(all)) all = [];
+      all.unshift(rec);
+      if (all.length > 40) all.length = 40;
+      localStorage.setItem(LS_AI_DEBUG, JSON.stringify(all));
+    } catch (e) {}
+    if (rec.err) console.warn("[研墨 AI]", rec.fmt, rec.model, rec.status || "", rec.err);
+    else if (debugVerbose()) console.log("[研墨 AI] 完成", rec);
+  }
+  function debugLog() { try { var a = JSON.parse(localStorage.getItem(LS_AI_DEBUG) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function debugClear() { try { localStorage.removeItem(LS_AI_DEBUG); } catch (e) {} }
+
+  /* 发一次请求：按格式拼请求 → 输入超过上下文先压缩 → 接口报上下文超限时按它给的上限再压缩、重试一次。
+     网络错误原样抛出（由调用方映射成人话）。返回 {res, fmt, model, url, fit, log} */
+  async function aiFetch(c, req) {
+    var X = AIX(), fmt = X.resolve(c), model = req.model || c.model || AI_DEF.model;
+    var url = X.endpoint(fmt, c.base || AI_DEF.base, "chat"), win = X.ctxWindow(c, model);
+    var log = debugStart(c, fmt, model, url, req);
+    for (var attempt = 0; ; attempt++) {
+      var fit = X.fit(req.messages, req.max_tokens, win);
+      var body = X.body(fmt, c, { model: model, messages: fit.messages, max_tokens: fit.max_tokens, temperature: req.temperature, stream: req.stream });
+      log.win = win; log.inEst = fit.after; log.cut += fit.cut; log.max = body.max_tokens || body.max_completion_tokens || 0;
+      if (debugVerbose()) console.log("[研墨 AI] 请求", url, Object.assign({}, body, { messages: "（" + (body.messages || []).length + " 条，约 " + fit.after + " token）" }));
+      var res;
+      try {
+        res = await fetch(url, { method: "POST", headers: X.headers(fmt, c.key, true), body: JSON.stringify(body), signal: req.signal });
+      } catch (e) {
+        debugDone(log, { err: (e && e.name === "AbortError") ? "已中止（超时或手动停止）" : "网络失败：" + (e && e.message) });
+        throw e;
+      }
+      log.status = res.status;
+      if (!res.ok && attempt === 0) {
+        var t = await res.clone().text().catch(function () { return ""; });
+        var lim = X.ctxError(res.status, t);
+        if (lim) {
+          win = lim > 0 ? lim : Math.floor((fit.after + fit.max_tokens) * 0.7);
+          log.retry = "接口报上下文超限（" + (lim > 0 ? "上限 " + lim + " token" : "未给上限") + "），已压缩后重试";
+          continue;
+        }
+      }
+      return { res: res, fmt: fmt, model: model, url: url, fit: fit, log: log };
+    }
+  }
+  function httpErrorMsg(sent, status, t) {
+    t = String(t || "");
+    if (status === 404 && !/model/i.test(t)) return "HTTP 404：接口地址不存在（" + hostPath(sent.url) + "）——检查「API 地址」和「接口格式」是否匹配";
+    /* v1.0.2：模型无渠道是最常见的新手坑，给可执行的指引 */
+    if (status === 503 || /model_not_found|无可用渠道|does not exist|not found/i.test(t)) {
+      return "模型「" + sent.model + "」在该服务商没有可用渠道——请到「AI / 接口设置」更换模型名（留空保存可自动探测可用模型）。原始信息：" + t.slice(0, 140);
+    }
+    var hint = AIX().errorHint(status, t);
+    return "HTTP " + status + " " + t.slice(0, 180) + (hint ? "——" + hint : "");
+  }
+  function emptyMsg(r) {
+    if (r.error) return "接口返回错误：" + String(r.error).slice(0, 180);
+    if (r.reasoning) return "模型把输出额度都花在了思考上、正文为空——到「AI / 接口设置」关掉「思考模式」，或把「接口格式」选成服务商对应的那一项后重试";
+    return "模型返回为空（检查 Key / 模型 / 余额；推理型模型可能把 token 花在思维链上）";
+  }
+  function usageEst(u, messages, text) {
+    if (u) return { inTok: u.prompt_tokens || 0, outTok: u.completion_tokens || 0, real: true };
+    var s = "";
+    (messages || []).forEach(function (m) { s += String((m && m.content) || ""); });
+    return { inTok: estimateTokens(s), outTok: estimateTokens(text), real: false };
+  }
+  function doneInfo(r, est, text) {
+    return { finish: r.finish, inTok: est.inTok, outTok: est.outTok, real: est.real, rTok: (r.usage && r.usage.reasoning_tokens) || 0,
+      rsn: (r.reasoning || "").length, text: text.length, ans: text.replace(/\s+/g, " ").slice(0, 120) };
+  }
+
+  /* 流式调用；onDelta 可选。返回 {text, usage, finish, cut} */
   async function streamAI(userMsg, opts, onDelta) {
     opts = opts || {};
     var c = conf();
     if (!c.key) throw new Error("未配置 API Key（在「AI / 接口设置」里填好并保存）");
-    var base = String(c.base || AI_DEF.base).replace(/\/+$/, "");
-    var body = {
-      model: opts.model || c.model || AI_DEF.model,
-      temperature: opts.temperature == null ? 0.3 : opts.temperature,
-      max_tokens: opts.max_tokens || 4096,
-      messages: (opts.messages || [{ role: "user", content: userMsg }]),
-      stream: true, stream_options: { include_usage: true }
-    };
+    var messages = opts.messages || [{ role: "user", content: userMsg }];
     var ctl = new AbortController();
     var limitMs = opts.timeout || 240000, timedOut = false;
     var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, limitMs);
@@ -458,35 +548,31 @@
       if (opts.signal.aborted) ctl.abort();
       else opts.signal.addEventListener("abort", function () { ctl.abort(); }, { once: true });
     }
-    var res;
+    var sent;
     try {
-      res = await fetch(base + "/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + c.key },
-        body: JSON.stringify(body), signal: ctl.signal
-      });
+      sent = await aiFetch(c, { model: opts.model, messages: messages, max_tokens: opts.max_tokens || 4096,
+        temperature: opts.temperature == null ? 0.3 : opts.temperature, stream: true, signal: ctl.signal });
     } catch (e) {
       clearTimeout(timer);
       if (opts.signal && opts.signal.aborted) throw new Error("已手动停止");
       throw new Error(timedOut ? timeoutMsg(0) : ("网络失败：" + (e && e.message)));
     }
+    var res = sent.res, X = AIX();
     if (!res.ok) {
       clearTimeout(timer);
       var t = await res.text().catch(function () { return ""; });
-      /* v1.0.2：模型无渠道是最常见的新手坑，给可执行的指引 */
-      if (res.status === 503 || /model_not_found|无可用渠道|does not exist|not found/i.test(t)) {
-        throw new Error("模型「" + body.model + "」在该服务商没有可用渠道——请到「AI / 接口设置」更换模型名（留空保存可自动探测可用模型）。原始信息：" + String(t).slice(0, 140));
-      }
-      throw new Error("HTTP " + res.status + " " + String(t).slice(0, 180));
+      var em = httpErrorMsg(sent, res.status, t);
+      debugDone(sent.log, { err: em });
+      throw new Error(em);
     }
     var ctype = res.headers.get("content-type") || "";
-    var text = "", usage = null;
+    var text = "", acc = X.newAcc();
     if (ctype.indexOf("event-stream") < 0) {
       /* 有的中转站不支持流式：整包 JSON 兜底 */
       var j = await res.json().catch(function () { return null; });
       clearTimeout(timer);
-      text = (j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "";
-      usage = (j && j.usage) || null;
+      var pj = X.parse(sent.fmt, j);
+      text = pj.text; acc.reasoning = pj.reasoning; acc.finish = pj.finish; acc.usage = pj.usage; acc.error = pj.error;
     } else {
       var reader = res.body.getReader(), dec = new TextDecoder(), buf = "";
       try {
@@ -503,30 +589,76 @@
             if (!data || data === "[DONE]") continue;
             var chunk = null;
             try { chunk = JSON.parse(data); } catch (e) { continue; }
-            var d = chunk.choices && chunk.choices[0] && chunk.choices[0].delta && chunk.choices[0].delta.content;
+            var d = X.delta(sent.fmt, chunk, acc);
             if (d) { text += d; if (onDelta) { try { onDelta(d, text); } catch (e) {} } }
-            if (chunk.usage) usage = chunk.usage;
           }
         }
       } catch (e) {
         /* v1.0.1 修复（QA P0-3）：读流阶段的中止（最常见的停止点）也要映射成人话；
            v1.1.0：超时与手动停止分开提示（原来超时也显示「已手动停止」） */
+        debugDone(sent.log, { err: (opts.signal && opts.signal.aborted) ? "已手动停止" : timedOut ? timeoutMsg(text.length) : "读取中断：" + ((e && e.message) || e), text: text.length });
         if (opts.signal && opts.signal.aborted) throw new Error("已手动停止");
         if (timedOut) { var te = new Error(timeoutMsg(text.length)); te.partial = text; throw te; }
         if (e && e.name === "AbortError") throw new Error("已手动停止");
         throw e;
       } finally { clearTimeout(timer); }
     }
-    if (!text && opts.signal && opts.signal.aborted) throw new Error("已手动停止");
-    if (!text) throw new Error("模型返回为空（检查 Key / 模型 / 余额；推理型模型可能把 token 花在思维链上）");
-    var est = usage ? { inTok: usage.prompt_tokens || 0, outTok: usage.completion_tokens || 0, real: true }
-      : { inTok: estimateTokens(userMsg), outTok: estimateTokens(text), real: false };
+    if (!text && opts.signal && opts.signal.aborted) { debugDone(sent.log, { err: "已手动停止" }); throw new Error("已手动停止"); }
+    if (!text) {
+      var em2 = emptyMsg(acc);
+      debugDone(sent.log, { err: em2, finish: acc.finish, rsn: acc.reasoning.length });
+      throw new Error(em2);
+    }
+    var est = usageEst(acc.usage, messages, text);
     usageTodayAdd(est.inTok, est.outTok);
-    return { text: text, usage: est };
+    debugDone(sent.log, doneInfo(acc, est, text));
+    return { text: text, usage: est, finish: acc.finish, cut: sent.fit.cut };
   }
   /* 非流式简单调用（短任务；复用流式实现保证计量一致） */
   function callAI(userMsg, maxTokens, opts) {
     return streamAI(userMsg, Object.assign({ max_tokens: maxTokens || 4096 }, opts || null), null).then(function (r) { return r.text; });
+  }
+  /* v1.3.0：非流式整包调用（工作台 / 工具台原来各自拼请求，现在统一走这里：同一套格式适配、上下文压缩、计量和调试日志）。
+     messages 可以是字符串或消息数组；返回 {text, reasoning, finish, usage, cut} */
+  async function completeAI(messages, opts) {
+    opts = opts || {};
+    var c = conf();
+    if (!c.key) throw new Error("未配置 API Key（在「AI / 接口设置」里填好并保存）");
+    if (!Array.isArray(messages)) messages = [{ role: "user", content: String(messages || "") }];
+    var ctl = new AbortController(), timedOut = false;
+    var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, opts.timeout || 180000);
+    if (opts.signal) {
+      if (opts.signal.aborted) ctl.abort();
+      else opts.signal.addEventListener("abort", function () { ctl.abort(); }, { once: true });
+    }
+    var sent = null;
+    try {
+      sent = await aiFetch(c, { model: opts.model, messages: messages, max_tokens: opts.max_tokens || 4096,
+        temperature: opts.temperature == null ? 0.3 : opts.temperature, stream: false, signal: ctl.signal });
+      if (!sent.res.ok) {
+        var t = await sent.res.text().catch(function () { return ""; });
+        var em = httpErrorMsg(sent, sent.res.status, t);
+        debugDone(sent.log, { err: em });
+        throw new Error(em);
+      }
+      var j = await sent.res.json().catch(function (e) { if (e && e.name === "AbortError") throw e; return null; });
+      var p = AIX().parse(sent.fmt, j);
+      if (!p.text) {
+        var em2 = emptyMsg(p);
+        debugDone(sent.log, { err: em2, finish: p.finish, rsn: p.reasoning.length });
+        throw new Error(em2);
+      }
+      var est = usageEst(p.usage, messages, p.text);
+      usageTodayAdd(est.inTok, est.outTok);
+      debugDone(sent.log, doneInfo(p, est, p.text));
+      return { text: p.text, reasoning: p.reasoning, finish: p.finish, usage: est, cut: sent.fit.cut };
+    } catch (e) {
+      var stop = (opts.signal && opts.signal.aborted) ? "已手动停止" : (timedOut || (e && e.name === "AbortError")) ? "请求超时" : "";
+      if (sent) debugDone(sent.log, { err: stop || String((e && e.message) || e) });
+      if (stop) throw new Error(stop);
+      if (!sent && e && e.name === "TypeError") throw new Error("网络失败：" + e.message);
+      throw e;
+    } finally { clearTimeout(timer); }
   }
 
   /* ================= 3) 流水线（检查点续跑） ================= */
@@ -949,7 +1081,14 @@
     ai: {
       conf: conf, setConf: setConf, setKey: setKey, baseWarning: baseWarning, estimateTokens: estimateTokens,
       stream: streamAI, call: callAI, usageToday: usageToday, estCostText: estCostText, probeModels: probeModels,
-      usageAll: function () { try { return JSON.parse(localStorage.getItem(LS_USAGE) || "{}"); } catch (e) { return {}; } }
+      usageAll: function () { try { return JSON.parse(localStorage.getItem(LS_USAGE) || "{}"); } catch (e) { return {}; } },
+      /* v1.3.0 */
+      complete: completeAI,
+      formats: function () { return AIX().FORMATS; },
+      format: function (c) { return AIX().resolve(c || conf()); },
+      formatName: function (id) { return AIX().formatName(id); },
+      ctxWindow: function (c) { c = c || conf(); return AIX().ctxWindow(c, c.model); },
+      debugLog: debugLog, debugClear: debugClear
     },
     pipeline: WQPipeline,
     diff: { paras: parasDiff, chars: chars, charsHTML: charsHTML, sim: sim },

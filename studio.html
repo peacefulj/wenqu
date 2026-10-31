@@ -79,11 +79,18 @@
       <div><label>单价·输入（元/百万token，选填——用于本机费用折算）</label><input id="aiPriceIn" type="text" placeholder="如 2" aria-label="输入单价，元每百万token"></div>
       <div><label>单价·输出（元/百万token，选填）</label><input id="aiPriceOut" type="text" placeholder="如 8" aria-label="输出单价，元每百万token"></div>
     </div>
+    <div class="grid4">
+      <div><label>接口格式（各家服务商的请求写法，一般选「自动」）</label><select id="aiFormat" aria-label="接口格式"></select></div>
+      <div><label>模型上下文上限（千 token，选填；输入超出时自动压缩）</label><input id="aiCtx" type="text" inputmode="numeric" placeholder="留空自动（一般按 128）" aria-label="模型上下文上限，千 token"></div>
+      <div class="hint" id="aiFmtHint" style="align-self:end;line-height:1.6"></div>
+    </div>
     <div id="aiBaseWarn" class="callout c-warn" style="margin:8px 0 0;padding:8px 12px;font-size:13px" hidden></div>
     <div class="actions">
       <button class="btn2" id="aiSave">保存设置</button>
       <label class="hint" style="display:flex;align-items:center;gap:6px;margin-left:6px"><input type="checkbox" id="aiConfirmChk"> AI 操作前弹「确认/取消」</label>
       <label class="hint" style="display:flex;align-items:center;gap:6px;margin-left:6px" title="Key 存在 sessionStorage，关掉浏览器就清除；公共电脑、实验室共用电脑建议勾选"><input type="checkbox" id="aiKeySession"> Key 只在本次会话有效</label>
+      <label class="hint" style="display:flex;align-items:center;gap:6px;margin-left:6px" title="允许模型先思考再回答：更慢、更费 token；DeepSeek 等服务商的思考 token 算在输出额度里，关掉更稳"><input type="checkbox" id="aiThinking"> 思考模式（默认关）</label>
+      <a class="hint" href="try.html#ai-debug" style="margin-left:6px">🐞 AI 调试</a>
       <span class="hint" id="usageBox"></span>
     </div>
     <div class="hint" style="margin-top:6px;line-height:1.7">
@@ -679,7 +686,7 @@
 <footer class="site"><div class="container">
   <div class="links"><a href="index.html">首页</a> · <a href="quick.html">参考稿</a> · <a href="try.html">试用与测试</a> · 发现问题？<a href="mailto:info@yingcompute.com">邮件告诉我们</a> · <a href="https://github.com/peacefulj/wenqu/issues" target="_blank" rel="noopener">GitHub Issues</a></div>
   <div class="disc">本平台检索与 OA 链接来自 OpenAlex / Crossref / Unpaywall 官方公开接口，仅指向来源方标注的合法开放版本；不提供文献代下、代写服务。AI 产出（速读、审稿、综述草稿、引用匹配）均可能出错，使用前请人工核对；学术润色仅做语言表达优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器；上传的 PDF 也只存在本机。</div>
-  <div>© 2026 研墨工作台 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.2.1</span> 更新日志</a> · 数据接口礼貌限速</div>
+  <div>© 2026 研墨工作台 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.3.0</span> 更新日志</a> · 数据接口礼貌限速</div>
 </div></footer>
 
 <aside id="verDrawer">
@@ -740,6 +747,7 @@ document.addEventListener("click", e => {
 });
 </script>
 <script src="assets/version.js"></script>
+<script src="assets/ym-ai.js"></script>
 <script src="assets/wq-core.js"></script>
 <script src="assets/paradigms.js"></script>
 <script src="assets/vendor/marked.min.js"></script>

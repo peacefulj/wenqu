@@ -95,21 +95,12 @@ function aiConf() {
   if (window.WQCore && WQCore.ai && WQCore.ai.conf) return WQCore.ai.conf();
   try { return { ...AI_DEF, ...JSON.parse(localStorage.getItem("wenqu_ai") || "{}") }; } catch { return { ...AI_DEF }; }
 }
+/* v1.3.0：统一走 WQCore.ai.complete（接口格式、思考开关、上下文压缩、计量、调试日志都在那里） */
 async function callAI(userMsg, maxTokens = 4096) {
   const c = aiConf();
   if (!c.key) throw new Error("未配置 API Key（页头「AI / 接口设置」里填好并保存）");
-  const r = await fetchJSON((c.base || AI_DEF.base).replace(/\/+$/, "") + "/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + c.key },
-    body: JSON.stringify({ model: c.model || AI_DEF.model, temperature: 0.3, max_tokens: maxTokens, messages: [{ role: "user", content: userMsg }] }),
-  }, 180000);
-  const ch = r.choices?.[0];
-  const txt = ch?.message?.content;
-  if (!txt) {
-    if (ch?.message?.reasoning_content) throw new Error("模型把 token 花在思维链上、正文为空——换非推理模型或降低任务量");
-    throw new Error("模型返回为空（检查 Key/模型/余额）");
-  }
-  return txt;
+  const r = await WQCore.ai.complete([{ role: "user", content: userMsg }], { max_tokens: maxTokens, temperature: 0.3, timeout: 180000 });
+  return r.text;
 }
 
 /* 防重入包装：所有 AI 按钮统一走这里 */
@@ -647,8 +638,11 @@ ${outlineCtx(p0)}${designCtx}`;
       prog.textContent = "⚠ 检测到 AI 未成稿（输入不足的说明而非草稿）——未存入草稿。请先补齐主题/文献矩阵后重试。";
       return;
     }
-    /* S1：建议态——AI 成稿先出 diff 预览，采纳才写入正文（与导图同一 commit 管线） */
-    const gate = WQCore.citeDiff((p.draft || {})[sec] || "", txt);
+    /* S1：建议态——AI 成稿先出 diff 预览，采纳才写入正文（与导图同一 commit 管线）
+       v1.3.0：本节原来是空的（新写一节）时没有原有引用可比，只拦超出文献库范围的编号——原来所有 [n] 都算「新增」，采纳按钮永远锁死 */
+    const base0 = (p.draft || {})[sec] || "", nPapers = (p.papers || []).length;
+    const gate = base0.trim() ? WQCore.citeDiff(base0, txt)
+      : { lost: [], gained: Object.keys(WQCore.citeSet(txt)).filter(k => +k < 1 || +k > nPapers), fresh: true, n: nPapers };
     const usage = __usage;
     const model = (WQCore.ai.conf().model || "默认");
     const cost = WQCore.ai.estCostText(usage ? (usage.inTok || 0) : 0, usage ? (usage.outTok || 0) : 0);   /* v1.1.0：stream 返回的是 inTok/outTok */
@@ -671,9 +665,13 @@ function openSuggest4(o) {
   flush();
   if (!html) html = '<div class="dsame">与当前稿段落级一致</div>';
   const gated = o.gate.lost.length || o.gate.gained.length;
-  const gateLine = gated
-    ? `<span class="bad">⚠ 引用编号有变化${o.gate.lost.length ? "：丢失 [" + o.gate.lost.join("][") + "]" : ""}${o.gate.gained.length ? (o.gate.lost.length ? "，" : "：新增 [") + o.gate.gained.join("][") + "]" : ""} —— 可能丢引/错引，已锁定直接采纳</span>`
-    : '<span class="ok">✓ 引用编号与当前稿一致</span>';
+  const lockWhy = o.gate.fresh ? "引用编号超出文献库范围" : "引用编号有变化";
+  const gateLine = o.gate.fresh
+    ? (gated ? `<span class="bad">⚠ 引用编号超出文献库范围：[${o.gate.gained.join("][")}]（文献库共 ${o.gate.n} 篇）—— 可能是虚构引用，已锁定直接采纳</span>`
+      : `<span class="ok">✓ 新写的一节：引用编号都在文献库范围内${o.gate.n ? "（1–" + o.gate.n + "）" : ""}</span>`)
+    : gated
+      ? `<span class="bad">⚠ 引用编号有变化${o.gate.lost.length ? "：丢失 [" + o.gate.lost.join("][") + "]" : ""}${o.gate.gained.length ? (o.gate.lost.length ? "，" : "：新增 [") + o.gate.gained.join("][") + "]" : ""} —— 可能丢引/错引，已锁定直接采纳</span>`
+      : '<span class="ok">✓ 引用编号与当前稿一致</span>';
   const levelId = cur()?.level;
   const bscLine = levelId === "bsc" ? '<div class="dbsc">⚠ 本科层级：多数高校禁止 AI 直接生成/改写正文——本预览仅作对照学习，建议逐段手动改写后再采纳</div>' : "";
   let m = document.getElementById("sg4Box");
@@ -688,7 +686,7 @@ function openSuggest4(o) {
     <div class="callout c-info" style="font-size:12.5px">${gateLine}${bscLine}</div>
     <div style="flex:1;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.7">${html}</div>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center">
-      <button class="btn2" id="sg4Adopt" ${gated ? "disabled title='引用编号有变化，不允许直接采纳'" : ""} style="background:#2456e6;color:#fff">✅ 采纳并写入草稿</button>
+      <button class="btn2" id="sg4Adopt" ${gated ? "disabled title='" + lockWhy + "，不允许直接采纳'" : ""} style="background:#2456e6;color:#fff">✅ 采纳并写入草稿</button>
       <button class="btn2" id="sg4Drop">✕ 放弃（不写入）</button>
       <span class="hint">采纳后自动存版本；放弃不退 token。引用-论断抽查建议采纳后到⑥再跑一次。</span></div></div>`;
   document.body.appendChild(m);
@@ -696,7 +694,7 @@ function openSuggest4(o) {
   m.querySelector("#sg4X").addEventListener("click", () => { closeM(); o.prog.textContent = "已放弃本次建议（未写入草稿）"; });
   m.querySelector("#sg4Drop").addEventListener("click", () => { closeM(); o.prog.textContent = "已放弃本次建议（未写入草稿）"; });
   m.querySelector("#sg4Adopt").addEventListener("click", () => {
-    if (gated) { wqNotice("引用编号有变化，已锁定直接采纳——请放弃后手动编辑"); return; }
+    if (gated) { wqNotice(lockWhy + "，已锁定直接采纳——请放弃后手动编辑"); return; }
     const p = liveProj(o.pid); if (!p) { closeM(); return; }
     const content = withMeta(o.txt, "文献矩阵 + 大纲");
     const res = WQCore.commit(p, { field: "draft:" + o.sec, content, kind: "草稿·" + o.sec, actor: "ai", model: o.model, cost: o.cost, note: "AI 成稿，经采纳" });

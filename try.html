@@ -43,7 +43,7 @@
 </div></header>
 
 <main class="container page">
-  <h1 class="title">试用与测试 <span class="beta" data-ym-version>v1.2.1</span></h1>
+  <h1 class="title">试用与测试 <span class="beta" data-ym-version>v1.3.0</span></h1>
   <p class="meta">不用注册：一键建一个演示项目，跟着下面的步骤把功能点一遍；页面下方会自动检测你的浏览器支持哪些功能。数据只存在你的浏览器里。<a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志 ↗</a></p>
 
   <section class="block">
@@ -103,8 +103,28 @@
     <div id="trySelfOut" class="cklist"></div>
   </section>
 
+  <section class="block" id="ai-debug">
+    <h2>⑤ AI 调试<small>接口格式、思考模式、上下文压缩和最近的 AI 请求记录——AI 出问题时在这里看原因，再去调设置</small></h2>
+    <div id="tryAICfg" class="cklist"></div>
+    <div class="row" style="margin-top:10px;align-items:center">
+      <button id="tryAICall" class="btn2 ghost" title="流式、非流式各发一条很短的请求，约几十 token，会按服务商价格计费">实测 AI 调用（约几十 token）</button>
+      <a class="btn2 ghost" href="studio.html?set=ai">⚙️ 调整 AI 设置</a>
+      <button id="tryDbgCopy" class="btn2 ghost">📋 复制调试信息</button>
+      <button id="tryDbgClear" class="btn2 ghost">清空记录</button>
+      <span id="tryDbgMsg" class="hint"></span>
+    </div>
+    <div id="tryAICallOut" class="cklist"></div>
+    <div id="tryDesk" class="row" style="margin-top:10px;align-items:center" hidden>
+      <span id="tryDeskInfo" class="hint"></span>
+      <button id="tryDeskDbg" class="btn2 ghost"></button>
+    </div>
+    <h3 style="font-size:14px;margin:14px 0 0">最近的 AI 请求<small class="hint" style="font-weight:400">（只存本机，最多 40 条，不含 Key）</small></h3>
+    <div id="tryDbgLog" class="cklist"></div>
+    <p class="hint">需要更详细的信息：在任意页面地址后面加 <code>?debug=1</code>（如 <code>studio.html?debug=1</code>），浏览器控制台（F12）会打印每次请求的参数。</p>
+  </section>
+
   <section class="block">
-    <h2>⑤ 反馈<small>遇到问题时附上检测报告，方便定位</small></h2>
+    <h2>⑥ 反馈<small>遇到问题时附上检测报告，方便定位</small></h2>
     <div class="row" style="align-items:center">
       <button id="tryCopy" class="btn2 ghost">📋 复制检测报告</button>
       <a id="tryIssue" class="btn2 ghost" href="https://github.com/peacefulj/wenqu/issues/new" target="_blank" rel="noopener">去 GitHub 反馈 ↗</a>
@@ -118,10 +138,11 @@
 <footer class="site"><div class="container">
   <div class="links"><a href="index.html">首页</a> · <a href="studio.html">科研工作台</a> · <a href="quick.html">参考稿</a> · <a href="map.html">项目导图</a> · <a href="https://github.com/peacefulj/wenqu" target="_blank" rel="noopener">GitHub 开源</a></div>
   <div class="disc">示例 PDF 与第 4 篇演示文献为虚构内容，仅用于测试软件功能，不能引用。检测在本机进行；只有点「测试网络」「测试 AI 接口」时才会访问对应的服务。</div>
-  <div>© 2026 研墨 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.2.1</span> 更新日志</a></div>
+  <div>© 2026 研墨 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.3.0</span> 更新日志</a></div>
 </div></footer>
 
 <script src="assets/version.js"></script>
+<script src="assets/ym-ai.js"></script>
 <script src="assets/wq-core.js"></script>
 <script src="assets/ym-bib.js"></script>
 <script src="assets/ym-export.js"></script>
