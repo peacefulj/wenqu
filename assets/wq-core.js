@@ -374,7 +374,7 @@
   }
 
   /* ================= 2) AI：流式 + 计量 ================= */
-  var AI_DEF = { base: "https://yingcompute.com/v1", model: "glm-5.3-flash" };
+  var AI_DEF = { base: "https://api.yingcompute.com/api/v1", model: "glm-5.3-flash" };
   function storedConf() {
     try { return Object.assign({}, AI_DEF, JSON.parse(localStorage.getItem(LS_AI) || "{}")); }
     catch (e) { return Object.assign({}, AI_DEF); }

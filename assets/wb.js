@@ -257,7 +257,7 @@ function rlogRender() {
 }
 rlogRender();
 /* ================= 设置（与 wenqu/tools.html 共用 localStorage 键） ================= */
-const AI_DEF = { base: "https://yingcompute.com/v1", model: "glm-5.3-flash" };
+const AI_DEF = { base: "https://api.yingcompute.com/api/v1", model: "glm-5.3-flash" };
 /* v1.1.0：读写统一走 WQCore（Key 可选只存本次会话；API 地址非 HTTPS 时提醒） */
 function readAIConf() {
   if (window.WQCore && WQCore.ai && WQCore.ai.conf) return WQCore.ai.conf();

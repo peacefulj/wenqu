@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+## [1.5.2] - 2026-11-08
+
+- **站点外链指向 www 新域名**：首页「去研墨」、参考稿页「注册研墨（新人礼包）」、工作台「注册研墨领新人礼包」「研墨控制台」统一改为 `https://www.yingcompute.com/`（原来分别是 `yingcompute.com/register?aff=…` 与 `yingcompute.com`）。
+- **默认 API 地址改到 api 子域**：`yingcompute.com/v1` 已无 DNS 记录，默认值与会话示例统一改为 `https://api.yingcompute.com/api/v1`（实测 `/chat/completions` 返回 401「缺少或无效的 API 密钥」，接口存在；`glm-5.3-flash` 仍在该服务商可用模型列表内）。已保存过配置的用户不受影响。
+
 ## [1.5.1] - 2026-11-07
 
 - **科研论文也能选模板**：新建项目与阶段① 的「模板」下拉原来只在应用型文书下出现，科研论文场景为空。现两场景都能选：科研论文新增 5 套骨架（实证论文、方法—实验型、案例研究、综述型、学位论文多章），按范式过滤并随范式切换自动重建；留空则沿用范式默认章节。模板只改章节骨架与写作提示，不影响范式的方法论要求与实证工具。
@@ -197,7 +202,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.1...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.2...HEAD
+[1.5.2]: https://github.com/peacefulj/wenqu/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/peacefulj/wenqu/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/peacefulj/wenqu/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/peacefulj/wenqu/compare/v1.4.1...v1.4.2

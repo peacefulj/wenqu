@@ -113,7 +113,7 @@ function styleBlock() {
 }
 
 /* ---------- AI ---------- */
-const AI_DEF = { base: "https://yingcompute.com/v1", model: "glm-5.3-flash" };
+const AI_DEF = { base: "https://api.yingcompute.com/api/v1", model: "glm-5.3-flash" };
 /* v1.1.0：统一走 WQCore.ai.conf（含「仅本次会话保存」的 Key） */
 function aiConf() {
   if (window.WQCore && WQCore.ai && WQCore.ai.conf) return WQCore.ai.conf();

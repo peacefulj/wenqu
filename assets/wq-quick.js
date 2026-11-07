@@ -75,7 +75,7 @@
       } catch (e) { /* 静默 */ }
     })();
     $("qkSave").addEventListener("click", async function () {
-      var b = $("qkBase").value.trim() || "https://yingcompute.com/v1";
+      var b = $("qkBase").value.trim() || "https://api.yingcompute.com/api/v1";
       var k = $("qkKey").value.trim();
       var m = $("qkModel").value.trim();
       /* v1.0.2：模型名留空 → 自动探测该服务商可用模型（只填 Key 就能用） */

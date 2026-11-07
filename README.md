@@ -5,7 +5,7 @@
 - 网页版：https://www.yanmo.io/
 - 专业版（可安装到桌面）：https://peacefulj.github.io/wenqu/
 - 不需要后端，不需要数据库，数据默认只存在你的浏览器里。
-- 当前版本：**v1.5.1**（[更新日志](CHANGELOG.md)）
+- 当前版本：**v1.5.2**（[更新日志](CHANGELOG.md)）
 
 ## 在线试用
 
@@ -49,7 +49,7 @@
 
 打开 https://www.yanmo.io/ ，在页头的「AI / 接口设置」里填写：
 
-- Base URL：兼容 OpenAI 的接口地址，例如 `https://yingcompute.com/v1`；也支持 Anthropic Messages 接口（如 `https://api.anthropic.com`、`https://api.deepseek.com/anthropic`）
+- Base URL：兼容 OpenAI 的接口地址，例如 `https://api.yingcompute.com/api/v1`；也支持 Anthropic Messages 接口（如 `https://api.anthropic.com`、`https://api.deepseek.com/anthropic`）
 - API Key：你自己的 Key
 - Model：模型名
 - 接口格式：一般选「自动识别」。DeepSeek、智谱 GLM、通义千问、OpenAI 推理模型等控制「思考模式」的参数各不相同，选对格式后，「思考模式」开关（默认关）才会生效
