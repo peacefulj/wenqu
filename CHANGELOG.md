@@ -4,6 +4,13 @@
 
 ## [未发布]
 
+## [1.5.4] - 2026-11-08
+
+- **AI 设置改成「选服务商 → 填 Key」**：新增服务商下拉（研墨、TokenHub 本机中转/直连、DeepSeek、Kimi、智谱 GLM、通义千问、硅基流动、OpenAI、Anthropic、自定义），选中即自动带出 API 地址、接口格式与常用模型；模型框支持下拉候选也可手填。
+- **一键测试连接**：设置面板新增「测试连接」，调用模型列表接口验证地址与 Key，并回报可用模型数量；跨域失败时直接提示原因。
+- **高级设置折叠**：API 地址、接口格式、上下文上限、单价、Unpaywall 邮箱、GROBID 收进「高级设置」，日常只留三格。
+- **桌面版服务商标识**：内置中转项仅在 exe 中出现，网页版不会看到 `/__ai/v1` 这类本机地址。
+
 ## [1.5.3] - 2026-11-08
 
 - **桌面版内置本机 AI 中转**：部分服务商（如 TokenHub）只允许 `POST`、`OPTIONS` 返回 405，浏览器带 `Authorization` 的请求会被跨域预检拦下，表现为「Failed to fetch」。桌面版现在在 `127.0.0.1` 上提供同源中转 `/__ai/v1/*`（流式逐块转发），预置配置也改用它，不再受跨域限制。
@@ -208,7 +215,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.3...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.4...HEAD
+[1.5.4]: https://github.com/peacefulj/wenqu/compare/v1.5.3...v1.5.4
 [1.5.3]: https://github.com/peacefulj/wenqu/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/peacefulj/wenqu/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/peacefulj/wenqu/compare/v1.5.0...v1.5.1

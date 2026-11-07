@@ -258,6 +258,95 @@ function rlogRender() {
 rlogRender();
 /* ================= 设置（与 wenqu/tools.html 共用 localStorage 键） ================= */
 const AI_DEF = { base: "https://api.yingcompute.com/api/v1", model: "glm-5.3-flash" };
+/* v1.5.4：服务商预设——选一个就带出地址、接口格式与常用模型，只需再填 Key（对齐 Trae 的配置方式） */
+const AI_PROVIDERS = [
+  { id: "yanmo", name: "研墨（默认 · 新人送额度）", base: "https://api.yingcompute.com/api/v1",
+    models: ["glm-5.3-flash", "glm-5.3", "deepseek-flash", "deepseek-v4-pro", "kimi-k3", "claude-sonnet-5-5", "claude-haiku-5-5"],
+    format: "openai", hint: "按 token 计费、无套餐；检索类功能不需要 Key。" },
+  { id: "desktop", name: "TokenHub · 本机中转（桌面版专用）", base: "/__ai/v1",
+    models: ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"],
+    format: "openai", desktopOnly: true,
+    hint: "走 exe 内置中转，免跨域预检；网页版没有这个地址。" },
+  { id: "tokenhub", name: "腾讯 TokenHub（直连）", base: "https://tokenhub.tencentmaas.com/v1",
+    models: ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"],
+    format: "openai",
+    hint: "网页直连可能被跨域预检拦下（OPTIONS 405），失败请改用桌面版。" },
+  { id: "deepseek", name: "DeepSeek 官方", base: "https://api.deepseek.com/v1",
+    models: ["deepseek-chat", "deepseek-reasoner"], format: "auto" },
+  { id: "kimi", name: "Kimi（Moonshot）", base: "https://api.moonshot.cn/v1",
+    models: ["kimi-k2-turbo-preview", "kimi-k2-0905-preview", "moonshot-v1-32k"], format: "auto" },
+  { id: "zhipu", name: "智谱 GLM", base: "https://open.bigmodel.cn/api/paas/v4",
+    models: ["glm-4.6", "glm-4-plus", "glm-4-flash"], format: "thinking" },
+  { id: "qwen", name: "通义千问（DashScope）", base: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    models: ["qwen-plus", "qwen-max", "qwen-turbo"], format: "enable_thinking" },
+  { id: "siliconflow", name: "硅基流动", base: "https://api.siliconflow.cn/v1",
+    models: ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct"], format: "openai" },
+  { id: "openai", name: "OpenAI", base: "https://api.openai.com/v1",
+    models: ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4o"], format: "openai" },
+  { id: "anthropic", name: "Anthropic（Claude）", base: "https://api.anthropic.com",
+    models: ["claude-sonnet-4-5", "claude-haiku-4-5"], format: "anthropic" }
+];
+const aiNorm = (b) => String(b || "").trim().replace(/\/+$/, "");
+function aiProviderList() {
+  return AI_PROVIDERS.filter(p => !p.desktopOnly || window.__YM_DESKTOP__);
+}
+function aiProviderOf(base) {
+  const b = aiNorm(base);
+  return aiProviderList().find(p => aiNorm(p.base) === b) || null;
+}
+function aiFillProviders() {
+  const sel = $("aiProvider"); if (!sel) return;
+  sel.innerHTML = aiProviderList().map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")
+    + '<option value="custom">自定义（自己填地址与模型）</option>';
+}
+function aiFillModels(p) {
+  const dl = $("aiModelList"); if (!dl) return;
+  dl.innerHTML = ((p && p.models) || []).map(m => `<option value="${esc(m)}"></option>`).join("");
+}
+function aiShowProv(p) {
+  const box = $("aiProvHint"); if (!box) return;
+  box.textContent = (p && p.hint) || "自定义：直接填 API 地址、模型名与 Key；不确定接口格式时选「自动识别」。";
+}
+function aiApplyProvider(id, keep) {
+  const p = aiProviderList().find(x => x.id === id);
+  if (!p) { aiFillModels(null); aiShowProv(null); return; }
+  if (!keep) {
+    $("aiBase").value = p.base;
+    $("aiModel").value = (p.models && p.models[0]) || "";
+    if ($("aiFormat")) $("aiFormat").value = p.format || "auto";
+  }
+  aiFillModels(p); aiShowProv(p);
+  renderBaseWarn(); renderFmtHint();
+}
+function aiSyncProviderFromBase() {
+  const p = aiProviderOf($("aiBase").value);
+  if ($("aiProvider")) $("aiProvider").value = p ? p.id : "custom";
+  aiFillModels(p); aiShowProv(p);
+}
+if ($("aiProvider")) {
+  $("aiProvider").addEventListener("change", () => aiApplyProvider($("aiProvider").value, false));
+}
+async function aiTestConn() {
+  const msg = $("aiTestMsg"), btn = $("aiTest");
+  const base = $("aiBase").value.trim() || AI_DEF.base, key = $("aiKey").value.trim();
+  if (!key) { msg.textContent = "先填 Key"; $("aiKey").focus(); return; }
+  msg.textContent = "测试中…"; if (btn) btn.disabled = true;
+  try {
+    const pr = await WQCore.ai.probeModels(base, key);
+    const n = (pr.list || []).length;
+    msg.textContent = "✓ 连接正常" + (n ? "，可用模型 " + n + " 个" : "");
+    if (n) {
+      aiFillModels({ models: pr.list.slice(0, 60) });
+      if (!$("aiModel").value.trim() && pr.pick) $("aiModel").value = pr.pick;
+    }
+  } catch (e) {
+    const m = String((e && e.message) || e || "");
+    msg.textContent = "✗ " + (/Failed to fetch|NetworkError|Load failed/i.test(m)
+      ? "浏览器被跨域预检拦下（服务商未放行 OPTIONS），可换桌面版或改用其他服务商"
+      : m);
+  } finally { if (btn) btn.disabled = false; }
+}
+if ($("aiTest")) $("aiTest").addEventListener("click", aiTestConn);
 /* v1.1.0：读写统一走 WQCore（Key 可选只存本次会话；API 地址非 HTTPS 时提醒） */
 function readAIConf() {
   if (window.WQCore && WQCore.ai && WQCore.ai.conf) return WQCore.ai.conf();
@@ -279,6 +368,9 @@ function loadAI() {
   }
   if ($("aiThinking")) $("aiThinking").checked = !!s.thinking;
   if ($("aiCtx")) $("aiCtx").value = s.ctxK || "";
+  /* v1.5.4：把当前地址映射到服务商下拉，并带出该服务商的常用模型 */
+  aiFillProviders();
+  aiSyncProviderFromBase();
   renderBaseWarn();
 }
 /* 「自动」时告诉用户实际按哪种格式发、思考开关会发什么参数 */
@@ -298,7 +390,7 @@ function renderBaseWarn() {
   const w = (window.WQCore && WQCore.ai.baseWarning) ? WQCore.ai.baseWarning($("aiBase").value) : "";
   box.hidden = !w; box.textContent = w ? "⚠ " + w : "";
 }
-$("aiBase").addEventListener("input", () => { renderBaseWarn(); renderFmtHint(); });
+$("aiBase").addEventListener("input", () => { aiSyncProviderFromBase(); renderBaseWarn(); renderFmtHint(); });
 ["aiFormat", "aiThinking", "aiCtx", "aiModel"].forEach(id => { const el = $(id); if (el) el.addEventListener(el.tagName === "INPUT" && el.type === "text" ? "input" : "change", renderFmtHint); });
 $("aiSave").addEventListener("click", () => {
   /* v1.0 合并式保存：保留扩展字段（priceIn/priceOut 等由 wq-ui 写入），避免被整体覆写 */

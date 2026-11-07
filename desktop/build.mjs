@@ -55,6 +55,7 @@ if (existsSync(presetPath)) {
   upstream = String(pj.upstream || "").replace(/\/+$/, "");
   const js = `/* 研墨桌面版 · 预置 AI 配置（首次运行写入；之后以你在设置里保存的为准）
  * 基址用同源 /__ai/v1 —— 由 exe 内置本机中转转发到上游，避免浏览器跨域预检失败 */
+window.__YM_DESKTOP__ = true;
 (function () {
   var P = ${JSON.stringify({ ...conf, base: "/__ai/v1" })};
   var K = "wenqu_ai";
