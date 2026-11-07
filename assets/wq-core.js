@@ -386,6 +386,11 @@
       var s = JSON.parse(sessionStorage.getItem(LS_AI_SESSION) || "null");
       if (s && s.key) { c.key = s.key; c.sessionKey = true; }
     } catch (e) {}
+    /* v1.5.7：桌面版里 TokenHub 直连地址一律改走本机中转（浏览器直连会被 OPTIONS 预检拦成 Failed to fetch） */
+    if (window.__YM_DESKTOP__ && /tokenhub\.tencentmaas\.com/i.test(String(c.base || ""))) {
+      c.remoteBase = c.base;
+      c.base = "/__ai/v1";
+    }
     return c;
   }
   function isSessionMode() { try { return !!sessionStorage.getItem(LS_AI_SESSION); } catch (e) { return false; } }

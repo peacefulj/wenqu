@@ -263,14 +263,14 @@ const AI_PROVIDERS = [
   { id: "yanmo", name: "研墨（默认 · 新人送额度）", base: "https://api.yingcompute.com/api/v1",
     models: ["glm-5.3-flash", "glm-5.3", "deepseek-flash", "deepseek-v4-pro", "kimi-k3", "claude-sonnet-5-5", "claude-haiku-5-5"],
     format: "openai", hint: "按 token 计费、无套餐；检索类功能不需要 Key。" },
-  { id: "desktop", name: "TokenHub · 本机中转（桌面版专用）", base: "/__ai/v1",
-    models: ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"],
-    format: "openai", desktopOnly: true,
-    hint: "走 exe 内置中转，免跨域预检；网页版没有这个地址。" },
-  { id: "tokenhub", name: "腾讯 TokenHub（直连）", base: "https://tokenhub.tencentmaas.com/v1",
+  /* v1.5.7：桌面版里 TokenHub 一律走本机中转（直连会被跨域预检拦掉） */
+  { id: "tokenhub", name: "腾讯 TokenHub（DeepSeek 等）",
+    base: window.__YM_DESKTOP__ ? "/__ai/v1" : "https://tokenhub.tencentmaas.com/v1",
     models: ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"],
     format: "openai",
-    hint: "网页直连可能被跨域预检拦下（OPTIONS 405），失败请改用桌面版。" },
+    hint: window.__YM_DESKTOP__
+      ? "桌面版经本机中转（同源转发），不需要处理跨域，保存后可直接用。"
+      : "网页直连常被跨域预检拦下（OPTIONS 405），失败请改用桌面版 exe。" },
   { id: "deepseek", name: "DeepSeek 官方", base: "https://api.deepseek.com/v1",
     models: ["deepseek-chat", "deepseek-reasoner"], format: "auto" },
   { id: "kimi", name: "Kimi（Moonshot）", base: "https://api.moonshot.cn/v1",
@@ -300,12 +300,17 @@ function aiKeySave(pid, key) {
 function aiCurProvider() {
   const sel = $("aiProvider"); return sel ? sel.value : "";
 }
+/* 桌面版：TokenHub 直连地址统一折算成本机中转（否则浏览器预检会被拒） */
+function aiEffectiveBase(b) {
+  const s = String(b || "").trim();
+  return (window.__YM_DESKTOP__ && /tokenhub\.tencentmaas\.com/i.test(s)) ? "/__ai/v1" : s;
+}
 function aiProviderList() {
   return AI_PROVIDERS.filter(p => !p.desktopOnly || window.__YM_DESKTOP__);
 }
 function aiProviderOf(base) {
-  const b = aiNorm(base);
-  return aiProviderList().find(p => aiNorm(p.base) === b) || null;
+  const b = aiNorm(aiEffectiveBase(base));
+  return aiProviderList().find(p => aiNorm(aiEffectiveBase(p.base)) === b) || null;
 }
 function aiFillProviders() {
   const sel = $("aiProvider"); if (!sel) return;
@@ -347,7 +352,7 @@ if ($("aiProvider")) {
 }
 async function aiTestConn() {
   const msg = $("aiTestMsg"), btn = $("aiTest");
-  const base = $("aiBase").value.trim() || AI_DEF.base, key = $("aiKey").value.trim();
+  const base = aiEffectiveBase($("aiBase").value.trim() || AI_DEF.base), key = $("aiKey").value.trim();
   if (!key) { msg.textContent = "先填 Key"; $("aiKey").focus(); return; }
   msg.textContent = "测试中…"; if (btn) btn.disabled = true;
   try {
@@ -389,7 +394,14 @@ function loadAI() {
   if ($("aiCtx")) $("aiCtx").value = s.ctxK || "";
   /* v1.5.4：把当前地址映射到服务商下拉，并带出该服务商的常用模型 */
   aiFillProviders();
+  /* v1.5.7：旧版的「本机中转」Key 迁移到合并后的 tokenhub 条目 */
+  try {
+    const m = aiKeyMap();
+    if (m.desktop && !m.tokenhub) { m.tokenhub = m.desktop; localStorage.setItem(AI_KEYMAP, JSON.stringify(m)); }
+  } catch (e) {}
   aiSyncProviderFromBase();
+  /* 桌面版：输入框里若还是 TokenHub 直连地址，显示成本机中转（实际请求也会这样走） */
+  if (window.__YM_DESKTOP__ && /tokenhub\.tencentmaas\.com/i.test($("aiBase").value)) $("aiBase").value = "/__ai/v1";
   /* v1.5.5：当前服务商有单独保存的 Key 时优先用它（旧配置回落到全局 Key） */
   const pid0 = aiCurProvider();
   const k0 = aiKeyFor(pid0);
@@ -423,7 +435,7 @@ $("aiSave").addEventListener("click", () => {
     const prev = readAIConf();
     const ctxK = $("aiCtx") ? parseFloat($("aiCtx").value) : NaN;
     ok = WQCore.ai.setConf({
-      base: $("aiBase").value.trim() || AI_DEF.base,
+      base: aiEffectiveBase($("aiBase").value.trim() || AI_DEF.base),
       model: $("aiModel").value.trim() || prev.model || AI_DEF.model,
       confirm: $("aiConfirmChk") ? $("aiConfirmChk").checked : true,
       format: $("aiFormat") ? ($("aiFormat").value || "auto") : (prev.format || "auto"),
@@ -434,7 +446,7 @@ $("aiSave").addEventListener("click", () => {
     let prev = {};
     try { prev = JSON.parse(localStorage.getItem("wenqu_ai") || "{}") || {}; } catch (e) { prev = {}; }
     ok = lsSet("wenqu_ai", JSON.stringify(Object.assign({}, prev, {
-      base: $("aiBase").value.trim() || AI_DEF.base, key: $("aiKey").value.trim(),
+      base: aiEffectiveBase($("aiBase").value.trim() || AI_DEF.base), key: $("aiKey").value.trim(),
       model: $("aiModel").value.trim() || prev.model || AI_DEF.model, confirm: $("aiConfirmChk") ? $("aiConfirmChk").checked : true,
     })));
   }

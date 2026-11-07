@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+## [1.5.7] - 2026-11-08
+
+- **桌面版强制 TokenHub 走本机中转**：旧配置若把 API 地址存成 `https://tokenhub.tencentmaas.com/v1`，浏览器仍会被跨域预检拦下（OPTIONS 405 → Failed to fetch）。现在桌面版读取配置时自动折算成 `/__ai/v1`，设置面板、测试连接、实际请求都走同源中转；旧存储值不改写，换回网页版仍按原地址。
+- **合并重复的 TokenHub 选项**：服务商列表原先有「本机中转」与「直连」两项，现合并为「腾讯 TokenHub（DeepSeek 等）」：桌面版自动用中转，网页版用直连并提示跨域风险；旧的 Key 自动迁移。
+
 ## [1.5.6] - 2026-11-08
 
 - **修页脚版本号停在旧版**：`assets/version.js` 被 Service Worker 按 cache-first 缓存，页面更新后仍用旧文件重绘页脚（表现为已是 v1.5.5、页脚却显示 v1.5.2）。现在：
@@ -228,7 +233,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.6...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.7...HEAD
+[1.5.7]: https://github.com/peacefulj/wenqu/compare/v1.5.6...v1.5.7
 [1.5.6]: https://github.com/peacefulj/wenqu/compare/v1.5.5...v1.5.6
 [1.5.5]: https://github.com/peacefulj/wenqu/compare/v1.5.4...v1.5.5
 [1.5.4]: https://github.com/peacefulj/wenqu/compare/v1.5.3...v1.5.4
