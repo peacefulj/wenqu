@@ -1,0 +1,13 @@
+name = "yanmo-relay"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# 上游：默认腾讯 TokenHub；换成别的 OpenAI 兼容服务商也可以
+[vars]
+UPSTREAM = "https://tokenhub.tencentmaas.com/v1"
+# 允许调用中转的站点（逗号分隔）；本机调试可临时加 http://127.0.0.1:17823
+ALLOWED_ORIGINS = "https://peacefulj.github.io,https://www.yingcompute.com,http://127.0.0.1:17823"
+
+# 可选：设置一个口令后，请求需带 x-relay-token 或 ?k=xxx（研墨界面暂不发送，一般不用开）
+# [vars]
+# RELAY_TOKEN = "换成你的口令"

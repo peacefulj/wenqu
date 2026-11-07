@@ -2,3 +2,5 @@
 desktop/web/
 desktop/preset.json
 dist/
+relay/.wrangler/
+relay/node_modules/

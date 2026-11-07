@@ -4,6 +4,8 @@
 
 ## [未发布]
 
+- **新增 Cloudflare Worker 中转**（`relay/`）：腾讯 TokenHub 的 `OPTIONS` 返回 405，网页版带 Key 的请求会被浏览器预检拦下（`Failed to fetch`）。Worker 代为回答预检并转发到上游，支持流式（SSE）、来源白名单与可选口令；桌面版 exe 内置本机中转，不需要它。部署与接线步骤见 [relay/README.md](relay/README.md)。
+
 ## [1.5.7] - 2026-11-08
 
 - **桌面版强制 TokenHub 走本机中转**：旧配置若把 API 地址存成 `https://tokenhub.tencentmaas.com/v1`，浏览器仍会被跨域预检拦下（OPTIONS 405 → Failed to fetch）。现在桌面版读取配置时自动折算成 `/__ai/v1`，设置面板、测试连接、实际请求都走同源中转；旧存储值不改写，换回网页版仍按原地址。
