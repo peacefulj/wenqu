@@ -57,9 +57,22 @@ const cur = () => DB.projects.find(p => p.id === DB.cur);
 /* 范式 / 层级 */
 const PQ = (p) => window.WQ_PARADIGMS.find(x => x.id === (p?.paradigm || "quant")) || window.WQ_PARADIGMS[0];
 const LV = (p) => window.WQ_LEVELS.find(x => x.id === (p?.level || "journal")) || window.WQ_LEVELS[0];
-/* v1.5.0：应用型文书模板（没有模板时回落到科研范式） */
-const TPL = (p) => (window.WQ_APPLY_TEMPLATES || []).find(x => x.id === (p && p.template)) || null;
-const SECS = (p) => { const t = p && p.applied ? TPL(p) : null; return (t ? t.sections : PQ(p).sections) || []; };
+/* v1.5.0：应用型文书模板；v1.5.1：科研论文模板（两套都按 id 查，场景只决定列哪一套） */
+const TPL = (p) => {
+  const id = p && p.template;
+  if (!id) return null;
+  return (window.WQ_APPLY_TEMPLATES || []).find(x => x.id === id)
+    || (window.WQ_PAPER_TEMPLATES || []).find(x => x.id === id) || null;
+};
+const SECS = (p) => { const t = TPL(p); return ((t ? t.sections : PQ(p).sections) || []).slice(); };
+/* 场景 + 范式 → 可选模板（应用型不按范式过滤；科研论文按范式过滤） */
+function tplOptions(p) {
+  p = p || {};
+  const applied = !!p.applied;
+  const list = applied ? (window.WQ_APPLY_TEMPLATES || [])
+    : (window.WQ_PAPER_TEMPLATES || []).filter(t => (t.paradigms || []).indexOf(p.paradigm || "quant") >= 0);
+  return list;
+}
 (function migrate() { (DB.projects || []).forEach(p => {
   p.paradigm = p.paradigm || "quant"; p.level = p.level || "journal";
   /* v0.8：旧 processLog（「未留存」摘要）并入统一的项目轨迹 trail */
@@ -222,21 +235,34 @@ function renderProjects() {
 }
 
 /* 新建项目：表单弹窗（替代 prompt），带范式/层级/场景/模板/角色 */
-$("npTpl").innerHTML = (window.WQ_APPLY_TEMPLATES || []).map(t => `<option value="${esc(t.id)}">${esc(t.name)}（${esc(t.desc)}）</option>`).join("");
 $("npRole").innerHTML = '<option value="">（不预设角色）</option>' + (window.WQ_ROLE_PRESETS || []).map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join("");
+/* 模板下拉随「场景 + 范式」重建；第一项 = 用范式默认骨架 */
+function fillNpTpl(keep) {
+  const scene = $("npScene").value === "applied";
+  const opt = tplOptions({ applied: scene, paradigm: $("npParadigm").value });
+  const old = keep ? $("npTpl").value : "";
+  $("npTpl").innerHTML = (scene ? "" : '<option value="">（按范式默认骨架，不套模板）</option>')
+    + opt.map(t => `<option value="${esc(t.id)}">${esc(t.name)}（${esc(t.desc)}）</option>`).join("");
+  if (old && opt.some(t => t.id === old)) $("npTpl").value = old;
+}
 function npSceneSync() {
   const applied = $("npScene").value === "applied";
-  $("npTplRow").hidden = !applied;
+  $("npTplRow").hidden = false;                       // v1.5.1：两种场景都有模板可选
+  $("npTplHint").textContent = applied
+    ? "应用型文书骨架（工作报告 / 申报书 / 政策建议 / 综述 / 开题）"
+    : "科研论文骨架（按范式过滤；不选则用范式默认章节）";
+  fillNpTpl(true);
 }
 $("npScene").addEventListener("change", npSceneSync);
+$("npParadigm").addEventListener("change", () => { if (!$("npModal").hidden) fillNpTpl(false); });
 $("npRole").addEventListener("change", () => {
   const r = (window.WQ_ROLE_PRESETS || []).find(x => x.id === $("npRole").value);
   if (!r) return;
   if (r.level) $("npLevel").value = r.level;
   if (r.paradigm) $("npParadigm").value = r.paradigm;
   $("npScene").value = r.applied ? "applied" : "paper";
-  if (r.template) $("npTpl").value = r.template;
   npSceneSync();
+  $("npTpl").value = r.template || "";
 });
 $("npSampleBtn").addEventListener("click", () => {
   const box = $("npSamples");
@@ -259,7 +285,7 @@ $("npOk").addEventListener("click", () => {
   if (!name) { $("npName").focus(); return; }
   const applied = $("npScene").value === "applied";
   newProject(name, $("npParadigm").value, $("npLevel").value, {
-    applied: applied, template: applied ? $("npTpl").value : "", role: $("npRole").value
+    applied: applied, template: $("npTpl").value || "", role: $("npRole").value
   });
   $("npModal").hidden = true;
   renderProjects(); renderAll();
@@ -321,29 +347,39 @@ $("cfgParadigm").innerHTML = window.WQ_PARADIGMS.map(x => `<option value="${x.id
 $("cfgLevel").innerHTML = window.WQ_LEVELS.map(x => `<option value="${x.id}">${x.name}</option>`).join("");
 $("npParadigm").innerHTML = $("cfgParadigm").innerHTML;
 $("npLevel").innerHTML = $("cfgLevel").innerHTML;
-$("cfgParadigm").addEventListener("change", () => { const p = cur(); if (!p) return; p.paradigm = $("cfgParadigm").value; save(); renderProjects(); renderSecBtns(); renderDefense(); renderStageCards(); toast("已切换范式：" + PQ(p).name); });
+$("cfgParadigm").addEventListener("change", () => { const p = cur(); if (!p) return; p.paradigm = $("cfgParadigm").value; save(); fillCfgTpl(p); renderProjects(); renderSecBtns(); renderDefense(); renderStageCards(); toast("已切换范式：" + PQ(p).name + "（当前模板不适用时已改回范式默认）"); });
 $("cfgLevel").addEventListener("change", () => { const p = cur(); if (!p) return; p.level = $("cfgLevel").value; save(); renderProjects(); renderDefense(); renderStageCards(); toast("已切换层级：" + LV(p).name); });
-$("cfgTpl").innerHTML = (window.WQ_APPLY_TEMPLATES || []).map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+/* v1.5.1：模板下拉两种场景都有，选项随场景 + 范式重建 */
+function fillCfgTpl(p) {
+  if (!p) return;
+  const opt = tplOptions(p);
+  const cur0 = p.template || "";
+  const keep = cur0 && opt.some(t => t.id === cur0);
+  if (!keep && cur0) { p.template = ""; save(); renderSecBtns(); }
+  $("cfgTpl").innerHTML = (p.applied ? "" : '<option value="">（按范式默认骨架，不套模板）</option>')
+    + opt.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
+  $("cfgTpl").value = p.template || "";
+}
 $("cfgScene").addEventListener("change", () => {
   const p = cur(); if (!p) return;
   p.applied = $("cfgScene").value === "applied";
-  if (p.applied && !p.template) p.template = $("cfgTpl").value || (window.WQ_APPLY_TEMPLATES[0] || {}).id || "";
+  p.template = "";                                    // 换场景后旧模板不通用，回到该场景默认骨架
+  fillCfgTpl(p);
   save(); renderProjects(); renderSecBtns(); renderStageCards(); syncScene(p);
-  toast(p.applied ? "已切换应用型文书：" + (TPL(p) ? TPL(p).name : "") : "已切换科研论文模式");
+  toast(p.applied ? "已切换应用型文书：" + (TPL(p) ? TPL(p).name : "未选模板") : "已切换科研论文模式：" + (TPL(p) ? TPL(p).name : "范式默认骨架"));
 });
 $("cfgTpl").addEventListener("change", () => {
   const p = cur(); if (!p) return;
-  p.template = $("cfgTpl").value;
-  if (!p.applied) { p.applied = true; $("cfgScene").value = "applied"; }
-  save(); renderProjects(); renderSecBtns(); renderStageCards(); syncScene(p);
-  toast("已切换模板：" + (TPL(p) ? TPL(p).name : ""));
+  p.template = $("cfgTpl").value || "";
+  save(); renderSecBtns(); renderStageCards(); syncScene(p);
+  toast(p.template ? "已切换模板：" + (TPL(p) ? TPL(p).name : "") : "已改回范式默认骨架");
 });
 /* 场景联动：应用型隐藏实证工具与 LaTeX 导出（功能仍在，只是不占一级入口） */
 function syncScene(p) {
   p = p || cur();
   const applied = !!(p && p.applied);
   if ($("cfgScene")) $("cfgScene").value = applied ? "applied" : "paper";
-  if ($("cfgTpl")) { $("cfgTpl").value = (p && p.template) || ""; $("cfgTpl").disabled = !applied; }
+  if ($("cfgTpl")) { $("cfgTpl").value = (p && p.template) || ""; $("cfgTpl").disabled = false; }
   const empTab = document.querySelector('.tab[data-tab="emp"]');
   if (empTab) empTab.hidden = applied;
   const texBtn = document.getElementById("ymExpTex");
@@ -715,12 +751,12 @@ function outlineParse(p) {
     if (list.length) source = "numbered";
   }
   if (!list.length) {
-    const tpl = (p && p.applied) ? TPL(p) : null;
+    const tpl = TPL(p);
     list = (tpl ? tpl.sections : PQ(p).sections).slice();
     if (tpl) source = "template";
   }
   list = list.filter(s => !/^(参考文献|致谢|附录)/.test(s));
-  if (!(p && p.applied) && !list.some(s => /摘要/.test(s))) list.unshift("摘要");
+  if (!(p && p.applied) && !TPL(p) && !list.some(s => /摘要/.test(s))) list.unshift("摘要");
   return { list: [...new Set(list)].slice(0, 20), source: source, raw: txt };
 }
 window.outlineParse = outlineParse;
@@ -794,7 +830,7 @@ function renderSecBtns() {
   const dis = ok ? "" : " disabled title=\"需先在页头配置 AI Key\"";
   const info = outlineParse(p);
   const warn = (info.raw.trim() && info.source === "fallback")
-    ? `<p class="hint" style="color:#b45309;margin:0 0 6px">未从大纲里识别到章节清单，当前显示的是${p.applied ? "「" + (TPL(p) ? TPL(p).name : "应用型模板") + "」" : "范式默认"}章节。请重跑「AI 提纲」，或在提纲里用【章节清单】明确列出各节后再写作。</p>`
+    ? `<p class="hint" style="color:#b45309;margin:0 0 6px">未从大纲里识别到章节清单，当前显示的是${TPL(p) ? "「" + TPL(p).name + "」" : "范式默认"}章节。请重跑「AI 提纲」，或在提纲里用【章节清单】明确列出各节后再写作。</p>`
     : "";
   $("secBtns").innerHTML = warn + info.list.map(s =>
     `<button class="btn2 sec${(p.draft || {})[s] ? " done" : ""}" data-sec="${esc(s)}" ${dis}>${(p.draft || {})[s] ? "✓ " : ""}写：${esc(s)}</button>`).join("");
@@ -811,7 +847,11 @@ function sectionPrompt(p0, sec) {
     : "用学术简体中文撰写，术语首现括注英文原文。";
   const designCtx = p0.design ? `\n\n研究设计审查报告（方法/实验设计以此为准）：\n${p0.design.slice(0, 2000)}` : "";
   const hint = pq.secHint[sec] ? `\n本节范式要求：${pq.secHint[sec]}` : "";
-  const tplCtx = (p0.applied && TPL(p0)) ? `\n\n文书模板：${TPL(p0).name}——${TPL(p0).note}\n本节「${sec}」按该模板的写法组织；不要引入科研论文特有的假设/显著性表述，除非确实需要。` : "";
+  const tplCtx = TPL(p0)
+    ? (p0.applied
+      ? `\n\n文书模板：${TPL(p0).name}——${TPL(p0).note}\n本节「${sec}」按该模板的写法组织；不要引入科研论文特有的假设/显著性表述，除非确实需要。`
+      : `\n\n论文模板：${TPL(p0).name}——${TPL(p0).note}\n本节「${sec}」按该模板的写法组织，仍须遵守${pq.name}范式的方法论要求。`)
+    : "";
   const useDesign = p0.design && /设计|方法|对象|数据/.test(sec);
   return `你是学术写作助手（${pq.name}范式）。请基于大纲与文献矩阵，起草论文的「${sec}」一节：${lv.length}。${hint}
 题目：${p0.topic || "（未定）"}
@@ -1828,7 +1868,7 @@ function renderAll() {
   if (wTxt) { if (typeof setMD === "function") setMD($("wOut"), wTxt); else { const o=$("wOut"); o.hidden=false; o.textContent=wTxt; } }
   if (p && p.showV && p.outs && p.outs[p.showV]) { if (typeof setMD === "function") setMD($("vOut"), p.outs[p.showV]); else { const o=$("vOut"); o.hidden=false; o.textContent=p.outs[p.showV]; } }
   $("projStatus").value = p?.status || "选题中";
-  if (p) { $("cfgParadigm").value = p.paradigm; $("cfgLevel").value = p.level; }
+  if (p) { $("cfgParadigm").value = p.paradigm; $("cfgLevel").value = p.level; fillCfgTpl(p); }
   window.__renderErrs = [];
   [["renderW4",0],["renderSecBtns",0],["renderDefense",0],["renderPapers",0],["renderStageCards",0],["renderOnboard",0],["renderBackupHint",0],["renderVerCount",0],["renderProcessLog",0],["refreshAIButtons",0],["renderStageBadges",0],["renderNumBar",0],["renderHome",0],["syncScene",0]].forEach(([f]) => { try { window[f](); } catch (e) { window.__renderErrs.push(f + ": " + e.message); } });
 }

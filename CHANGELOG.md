@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [1.5.1] - 2026-11-07
+
+- **科研论文也能选模板**：新建项目与阶段① 的「模板」下拉原来只在应用型文书下出现，科研论文场景为空。现两场景都能选：科研论文新增 5 套骨架（实证论文、方法—实验型、案例研究、综述型、学位论文多章），按范式过滤并随范式切换自动重建；留空则沿用范式默认章节。模板只改章节骨架与写作提示，不影响范式的方法论要求与实证工具。
+
 ## [1.5.0] - 2026-11-07
 
 ### 新增
@@ -193,7 +197,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.0...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/peacefulj/wenqu/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/peacefulj/wenqu/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/peacefulj/wenqu/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/peacefulj/wenqu/compare/v1.4.0...v1.4.1

@@ -214,6 +214,26 @@ window.WQ_APPLY_TEMPLATES = [
     note: "评审最关心：问题是否成立、方法是否可执行、进度是否现实。" }
 ];
 
+/* v1.5.1：科研论文模板（按范式过滤）。留空 = 用范式默认骨架。
+   模板只改章节骨架与写作提示，不改变范式的方法论要求与实证工具。 */
+window.WQ_PAPER_TEMPLATES = [
+  { id: "paper-empirical", name: "实证论文（假说检验）", desc: "变量—模型—结果三段式", paradigms: ["quant", "med"],
+    sections: ["摘要", "引言", "文献综述与研究假设", "数据来源与变量定义", "模型设定", "实证结果", "稳健性检验", "异质性分析", "结论与政策建议"],
+    note: "先立假设再验假设：每个假设都要能对应到一张表；结论只写结果支撑得出的部分，不越界推断。" },
+  { id: "paper-eng", name: "方法—实验型论文", desc: "工程、计算机、材料、理论推导", paradigms: ["eng", "basicexp", "theory"],
+    sections: ["摘要", "引言", "相关工作", "问题定义", "方法", "实验设置", "结果与分析", "消融与讨论", "结论"],
+    note: "贡献用「问题—方法—证据」三段讲清；实验必须有基线、有重复、有失败案例说明。" },
+  { id: "paper-case", name: "案例研究论文", desc: "单案例 / 多案例比较", paradigms: ["qual", "quant"],
+    sections: ["摘要", "引言", "理论基础与分析框架", "研究设计（案例选择与资料来源）", "案例分析", "发现与讨论", "结论与启示"],
+    note: "案例选择要有理由，资料来源要能三角互证；发现必须回到理论框架，不做无依据外推。" },
+  { id: "paper-review", name: "综述型论文", desc: "系统综述 / 文献计量", paradigms: ["quant", "eng", "med", "qual", "basicexp", "theory"],
+    sections: ["摘要", "引言", "检索与筛选方法", "研究现状（按主题）", "争论与缺口", "研究议程", "结论"],
+    note: "按主题/观点组织而非按文献罗列；检索式、纳排标准、纳入篇数必须写清；结尾给出可执行的研究议程。" },
+  { id: "paper-thesis", name: "学位论文（多章）", desc: "本科 / 硕士 / 博士大论文", paradigms: ["quant", "eng", "med", "qual", "basicexp", "theory"],
+    sections: ["绪论", "文献综述", "研究设计", "研究一", "研究二", "讨论", "结论与展望"],
+    note: "章与章要有推进关系：每章结尾交代「本章解决了什么、下一章为什么需要」。" }
+];
+
 /* 本地角色预设：只改默认层级/范式与写作提示，不联网、不上传 */
 window.WQ_ROLE_PRESETS = [
   { id: "freshman", name: "大一 / 本科生", level: "bsc", paradigm: "basicexp", applied: true, template: "thesis-proposal",

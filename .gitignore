@@ -1,0 +1,4 @@
+# 桌面版构建产物与本地密钥（不要提交）
+desktop/web/
+desktop/preset.json
+dist/
