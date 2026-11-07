@@ -4,6 +4,12 @@
 
 ## [未发布]
 
+## [1.5.3] - 2026-11-08
+
+- **桌面版内置本机 AI 中转**：部分服务商（如 TokenHub）只允许 `POST`、`OPTIONS` 返回 405，浏览器带 `Authorization` 的请求会被跨域预检拦下，表现为「Failed to fetch」。桌面版现在在 `127.0.0.1` 上提供同源中转 `/__ai/v1/*`（流式逐块转发），预置配置也改用它，不再受跨域限制。
+- **网络失败提示更准确**：区分「连不上」与「服务商未放行浏览器跨域」，并给出改用桌面版或让对方开启 CORS 的具体建议。
+- **预设配置可迁移**：本机已有自定义服务商时保持不动；只有旧的 TokenHub 地址或空配置才切到本机中转，避免覆盖用户自己的 Key。
+
 ## [1.5.2] - 2026-11-08
 
 - **站点外链指向 www 新域名**：首页「去研墨」、参考稿页「注册研墨（新人礼包）」、工作台「注册研墨领新人礼包」「研墨控制台」统一改为 `https://www.yingcompute.com/`（原来分别是 `yingcompute.com/register?aff=…` 与 `yingcompute.com`）。
@@ -202,7 +208,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.2...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.3...HEAD
+[1.5.3]: https://github.com/peacefulj/wenqu/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/peacefulj/wenqu/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/peacefulj/wenqu/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/peacefulj/wenqu/compare/v1.4.2...v1.5.0

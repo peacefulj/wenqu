@@ -601,6 +601,15 @@
       return "请求超时：" + Math.round(limitMs / 1000) + " 秒内没有完成" + (got ? "（已收到 " + got + " 字）" : "") +
         "——可能是网络中断或模型输出过慢，请重试，或换更快的模型";
     };
+    /* v1.5.3：区分「网络不通」与「服务商没放行浏览器跨域」——后者在网页版表现为 Failed to fetch */
+    var netHint = function (e) {
+      var m = String((e && e.message) || e || "");
+      if (/Failed to fetch|NetworkError|Load failed|ERR_FAILED/i.test(m)) {
+        return "网络失败：请求被浏览器拦下或连不上——若 Key 与地址都没问题，多半是该服务商未放行浏览器跨域（预检 OPTIONS 被拒）。" +
+          "可改用桌面版（内置本机中转，不经跨域），或让服务商开启 CORS。原始信息：" + m;
+      }
+      return "网络失败：" + m;
+    };
     if (opts.signal) { /* 外部停止按钮：用户点「停止」时中断当前请求 */
       if (opts.signal.aborted) ctl.abort();
       else opts.signal.addEventListener("abort", function () { ctl.abort(); }, { once: true });
@@ -612,7 +621,7 @@
     } catch (e) {
       clearTimeout(timer);
       if (opts.signal && opts.signal.aborted) throw new Error("已手动停止");
-      throw new Error(timedOut ? timeoutMsg(0) : ("网络失败：" + (e && e.message)));
+      throw new Error(timedOut ? timeoutMsg(0) : netHint(e));
     }
     var res = sent.res, X = AIX();
     if (!res.ok) {

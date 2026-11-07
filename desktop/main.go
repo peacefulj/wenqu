@@ -15,6 +15,8 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +28,44 @@ var webFS embed.FS
 
 // 由构建脚本通过 -ldflags "-X main.appVersion=x.y.z" 注入
 var appVersion = "dev"
+
+// 由构建脚本通过 -ldflags "-X main.aiUpstream=https://…/v1" 注入；留空则关闭本机中转
+var aiUpstream = ""
+
+/* 同源反向代理：/__ai/v1/chat/completions → {aiUpstream}/chat/completions
+   流式（SSE）逐块 flush，避免整段等完才显示。 */
+func aiProxy() http.Handler {
+	up, err := url.Parse(aiUpstream)
+	if err != nil || up.Host == "" {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusNotImplemented)
+			_, _ = io.WriteString(w, `{"error":{"message":"桌面版未配置 AI 中转地址（构建时缺少 upstream）"}}`)
+		})
+	}
+	rp := httputil.NewSingleHostReverseProxy(up)
+	rp.Director = func(r *http.Request) {
+		rest := strings.TrimPrefix(r.URL.Path, "/__ai/v1")
+		if rest == "" {
+			rest = "/"
+		}
+		r.URL.Scheme = up.Scheme
+		r.URL.Host = up.Host
+		r.URL.Path = strings.TrimSuffix(up.Path, "/") + rest
+		r.Host = up.Host
+		r.Header.Del("Origin")
+		r.Header.Del("Referer")
+	}
+	rp.FlushInterval = -1
+	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, e error) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadGateway)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]string{"message": "本机中转连不上上游：" + e.Error()},
+		})
+	}
+	return rp
+}
 
 const (
 	appTag   = "yanmo-desktop"
@@ -139,8 +179,11 @@ func handler() http.Handler {
 	mux.HandleFunc("/__health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(map[string]string{"app": appTag, "version": appVersion})
+		_ = json.NewEncoder(w).Encode(map[string]string{"app": appTag, "version": appVersion, "proxy": aiUpstream})
 	})
+	/* 本机 AI 中转：浏览器带着 Authorization 直连第三方会被预检拦掉（很多服务商 OPTIONS 返回 405），
+	   这里在 127.0.0.1 上同源转发，页面用 /__ai/v1 作 base 即可，不再有跨域问题。 */
+	mux.Handle("/__ai/", aiProxy())
 	mux.HandleFunc("/sw.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")

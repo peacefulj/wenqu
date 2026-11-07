@@ -44,19 +44,26 @@ for (const f of pages.filter((x) => x.endsWith(".html"))) {
 }
 
 /* 1.5 预置 AI 配置：desktop/preset.json → 内置 assets/ym-preset.js
-   只在用户本机还没填过 Key 时写入，不会覆盖用户自己的配置。 */
+   浏览器带 Authorization 直连第三方常被 CORS 预检拦掉（服务商 OPTIONS 返回 405），
+   桌面版统一走本机同源中转 /__ai/v1，不再受跨域限制。 */
 const presetPath = join(HERE, "preset.json");
 let presetNote = "（未配置）";
+let upstream = "";
 if (existsSync(presetPath)) {
-  const conf = JSON.parse(readFileSync(presetPath, "utf8")).conf || {};
-  const js = `/* 研墨桌面版 · 预置 AI 配置（仅首次运行写入，之后以你在设置里保存的为准） */
+  const pj = JSON.parse(readFileSync(presetPath, "utf8"));
+  const conf = pj.conf || {};
+  upstream = String(pj.upstream || "").replace(/\/+$/, "");
+  const js = `/* 研墨桌面版 · 预置 AI 配置（首次运行写入；之后以你在设置里保存的为准）
+ * 基址用同源 /__ai/v1 —— 由 exe 内置本机中转转发到上游，避免浏览器跨域预检失败 */
 (function () {
-  var P = ${JSON.stringify(conf)};
+  var P = ${JSON.stringify({ ...conf, base: "/__ai/v1" })};
   var K = "wenqu_ai";
   try {
     var cur = {};
     try { cur = JSON.parse(localStorage.getItem(K) || "{}") || {}; } catch (e) {}
-    if (cur.key) return;
+    var b = String(cur.base || "");
+    /* 已有自定义服务商（不是本机中转、也不是旧的 tokenhub 地址）就尊重用户设置 */
+    if (cur.key && b && b !== "/__ai/v1" && !/tokenhub\\.tencentmaas\\.com/.test(b)) return;
     localStorage.setItem(K, JSON.stringify(Object.assign({}, cur, P)));
   } catch (e) {}
 })();
@@ -71,7 +78,7 @@ if (existsSync(presetPath)) {
       : s.replace(/<head>/i, "<head>\n" + tag);
     writeFileSync(p, withTag);
   }
-  presetNote = `${conf.model} @ ${conf.base}`;
+  presetNote = `${conf.model} → ${upstream || "（无上游）"}（经本机中转 /__ai/v1）`;
 }
 
 /* 2. 生成 exe */
@@ -89,6 +96,7 @@ const env = {
   GOFLAGS: "-mod=mod",
 };
 const ldflags = ["-s", "-w", `-X main.appVersion=${version}`];
+if (upstream) ldflags.push(`-X main.aiUpstream=${upstream}`);
 if (!isLinux) ldflags.push("-H", "windowsgui");
 
 execFileSync("go", ["build", "-trimpath", "-buildvcs=false", "-ldflags", ldflags.join(" "), "-o", out, "."], {
