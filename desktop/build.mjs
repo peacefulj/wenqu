@@ -53,19 +53,32 @@ if (existsSync(presetPath)) {
   const pj = JSON.parse(readFileSync(presetPath, "utf8"));
   const conf = pj.conf || {};
   upstream = String(pj.upstream || "").replace(/\/+$/, "");
-  const js = `/* 研墨桌面版 · 预置 AI 配置（首次运行写入；之后以你在设置里保存的为准）
- * 基址用同源 /__ai/v1 —— 由 exe 内置本机中转转发到上游，避免浏览器跨域预检失败 */
+  const js = `/* 研墨桌面版 · 预置 AI 配置
+ * 默认服务商是「研墨」（yingcompute）；腾讯 TokenHub 只作为可切换的测试通道，
+ * 其 Key 单独存在 wenqu_ai_keys.tokenhub，切到该服务商时才带出。 */
 window.__YM_DESKTOP__ = true;
 (function () {
-  var P = ${JSON.stringify({ ...conf, base: "/__ai/v1" })};
-  var K = "wenqu_ai";
+  var DEF = ${JSON.stringify({ ...conf, base: (pj.defaultBase || "https://api.yingcompute.com/api/v1"), key: "" })};
+  var TESTKEY = ${JSON.stringify(pj.testKey || conf.key || "")};
+  var K = "wenqu_ai", KM = "wenqu_ai_keys";
   try {
     var cur = {};
     try { cur = JSON.parse(localStorage.getItem(K) || "{}") || {}; } catch (e) {}
+    var map = {};
+    try { map = JSON.parse(localStorage.getItem(KM) || "{}") || {}; } catch (e) {}
     var b = String(cur.base || "");
-    /* 已有自定义服务商（不是本机中转、也不是旧的 tokenhub 地址）就尊重用户设置 */
-    if (cur.key && b && b !== "/__ai/v1" && !/tokenhub\\.tencentmaas\\.com/.test(b)) return;
-    localStorage.setItem(K, JSON.stringify(Object.assign({}, cur, P)));
+    /* 旧版桌面默认（本机中转）迁到研墨；用户自己填的第三方地址保持不动 */
+    if (!b || b === "/__ai/v1") {
+      if (cur.key && !map.desktop) map.desktop = cur.key;
+      cur = Object.assign({}, cur, DEF);
+    }
+    if (!cur.model) cur.model = DEF.model;
+    localStorage.setItem(K, JSON.stringify(cur));
+    if (TESTKEY) {
+      if (!map.tokenhub) map.tokenhub = TESTKEY;
+      if (!map.desktop) map.desktop = TESTKEY;
+    }
+    localStorage.setItem(KM, JSON.stringify(map));
   } catch (e) {}
 })();
 `;
@@ -79,7 +92,7 @@ window.__YM_DESKTOP__ = true;
       : s.replace(/<head>/i, "<head>\n" + tag);
     writeFileSync(p, withTag);
   }
-  presetNote = `${conf.model} → ${upstream || "（无上游）"}（经本机中转 /__ai/v1）`;
+  presetNote = `默认研墨 ${conf.model || "glm-5.3-flash"}；TokenHub 测试通道 ${upstream || "（无上游）"}`;
 }
 
 /* 2. 生成 exe */

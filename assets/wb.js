@@ -287,6 +287,19 @@ const AI_PROVIDERS = [
     models: ["claude-sonnet-4-5", "claude-haiku-4-5"], format: "anthropic" }
 ];
 const aiNorm = (b) => String(b || "").trim().replace(/\/+$/, "");
+/* v1.5.5：按服务商分别记住 Key——切到哪家就带出哪家的 Key，默认服务商仍是研墨 */
+const AI_KEYMAP = "wenqu_ai_keys";
+function aiKeyMap() { try { return JSON.parse(localStorage.getItem(AI_KEYMAP) || "{}") || {}; } catch (e) { return {}; } }
+function aiKeyFor(pid) { return (pid && pid !== "custom" && aiKeyMap()[pid]) || ""; }
+function aiKeySave(pid, key) {
+  if (!pid || pid === "custom") return;
+  const m = aiKeyMap();
+  if (key) m[pid] = key; else delete m[pid];
+  try { localStorage.setItem(AI_KEYMAP, JSON.stringify(m)); } catch (e) {}
+}
+function aiCurProvider() {
+  const sel = $("aiProvider"); return sel ? sel.value : "";
+}
 function aiProviderList() {
   return AI_PROVIDERS.filter(p => !p.desktopOnly || window.__YM_DESKTOP__);
 }
@@ -324,7 +337,13 @@ function aiSyncProviderFromBase() {
   aiFillModels(p); aiShowProv(p);
 }
 if ($("aiProvider")) {
-  $("aiProvider").addEventListener("change", () => aiApplyProvider($("aiProvider").value, false));
+  $("aiProvider").addEventListener("change", () => {
+    const id = $("aiProvider").value;
+    aiApplyProvider(id, false);
+    /* 切换服务商时带出该服务商之前存的 Key（没有就留空，避免拿 A 家的 Key 去调 B 家） */
+    if ($("aiKey")) $("aiKey").value = aiKeyFor(id);
+    if ($("aiTestMsg")) $("aiTestMsg").textContent = "";
+  });
 }
 async function aiTestConn() {
   const msg = $("aiTestMsg"), btn = $("aiTest");
@@ -371,6 +390,10 @@ function loadAI() {
   /* v1.5.4：把当前地址映射到服务商下拉，并带出该服务商的常用模型 */
   aiFillProviders();
   aiSyncProviderFromBase();
+  /* v1.5.5：当前服务商有单独保存的 Key 时优先用它（旧配置回落到全局 Key） */
+  const pid0 = aiCurProvider();
+  const k0 = aiKeyFor(pid0);
+  if (k0 && $("aiKey")) $("aiKey").value = k0;
   renderBaseWarn();
 }
 /* 「自动」时告诉用户实际按哪种格式发、思考开关会发什么参数 */
@@ -416,6 +439,8 @@ $("aiSave").addEventListener("click", () => {
     })));
   }
   if (!ok) toast("浏览器存储不可用（隐私模式或配额已满），设置没有保存");
+  /* v1.5.5：按服务商记 Key（「仅本次会话」时不落到 localStorage） */
+  if (!sessionOnly) aiKeySave(aiCurProvider(), $("aiKey").value.trim());
   lsSet("wenqu_email", $("upEmail").value.trim());
   lsSet("wenqu_grobid", $("grobidUrl").value.trim());
   oaMail = $("upEmail").value.trim(); // 立即生效，不必刷新页面

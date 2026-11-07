@@ -4,6 +4,12 @@
 
 ## [未发布]
 
+## [1.5.5] - 2026-11-08
+
+- **默认服务商回到研墨**：新建或升级后，AI 设置默认是「研墨（yingcompute）」+ `glm-5.3-flash`，不再默认走 TokenHub。
+- **各服务商的 Key 分开记**：切换服务商时自动带出该服务商上次保存的 Key，没有就留空，避免拿 A 家的 Key 去调 B 家；「仅本次会话」时不落本地。
+- **TokenHub 作为测试通道**：桌面版仍内置本机中转，TokenHub 的 Key 单独存放，切到该服务商即可一键测试连接（实测可用模型 125 个）。
+
 ## [1.5.4] - 2026-11-08
 
 - **AI 设置改成「选服务商 → 填 Key」**：新增服务商下拉（研墨、TokenHub 本机中转/直连、DeepSeek、Kimi、智谱 GLM、通义千问、硅基流动、OpenAI、Anthropic、自定义），选中即自动带出 API 地址、接口格式与常用模型；模型框支持下拉候选也可手填。
@@ -215,7 +221,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.4...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.5...HEAD
+[1.5.5]: https://github.com/peacefulj/wenqu/compare/v1.5.4...v1.5.5
 [1.5.4]: https://github.com/peacefulj/wenqu/compare/v1.5.3...v1.5.4
 [1.5.3]: https://github.com/peacefulj/wenqu/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/peacefulj/wenqu/compare/v1.5.1...v1.5.2
