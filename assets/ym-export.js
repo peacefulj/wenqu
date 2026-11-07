@@ -450,64 +450,264 @@
     };
   }
 
-  async function run(kind) {
-    const p = cur(); if (!p) return notice("先新建项目");
+  /* ================= 统一导出：所有入口共用一个 bundle ================= */
+  function attributionOf(p, sections, env) {
+    const marks = [];
+    sections.forEach(s => {
+      String(s.md || "").replace(/〔生成：[^〕]*〕/g, (m) => {
+        marks.push(s.name + "：" + m.replace(/^〔|〕$/g, ""));
+        return "";
+      });
+    });
+    const led = env.ledger || {}, lines = [];
+    const pct = (v) => Math.round((+v || 0) * 100) + "%";
+    Object.keys(led.bySec || {}).forEach((sec) => {
+      const a = led.bySec[sec];
+      lines.push(sec + "：本人贡献 " + pct(a.contribution) + "（亲笔 " + a.userChars + " 字 / 混合 " + Math.round(a.mixedChars) + " 字 / 参考原样 " + a.aiChars + " 字）");
+    });
+    const total = led && led.total && led.total.total ? "本人贡献度合计 " + pct(led.contribution) + "（按字符数估算，混合改写段折半计）" : "";
+    return { lines: lines, marks: marks, total: total, statement: "本稿在研墨辅助下完成：AI 提供参考稿与改写建议，作者逐节修改并定稿。", model: env.model || "" };
+  }
+
+  async function bundleOf(p, opts) {
+    opts = opts || {};
     const env = envOf(p);
-    if (!env.secs.some(s => String(s.md || "").replace(/〔生成：[^〕]*〕/g, "").trim())) {
-      return notice("还没有「我的稿」内容", ["先在 ② 设计与写作里写好 / 采用至少一节（参考稿修改也在这一阶段），再导出"]);
-    }
-    /* 统一图片管线：先解析 IndexedDB 里的图片，再按导出格式还原占位符 */
-    let prep = { texts: env.secs.map(s => s.md), images: [], missing: 0 };
+    let secs = env.secs.map((s, i) => ({ key: "s" + (i + 1), name: s.name, md: s.md || "", origin: "draft" }));
+    let prep = { texts: secs.map(s => s.md), images: [], missing: 0 };
     if (window.YMMd && YMMd.prepareImageSections) {
       try {
-        prep = await YMMd.prepareImageSections(env.secs.map(s => s.md));
-        env.secs = env.secs.map((s, i) => ({ name: s.name, md: prep.texts[i] }));
-        env.images = prep.images;
+        prep = await YMMd.prepareImageSections(secs.map(s => s.md));
+        secs = secs.map((s, i) => ({ ...s, md: prep.texts[i] }));
       } catch (e) { console.warn("图片预处理失败，按原文本导出", e); }
     }
+    const refLines = window.YMBib ? YMBib.gbList(p.papers || []) : (p.papers || []).map((f, i) =>
+      "[" + (i + 1) + "] " + (f.author || "作者待补") + ". " + (f.title || "题名待补") + "[" + (f.type || "J") + "]. " + (f.venue || "出处待补") + ", " + (f.year || "年份待补") + (f.doi ? ". DOI: " + f.doi : "") + ".");
+    const attr = attributionOf(p, secs, env);
+    return window.YMDoc.buildBundle({
+      meta: {
+        title: p.topic || p.name || "未命名", project: p.name || "", paradigm: env.paradigm, level: env.level,
+        day: env.day, stamp: env.stamp, label: env.label, model: env.model, missingImages: prep.missing
+      },
+      sections: secs,
+      assets: prep.images,
+      refs: { style: "GB/T 7714-2015", items: refLines.map((t, i) => ({ n: i + 1, text: t })) },
+      attribution: attr,
+      checks: env.checks,
+      options: opts
+    });
+  }
+
+  function warnLines(bundle) {
+    const s = window.YMDoc.summary(bundle);
+    const lines = ["已写 " + s.drafted + "/" + s.sections + " 节 · 图 " + s.figures + " · 表 " + s.tables + " · 公式 " + s.equations + " · 文献 " + s.refs + " 篇"];
+    (bundle.warnings || []).slice(0, 5).forEach(w => lines.push((w.level === "info" ? "提示：" : "注意：") + w.message));
+    if (bundle.warnings && bundle.warnings.length > 5) lines.push("另有 " + (bundle.warnings.length - 5) + " 条检查提示");
+    return lines;
+  }
+
+  async function run(kind, opts) {
+    opts = opts || {};
+    const p = cur(); if (!p) return notice("先新建项目");
+    const bundle = await bundleOf(p, opts);
+    const fatal = (bundle.warnings || []).find(w => w.level === "error");
+    if (fatal) return notice("导出前检查未通过", [fatal.message, "请先在草稿里修复后再导出"]);
+    if (!bundle.sections.some(s => s.drafted)) {
+      return notice("还没有「我的稿」内容", ["先在 ② 设计与写作里写好 / 采用至少一节（参考稿修改也在这一阶段），再导出"]);
+    }
+    const sum = window.YMDoc.summary(bundle);
+    const base = fileBase(p);
+
     if (kind === "md") {
-      const r = X.buildMarkdown(p, env);
-      dl(fileBase(p) + ".md", r.text, "text/markdown");
-      trailAdd(p, "export", "导出全文（Markdown）", "已写 " + r.drafted + "/" + env.secs.length + " 节 · 参考文献 " + p.papers.length + " 篇" + (prep.images.length ? " · 图片 " + prep.images.length + " 张已内联" : ""));
+      const text = window.YMDoc.renderMarkdown(bundle, { attribution: opts.attribution !== false, includeUnwritten: !!opts.includeUnwritten });
+      dl(base + ".md", text, "text/markdown");
+      trailAdd(p, "export", "导出全文（Markdown）", "已写 " + sum.drafted + "/" + sum.sections + " 节 · 图 " + sum.figures + " · 文献 " + sum.refs + " 篇" + (sum.missingImages ? " · 缺图 " + sum.missingImages : ""));
       save(); renderProcessLog();
-      tip("已导出 Markdown ✓" + (prep.images.length ? "（图片已内联）" : ""));
-      if (prep.missing) notice("有 " + prep.missing + " 张图片未能从本机取回", ["其余内容已正常导出；可在原草稿里重新粘贴这几张图"]);
+      tip("已导出 Markdown ✓" + (sum.figures ? "（图片已内联）" : ""));
+      if (bundle.warnings.length) notice("导出完成，附质量提示", warnLines(bundle));
       return;
     }
+
+    if (kind === "doc") {
+      const md = window.YMDoc.renderWordMarkdown(bundle, { attribution: opts.attribution !== false, includeUnwritten: !!opts.includeUnwritten });
+      if (window.YMMd && YMMd.wordBlob) {
+        const blob = await YMMd.wordBlob(md, { css: opts.css || "" });
+        dlBlob(base + ".doc", blob);
+      } else {
+        const html = "<html><head><meta charset=\"utf-8\"></head><body>" + md.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>") + "</body></html>";
+        dl(base + ".doc", html, "application/msword");
+      }
+      trailAdd(p, "export", "导出全文（Word）", "已写 " + sum.drafted + "/" + sum.sections + " 节 · 图 " + sum.figures + " · 表 " + sum.tables + " · 文献 " + sum.refs + " 篇");
+      save(); renderProcessLog();
+      notice("已导出 Word ✓", warnLines(bundle));
+      return;
+    }
+
+    /* LaTeX：复用既有 ctexart + gbt7714 渲染器，但节与图片来自同一 bundle */
+    const env = envOf(p);
+    env.secs = bundle.sections.map(s => ({ name: s.name, md: s.md }));
+    env.images = bundle.assets;
     const r = X.buildLatex(p, env);
-    const base = fileBase(p);
-    if (prep.images.length && window.YMZip && window.YMMd && YMMd.dataUrlBytes) {
+    if (bundle.assets.length && window.YMZip && window.YMMd && YMMd.dataUrlBytes) {
       const files = {}; files[base + ".tex"] = r.text;
-      prep.images.forEach(im => { try { files[im.name] = YMMd.dataUrlBytes(im.dataUrl); } catch (e) {} });
+      bundle.assets.forEach(im => { try { files[im.name] = YMMd.dataUrlBytes(im.dataUrl); } catch (e) {} });
       dlBlob(base + ".zip", new Blob([window.YMZip.build(files)], { type: "application/zip" }));
-      trailAdd(p, "export", "导出全文（LaTeX）", "已写 " + r.drafted + "/" + env.secs.length + " 节 · \\cite " + r.cited + " 篇 · 图片 " + prep.images.length + " 张");
+      trailAdd(p, "export", "导出全文（LaTeX）", "已写 " + sum.drafted + "/" + sum.sections + " 节 · \\cite " + r.cited + " 篇 · 图片 " + bundle.assets.length + " 张");
       save(); renderProcessLog();
       notice("已导出 LaTeX（含图片）✓", [
-        "压缩包内：" + base + ".tex + yanmo-images/（" + prep.images.length + " 张）",
-        "上传 Overleaf 后保持目录结构，菜单 Compiler 选 XeLaTeX；参考文献已内嵌",
-        p.papers.length ? "正文引用 " + r.cited + " 篇已转成 \\cite{}" : "文献库是空的，导出的 .tex 没有参考文献"
-      ]);
+        "压缩包内：" + base + ".tex + yanmo-images/（" + bundle.assets.length + " 张）",
+        "上传 Overleaf 后保持目录结构，菜单 Compiler 选 XeLaTeX；参考文献已内嵌"
+      ].concat(warnLines(bundle).slice(1)));
       return;
     }
     dl(base + ".tex", r.text, "application/x-tex");
-    trailAdd(p, "export", "导出全文（LaTeX）", "已写 " + r.drafted + "/" + env.secs.length + " 节 · \\cite " + r.cited + " 篇" + (r.unresolved.length ? " · " + r.unresolved.length + " 处编号未匹配" : ""));
+    trailAdd(p, "export", "导出全文（LaTeX）", "已写 " + sum.drafted + "/" + sum.sections + " 节 · \\cite " + r.cited + " 篇" + (r.unresolved.length ? " · " + r.unresolved.length + " 处编号未匹配" : ""));
     save(); renderProcessLog();
-    const lines = [
-      "用 XeLaTeX 编译（Overleaf：上传 .tex → 菜单 Compiler 选 XeLaTeX）；参考文献已内嵌，不用另传 .bib",
-      p.papers.length ? "正文里引用到的 " + r.cited + " 篇已转成 \\cite{}，LaTeX 会按首次引用的顺序重新编号" : "文献库是空的，导出的 .tex 没有参考文献"
-    ];
-    if (r.unresolved.length) lines.push(r.unresolved.length + " 处 [n] 对不上文献库编号，已原样保留：" + r.unresolved.slice(0, 5).join(" ") + (r.unresolved.length > 5 ? " …" : ""));
-    if (prep.missing) lines.push("有 " + prep.missing + " 张图片未能从本机取回，已跳过");
-    notice("已导出 LaTeX ✓", lines);
+    notice("已导出 LaTeX ✓", [
+      "用 XeLaTeX 编译（Overleaf：上传 .tex → 菜单 Compiler 选 XeLaTeX）；参考文献已内嵌，不用另传 .bib"
+    ].concat(r.unresolved.length ? [r.unresolved.length + " 处 [n] 对不上文献库编号，已原样保留：" + r.unresolved.slice(0, 5).join(" ")] : []).concat(warnLines(bundle).slice(1)));
+  }
+
+  /* 版本档案导出：版本内容来自已回取的全文，不再用 mdRender 直接拼 HTML */
+  function versionFileName(v, ext) {
+    return ("版本-" + (v.kind || "正文") + "-" + (v.ts || "")).replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, "_") + "." + ext;
+  }
+  async function exportVersion(v, fmt, opts) {
+    opts = opts || {};
+    const p = cur();
+    let content = String(v && v.content || "");
+    if (!content.trim()) return notice("这个版本没有正文可导出");
+    let prep = { texts: [content], images: [], missing: 0 };
+    if (window.YMMd && YMMd.prepareImageSections) {
+      try { prep = await YMMd.prepareImageSections([content]); } catch (e) {}
+    }
+    const refLines = window.YMBib ? YMBib.gbList((p && p.papers) || []) : [];
+    const bundle = window.YMDoc.buildBundle({
+      meta: {
+        title: v.kind || "版本正文", project: (p && p.name) || "", paradigm: "", level: "",
+        day: "", stamp: v.ts || "", label: (window.YANMO && YANMO.label) || "研墨", model: "", missingImages: prep.missing
+      },
+      sections: [{ key: "version", name: v.kind || "版本正文", md: prep.texts[0] || content, drafted: true, origin: "version" }],
+      assets: prep.images,
+      refs: { style: "GB/T 7714-2015", items: refLines.map((t, i) => ({ n: i + 1, text: t })) },
+      attribution: { lines: [], marks: [], total: "", statement: "" },
+      checks: [], options: opts
+    });
+    if (fmt === "doc") {
+      const md = window.YMDoc.renderWordMarkdown(bundle, { attribution: false });
+      if (window.YMMd && YMMd.wordBlob) dlBlob(versionFileName(v, "doc"), await YMMd.wordBlob(md));
+      else dl(versionFileName(v, "doc"), md, "application/msword");
+    } else {
+      dl(versionFileName(v, "md"), window.YMDoc.renderMarkdown(bundle, { attribution: false, frontMatter: false }), "text/markdown");
+    }
+    if (p) {
+      const s = window.YMDoc.summary(bundle);
+      trailAdd(p, "export", "导出版本", (v.kind || "版本") + " → " + (fmt === "doc" ? "Word(.doc)" : ".md") + " · 图 " + s.figures + " · 表 " + s.tables);
+      save(); renderProcessLog();
+    }
+    tip("已导出" + (fmt === "doc" ? " Word" : " Markdown") + " ✓" + (bundle.assets.length ? "（图片已内联）" : ""));
+    if (bundle.warnings.length) notice("导出完成，附质量提示", warnLines(bundle));
+  }
+
+  window.wqExportDoc = run;
+  window.wqExportVersion = exportVersion;
+
+  /* ================= 审阅包 .ympack：只读、可校验、证据链完整 ================= */
+  function encText(s) { return new TextEncoder().encode(String(s || "")); }
+  async function sha256Hex(u8) {
+    try {
+      if (!(window.crypto && crypto.subtle)) return "";
+      const h = await crypto.subtle.digest("SHA-256", u8);
+      return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, "0")).join("");
+    } catch (e) { return ""; }
+  }
+  async function exportPack(opts) {
+    opts = opts || {};
+    const p = cur(); if (!p) return notice("先新建项目");
+    const bundle = await bundleOf(p, { attribution: true });
+    if (!bundle.sections.some(s => s.drafted)) return notice("还没有「我的稿」内容", ["先写好至少一节再导出审阅包"]);
+    const md = window.YMDoc.renderMarkdown(bundle, { attribution: true });
+    const payload = {
+      "document.md": md,
+      "citation-report.json": JSON.stringify(bundle.refs, null, 2),
+      "ledger.json": JSON.stringify(bundle.attribution || {}, null, 2),
+      "checks.json": JSON.stringify({ checks: bundle.checks || [], warnings: bundle.warnings || [], summary: window.YMDoc.summary(bundle) }, null, 2),
+      "ai-declaration.txt": "AI 辅助说明\n\n" + (bundle.attribution.statement || "本稿在研墨辅助下完成：AI 提供参考稿与改写建议，作者逐节修改并定稿。")
+        + "\n\n模型：" + (bundle.attribution.model || bundle.meta.model || "未记录")
+        + "\n日期：" + (bundle.meta.stamp || "未记录")
+        + "\n\n作者对全部内容与引用的真实性负责。\n"
+    };
+    const manifest = {
+      schema: "yanmo.pack/v1",
+      generator: bundle.meta.label || "研墨",
+      generatedAt: new Date().toISOString(),
+      project: { name: bundle.meta.project || "", title: bundle.meta.title || "", paradigm: bundle.meta.paradigm || "", level: bundle.meta.level || "" },
+      summary: window.YMDoc.summary(bundle),
+      files: {}
+    };
+    for (const name of Object.keys(payload)) {
+      const u8 = encText(payload[name]);
+      manifest.files[name] = { bytes: u8.length, sha256: await sha256Hex(u8) };
+    }
+    const files = Object.assign({}, payload);
+    files["manifest.json"] = JSON.stringify(manifest, null, 2);
+    files["README.txt"] = "研墨审阅包（.ympack）\n\n这是一个普通 ZIP：可把扩展名改为 .zip 后用解压工具打开。\n"
+      + "document.md 是正文；citation-report.json 是引用闭合报告；ledger.json 是逐节归属；"
+      + "ai-declaration.txt 是 AI 声明；checks.json 是导出前检查；manifest.json 列出各文件 SHA-256。\n\n"
+      + "本包是只读交付物，不包含可回写的项目数据库，也不含 API Key。\n";
+    const blob = new Blob([window.YMZip.build(files)], { type: "application/zip" });
+    dlBlob(fileBase(p) + ".ympack", blob);
+    const s = window.YMDoc.summary(bundle);
+    trailAdd(p, "export", "导出审阅包", "已写 " + s.drafted + "/" + s.sections + " 节 · 图 " + s.figures + " · 文献 " + s.refs + " 篇");
+    save(); renderProcessLog();
+    notice("已导出审阅包（.ympack）✓", [
+      "含：正文 Markdown、引用核验、逐节归属、AI 声明、导出前检查、manifest SHA-256",
+      "把扩展名改为 .zip 即可打开；本包只读，不含项目数据库与 API Key"
+    ]);
+  }
+
+  function themeCss() {
+    try { return window.WQTemplate && WQTemplate.activeCss ? WQTemplate.activeCss() : ""; } catch (e) { return ""; }
+  }
+  function wantAttr() { return $("expAttr") ? $("expAttr").checked : true; }
+
+  async function refreshExportPanel() {
+    const box = $("exportSummary"), p = cur();
+    if (!box || !p) return;
+    box.textContent = "正在检查当前稿件…";
+    try {
+      const b = await bundleOf(p, {});
+      const s = window.YMDoc.summary(b);
+      let t = "已写 " + s.drafted + "/" + s.sections + " 节 · 图 " + s.figures + " · 表 " + s.tables + " · 公式 " + s.equations + " · 文献 " + s.refs + " 篇";
+      if (s.missingImages) t += " · 缺图 " + s.missingImages;
+      if (s.unresolved) t += " · 引用越界 " + s.unresolved;
+      if (s.zeroCite) t += " · 零引用节 " + s.zeroCite;
+      (b.warnings || []).filter(w => w.level !== "info").slice(0, 2).forEach(w => { t += "；" + w.message; });
+      box.textContent = t;
+    } catch (e) { box.textContent = "检查失败：" + (e && e.message ? e.message : e); }
   }
 
   (function mount() {
-    const anchor = $("btnExportDoc2");
-    if (!anchor || $("ymExpMd")) return;
-    anchor.insertAdjacentHTML("afterend",
-      '<button id="ymExpMd" class="btn2 ghost" title="Markdown：正文 + GB/T 7714 参考文献 + AI 辅助说明（Typora / Obsidian / Pandoc 都能打开）">⤓ Markdown</button>' +
-      '<button id="ymExpTex" class="btn2 ghost" title="ctexart + gbt7714，参考文献内嵌；无图片时导出单个 .tex，有图片时打包 zip（.tex + yanmo-images/）">⤓ LaTeX（Overleaf）</button>');
-    $("ymExpMd").addEventListener("click", () => run("md"));
+    const panel = $("exportPanel"), row = $("exportFmtRow"), anchor = $("btnExportDoc2");
+    if ($("ymExpMd")) return;
+    const host = row || anchor;
+    if (!host) return;
+    host.insertAdjacentHTML("beforeend",
+      (row ? '<button id="ymExpDoc" class="btn2" style="background:#7a3fa8" title="Word：图/表/公式与正文统一编号，图片内联，可直接打开"><b>⤓ Word（.doc）</b><small>图/表/公式统一编号 · 图片内联</small></button>' : "") +
+      '<button id="ymExpMd" class="btn2 ghost" title="Markdown：正文 + GB/T 7714 参考文献 + AI 辅助说明（Typora / Obsidian / Pandoc 都能打开）"><b>⤓ Markdown</b><small>正文 + 参考文献 + 归属说明</small></button>' +
+      '<button id="ymExpTex" class="btn2 ghost" title="ctexart + gbt7714，参考文献内嵌；无图片时导出单个 .tex，有图片时打包 zip（.tex + yanmo-images/）"><b>⤓ LaTeX（Overleaf）</b><small>ctexart + gbt7714 · 含图自动打包</small></button>' +
+      '<button id="ymExpPack" class="btn2 ghost" title="审阅包：正文 + 引用核验 + 逐节归属 + AI 声明 + SHA-256 清单（普通 ZIP，可改名 .zip 打开）"><b>⤓ 审阅包（.ympack）</b><small>正文 + 引用核验 + 归属 + SHA-256</small></button>');
+    if (row) {
+      $("ymExpDoc").addEventListener("click", () => run("doc", { attribution: wantAttr(), css: themeCss() }));
+      if ($("btnExportOpen")) $("btnExportOpen").addEventListener("click", () => {
+        const pn = $("exportPanel"); if (!pn) return;
+        pn.hidden = !pn.hidden;
+        if (!pn.hidden) refreshExportPanel();
+      });
+    }
+    $("ymExpMd").addEventListener("click", () => run("md", { attribution: wantAttr() }));
     $("ymExpTex").addEventListener("click", () => run("tex"));
+    $("ymExpPack").addEventListener("click", () => exportPack({ attribution: true }));
+    /* 应用型文书隐藏 LaTeX（模板场景下不占入口） */
+    try { if (window.syncScene) window.syncScene(); } catch (e) {}
   })();
 })();

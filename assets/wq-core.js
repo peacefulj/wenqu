@@ -210,6 +210,8 @@
     archiveVersions: function (db) { return idbCall("archive", db); }, // 配额满：版本正文归档到 IDB
     /* v1.1.0：传版本对象（按 archiveKey 取）；兼容旧调用传下标 */
     getVersion: function (pid, ref) { return idbCall("getVer", { pid: pid, ref: ref }); },
+    /* v1.5.0：回取并做 SHA-256 校验（{text,ok,reason,sha256,checked}；null=取不到） */
+    getVersionChecked: function (pid, ref) { return idbCall("getVerCheck", { pid: pid, ref: ref }); },
     exportArchives: function (db) { return idbCall("expArc", db); },
     importArchives: function (map) { return idbCall("impArc", map); },
     available: false
@@ -239,6 +241,23 @@
         t.oncomplete = function () { resolve(out && out.result !== undefined ? out.result : out); };
         t.onerror = function () { reject(t.error); };
       });
+    });
+  }
+  /* v1.5.0：归档正文的 SHA-256（浏览器不支持时返回 ""，退化为「无哈希」而不是报错） */
+  function hashText(t) {
+    try {
+      if (!(window.crypto && window.crypto.subtle && window.TextEncoder)) return Promise.resolve("");
+      var u8 = new TextEncoder().encode(String(t || ""));
+      return window.crypto.subtle.digest("SHA-256", u8).then(function (h) {
+        return Array.prototype.map.call(new Uint8Array(h), function (b) { return ("0" + b.toString(16)).slice(-2); }).join("");
+      }).catch(function () { return ""; });
+    } catch (e) { return Promise.resolve(""); }
+  }
+  /* 归档正文写入：统一在这里记 SHA-256，archive 自愈与 versionPush 超限走同一份记录格式 */
+  function saveVer(key, text) {
+    return hashText(text).then(function (h) {
+      var rec = { text: String(text || ""), sha256: h, bytes: String(text || "").length, at: Date.now() };
+      return tx("vers", "readwrite", function (s) { s.put(rec, key); }).then(function () { return true; }, function () { return false; });
     });
   }
   /* 把三种 IDB 操作收敛成一个入口，全部 best-effort（浏览器不支持就静默降级） */
@@ -278,7 +297,7 @@
           /* v1.1.0：唯一键（旧版用「项目:序号」，版本列表一移位就会互相覆盖） */
           var key = p.id + ":" + uid("v");
           var content0 = v.content;   /* v3.2（P0 修复）：先捕获——tx 回调异步执行时 v.content 已被截成预览（v30 闭包 bug，曾把预览当全文存进 IDB） */
-          jobs.push(tx("vers", "readwrite", function (s) { s.put(content0, key); }));
+          jobs.push(saveVer(key, content0));
           v.archived = true; v.archiveKey = key;
           v.content = v.content.slice(0, 300) + "\n…〔正文 " + v.content.length + " 字已归档到 IndexedDB；在版本档案里点开会自动回取〕";
         });
@@ -287,18 +306,38 @@
         .catch(function () { return { moved: 0, freedChars: 0 }; });
     }
     if (op === "putVer") {
-      /* 版本超限时把旧版正文搬进 IDB（不删除） */
+      /* 版本超限时把旧版正文搬进 IDB（不删除）；v1.5.0 写入时记 SHA-256，回取时校验 */
       var pkey = arg && arg.key, ptext = String((arg && arg.text) || "");
       if (!pkey) return Promise.resolve(false);
-      return tx("vers", "readwrite", function (s) { s.put(ptext, pkey); })
-        .then(function () { return true; }).catch(function () { return false; });
+      return saveVer(pkey, ptext);
     }
     if (op === "getVer") {
       var ref = arg.ref;
       var vkey = (ref && typeof ref === "object") ? (ref.archiveKey || "") : (arg.pid + ":" + ref);
       if (!vkey) return Promise.resolve(null);
       return tx("vers", "readonly", function (s) { return s.get(vkey); })
-        .then(function (c) { return typeof c === "string" ? c : null; }).catch(function () { return null; });
+        .then(function (c) {
+          if (typeof c === "string") return c;                     /* 兼容 v1.5.0 之前的旧记录 */
+          return (c && typeof c.text === "string") ? c.text : null;
+        }).catch(function () { return null; });
+    }
+    if (op === "getVerCheck") {
+      /* 回取并校验：ok=true 一致；false 不一致（拒绝载入）；null 旧记录无哈希 */
+      var ref2 = arg.ref;
+      var vkey2 = (ref2 && typeof ref2 === "object") ? (ref2.archiveKey || "") : (arg.pid + ":" + ref2);
+      if (!vkey2) return Promise.resolve(null);
+      return tx("vers", "readonly", function (s) { return s.get(vkey2); })
+        .then(function (c) {
+          if (typeof c === "string") return { text: c, ok: null, reason: "legacy", sha256: "", checked: "" };
+          if (!c || typeof c.text !== "string") return null;
+          return hashText(c.text).then(function (h) {
+            var ok = (!c.sha256 || !h) ? null : (h === c.sha256);
+            return {
+              text: c.text, ok: ok, sha256: c.sha256 || "", checked: h || "",
+              reason: ok === false ? "sha256-mismatch" : (ok === null ? "no-hash" : "ok")
+            };
+          });
+        }).catch(function () { return null; });
     }
     if (op === "expArc") {
       /* 备份前把归档正文一次性读出来（单个只读事务） */
@@ -314,7 +353,11 @@
           var t = idb.transaction("vers", "readonly"), s = t.objectStore("vers");
           keys.forEach(function (k) {
             var r = s.get(k);
-            r.onsuccess = function () { if (typeof r.result === "string") out[k] = r.result; };
+            r.onsuccess = function () {
+              var c = r.result;
+              if (typeof c === "string") out[k] = c;
+              else if (c && typeof c.text === "string") out[k] = c.text;  /* 新版记录：{text, sha256, bytes} */
+            };
           });
           t.oncomplete = function () { resolve(out); };
           t.onerror = function () { resolve(out); };

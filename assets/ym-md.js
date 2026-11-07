@@ -509,7 +509,8 @@
     });
     return Promise.all(jobs).then(function () {
       var body = div.innerHTML;
-      var css = "body{font-family:SimSun,serif;font-size:12pt;line-height:1.8;color:#111}h1{font-size:18pt;text-align:center}h2{font-size:15pt;font-family:SimHei,sans-serif;margin-top:18pt}h3{font-size:13pt;font-family:SimHei,sans-serif}table{border-collapse:collapse;width:100%;font-size:10.5pt}th,td{border-top:1px solid #000;border-bottom:1px solid #000;padding:4px 8px}th{border-top:1.6pt solid #000;border-bottom:.8pt solid #000}table{border-bottom:1.6pt solid #000}figure{margin:12pt 0;text-align:center}figcaption{font-size:10.5pt;color:#333}.ym-math-err,.ym-math-src{color:#b42318}.ym-footnotes{font-size:10pt;color:#444}";
+      var baseCss = "body{font-family:SimSun,serif;font-size:12pt;line-height:1.8;color:#111}h1{font-size:18pt;text-align:center}h2{font-size:15pt;font-family:SimHei,sans-serif;margin-top:18pt}h3{font-size:13pt;font-family:SimHei,sans-serif}table{border-collapse:collapse;width:100%;font-size:10.5pt}th,td{border-top:1px solid #000;border-bottom:1px solid #000;padding:4px 8px}th{border-top:1.6pt solid #000;border-bottom:.8pt solid #000}table{border-bottom:1.6pt solid #000}figure{margin:12pt 0;text-align:center}figcaption{font-size:10.5pt;color:#333}.ym-math-err,.ym-math-src{color:#b42318}.ym-footnotes{font-size:10pt;color:#444}";
+      var css = baseCss + (opts.css ? ";" + String(opts.css) : "");
       var full = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><head><meta charset="utf-8"><title>研墨导出</title><style>' + css + "</style></head><body>" + body + "</body></html>";
       return new Blob(["\ufeff", full], { type: "application/msword;charset=utf-8" });
     });

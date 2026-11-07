@@ -548,6 +548,14 @@
       if (vi < 0) return resolve(null);
       var v = p.versions[vi];
       if (!v.archived || !window.WQStore) return resolve(null);
+      /* v1.5.0：回取即校验 SHA-256；不一致就当作取不到，避免损坏内容进卡片 */
+      if (window.WQStore.getVersionChecked) {
+        window.WQStore.getVersionChecked(p.id, v).then(function (r) {
+          ST.fullFetched[d.id] = 1;
+          resolve((r && r.ok !== false && r.text) ? r.text : null);
+        }, function () { resolve(null); });
+        return;
+      }
       window.WQStore.getVersion(p.id, v).then(function (c) {   /* v1.1.0：按版本自身的 archiveKey 取 */
         ST.fullFetched[d.id] = 1;
         resolve(c || null);
@@ -1195,9 +1203,10 @@
     if (!ok) return;
     var content = v.content;
     if (v.archived && window.WQStore) {
-      var full = await window.WQStore.getVersion(p.id, v);
-      if (!full) { toast("没能从本机取回该版本的完整正文，已取消载入（避免用预览覆盖正文）"); return; }
-      content = full;
+      var r = window.WQStore.getVersionChecked ? await window.WQStore.getVersionChecked(p.id, v) : { text: await window.WQStore.getVersion(p.id, v), ok: null };
+      if (!r || !r.text) { toast("没能从本机取回该版本的完整正文，已取消载入（避免用预览覆盖正文）"); return; }
+      if (r.ok === false) { toast("该版本的归档正文校验失败（SHA-256 不一致），已取消载入，请先备份并反馈"); return; }
+      content = r.text;
     }
     var f = v.field || "";
     /* A2：覆盖前为当前内容自动存版——回滚不再是唯一不落版的写路径 */

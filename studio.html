@@ -150,7 +150,12 @@
               <select id="cfgParadigm" style="flex:0 0 240px"></select>
               <label class="hint">层级</label>
               <select id="cfgLevel" style="flex:0 0 200px"></select>
+              <label class="hint">场景</label>
+              <select id="cfgScene" style="flex:0 0 140px"><option value="paper">科研论文</option><option value="applied">应用型文书</option></select>
+              <label class="hint">模板</label>
+              <select id="cfgTpl" style="flex:0 0 200px"></select>
             </div>
+            <p class="hint" style="margin:8px 0 0">应用型场景按真实文书骨架生成章节，默认隐藏实证工具与 LaTeX 导出；科研论文场景保持完整流程。</p>
           </section>
           <section class="block">
             <h2>选题雷达<small>OpenAlex 全球发文趋势 + AI 三维评估（评分维度随范式与层级变化）</small></h2>
@@ -290,7 +295,7 @@
               <div class="tmpl" style="margin-top:8px">
                 <button id="btnOutline" data-ai class="btn2">🌪️ 生成大纲（多视角）</button>
                 <button id="btnDesign" data-ai class="btn2" style="background:#37465c">🧪 研究设计审查</button>
-              <button id="btnExportDoc" class="btn2" style="background:#7a3fa8">⤓ 导出全文（Word）</button>
+              <button id="btnExportDoc" class="btn2" style="background:#7a3fa8" hidden>⤓ 导出全文（Word）</button>
               <a class="btn2 ghost" href="workbench.html?tab=cite">🔗 引用引擎（乱格式→GB/APA/BibTeX）</a>
               <button id="btnAIDecl" data-ai class="btn2">📄 AI使用声明模板</button>
               </div>
@@ -318,7 +323,16 @@
               </details>
             </div>
             <div class="tmpl" style="width:100%;margin-top:8px">
-              <button id="btnExportDoc2" class="btn2" style="background:#0a7a43">⤓ 导出全文 + 归属说明（推荐）</button>
+              <button id="btnExportDoc2" class="btn2" style="background:#0a7a43" hidden>⤓ 导出全文 + 归属说明（推荐）</button>
+              <button id="btnExportOpen" class="btn2" style="background:#0a7a43">⤓ 导出作品</button>
+              <div id="exportPanel" class="export-panel" hidden>
+                <div class="export-head">统一导出：图 / 表 / 公式全文连续编号，引用与文末表同源；缺图会显式占位，不静默丢失。</div>
+                <div class="fmt-row" id="exportFmtRow"></div>
+                <label class="hint" style="display:flex;align-items:center;gap:6px;margin-top:6px">
+                  <input id="expAttr" type="checkbox" checked> 含 AI 归属说明（推荐）
+                </label>
+                <div class="hint" id="exportSummary" style="margin-top:6px">打开后自动检查当前稿件的可导出状态。</div>
+              </div>
               <button id="btnTplLib" class="btn2 ghost">📑 排版模板库</button>
               <label class="hint">排版预设
                 <select id="expFmt" style="max-width:220px">
@@ -473,17 +487,18 @@
 
       <!-- ===== 模式二：工具台 ===== -->
       <div id="mode-tools" hidden>
-        <div class="tabs" id="tabs">
+        <div class="tabs more-off" id="tabs">
           <button class="tab grp-start" data-grp="找" data-tab="search">🔍 检索</button>
-          <button class="tab" data-tab="radar">📡 新论文雷达</button>
-          <button class="tab" data-tab="db">🗄 数据库导航</button>
+          <button class="tab" data-tab="radar" data-more="1">📡 新论文雷达</button>
+          <button class="tab" data-tab="db" data-more="1">🗄 数据库导航</button>
           <button class="tab grp-start on" data-grp="读" data-tab="lit">📚 文献库</button>
           <button class="tab" data-tab="read">📖 AI读论文</button>
-          <button class="tab" data-tab="synth">🗂 阅读与综合</button>
+          <button class="tab" data-tab="synth" data-more="1">🗂 阅读与综合</button>
           <button class="tab grp-start" data-grp="写" data-tab="storm">📝 综述素材</button>
           <button class="tab" data-tab="emp">📊 实证代码·三线表</button>
           <button class="tab grp-start" data-grp="验" data-tab="cite">🔗 引用引擎</button>
-          <button class="tab" data-tab="engines">🧰 开源引擎</button>
+          <button class="tab" data-tab="engines" data-more="1">🧰 开源引擎</button>
+          <button id="tabMore" class="btn2 ghost" type="button" style="margin-left:8px;align-self:center">＋ 更多工具</button>
         </div>
 
         <!-- 找文献 -->
@@ -741,7 +756,7 @@
 <footer class="site"><div class="container">
   <div class="links"><a href="index.html">首页</a> · <a href="quick.html">参考稿</a> · <a href="try.html">试用与测试</a> · 发现问题？<a href="mailto:info@yingcompute.com">邮件告诉我们</a> · <a href="https://github.com/peacefulj/wenqu/issues" target="_blank" rel="noopener">GitHub Issues</a></div>
   <div class="disc">本平台检索与 OA 链接来自 OpenAlex / Crossref / Unpaywall 官方公开接口，仅指向来源方标注的合法开放版本；不提供文献代下、代写服务。AI 产出（速读、审稿、综述草稿、引用匹配）均可能出错，使用前请人工核对；学术润色仅做语言表达优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器；上传的 PDF 也只存在本机。</div>
-  <div>© 2026 研墨工作台 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.4.2</span> 更新日志</a> · 数据接口礼貌限速</div>
+  <div>© 2026 研墨工作台 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.5.0</span> 更新日志</a> · 数据接口礼貌限速</div>
 </div></footer>
 
 <aside id="verDrawer">
@@ -767,14 +782,30 @@
 
 <!-- 新建项目表单（替代原生 prompt） -->
 <div id="npMask" hidden style="position:fixed;inset:0;background:rgba(20,28,44,.35);z-index:98"></div>
-<div id="npModal" hidden style="position:fixed;left:50%;top:22%;transform:translateX(-50%);width:min(440px,92vw);background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;z-index:99;box-shadow:0 12px 40px rgba(27,42,74,.18)">
+<div id="npModal" hidden style="position:fixed;left:50%;top:6%;transform:translateX(-50%);width:min(440px,92vw);max-height:88vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;z-index:99;box-shadow:0 12px 40px rgba(27,42,74,.18)">
   <h3 style="margin:0 0 10px">新建研究项目</h3>
   <label class="hint" style="font-weight:700">项目名称</label>
   <input id="npName" type="text" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;margin:4px 0 10px">
   <label class="hint" style="font-weight:700">研究范式（决定章节骨架/矩阵栏目/审查内容）</label>
   <select id="npParadigm" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:9px;margin:4px 0 10px"></select>
   <label class="hint" style="font-weight:700">层级（决定审稿口径/字数/创新标尺）</label>
-  <select id="npLevel" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:9px;margin:4px 0 12px"></select>
+  <select id="npLevel" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:9px;margin:4px 0 10px"></select>
+  <label class="hint" style="font-weight:700">场景</label>
+  <select id="npScene" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:9px;margin:4px 0 10px">
+    <option value="paper">科研论文（完整流程：设计审查 / 实证 / 投稿）</option>
+    <option value="applied">应用型文书（工作报告 / 申报书 / 政策建议 / 综述 / 开题）</option>
+  </select>
+  <div id="npTplRow" hidden>
+    <label class="hint" style="font-weight:700">文书模板（决定章节骨架）</label>
+    <select id="npTpl" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:9px;margin:4px 0 10px"></select>
+  </div>
+  <label class="hint" style="font-weight:700">角色预设（只改默认层级与写作提示，可随时换）</label>
+  <select id="npRole" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:9px;margin:4px 0 10px"></select>
+  <div class="row" style="margin:0 0 10px;gap:8px">
+    <button id="npSampleBtn" class="btn2 ghost" style="padding:6px 12px;font-size:13px">📄 看 3 篇范文</button>
+    <span class="hint" style="margin:0">只示范结构，数字均为虚构示例</span>
+  </div>
+  <div id="npSamples" hidden style="max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 12px;background:#fbfcfe"></div>
   <p class="hint" style="margin:0 0 10px">后续可在阶段1「项目配置」里随时修改。</p>
   <div style="display:flex;gap:10px;justify-content:flex-end">
     <button id="npCancel" class="btn2 ghost">取消</button>
@@ -810,6 +841,7 @@ document.addEventListener("click", e => {
 <script src="assets/vendor/marked.min.js"></script>
 <script src="assets/vendor/purify.min.js"></script>
 <script src="assets/ym-bib.js"></script>
+<script src="assets/ym-doc.js"></script>
 <script src="assets/studio.js"></script>
 <script src="assets/wb.js"></script>
 <script src="assets/wq-ui.js"></script>

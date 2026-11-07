@@ -1,6 +1,6 @@
 {
   "name": "yanmo",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "private": true,
   "description": "研墨：纯前端的科研写作工作台（PWA），数据只存在本机浏览器",
   "license": "MIT",
@@ -11,6 +11,8 @@
   },
   "scripts": {
     "check": "node scripts/check.mjs",
+    "test:export": "node scripts/test-export.mjs",
+    "test": "node scripts/check.mjs && node scripts/test-export.mjs",
     "release": "node scripts/release.mjs",
     "mcp": "node mcp/yanmo-mcp.mjs"
   }

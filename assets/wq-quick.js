@@ -266,24 +266,55 @@
     $("qDoneRow").hidden = false;
     $("qFinalMeta").textContent = (proj.ref.order || []).length + " 节 · " + (refs || []).length + " 篇文献 · 引用编号与文末条目均可点开原文";
     $("qOut").hidden = true;
+    async function mkBundle() {
+      if (!window.YMDoc) return null;
+      var secs = [];
+      var order = (proj.ref && proj.ref.order) || [];
+      order.forEach(function (name, i) {
+        var ent = (proj.ref.sections || {})[name] || {};
+        secs.push({ key: "q" + (i + 1), name: name, md: ent.text || "", drafted: !!(ent.text || "").trim(), origin: "ref" });
+      });
+      if (!secs.length) {
+        var body0 = String(mdFull || "").split("\n## 参考文献")[0];
+        body0.split(/\n##\s+/).slice(1).forEach(function (part, i) {
+          var j = part.indexOf("\n");
+          secs.push({ key: "q" + (i + 1), name: (j >= 0 ? part.slice(0, j) : part).trim(), md: (j >= 0 ? part.slice(j + 1) : "").trim(), drafted: true, origin: "ref" });
+        });
+      }
+      var prep = { texts: secs.map(function (s) { return s.md; }), images: [], missing: 0 };
+      if (window.YMMd && YMMd.prepareImageSections) {
+        try { prep = await YMMd.prepareImageSections(prep.texts); } catch (e) {}
+      }
+      secs = secs.map(function (s, i) { return { key: s.key, name: s.name, md: prep.texts[i] || s.md, drafted: s.drafted, origin: "ref" }; });
+      var items = (refs || []).map(function (r, i) { return { n: (+r.n >= 1 ? +r.n : i + 1), text: gbtEntry(r) }; });
+      return window.YMDoc.buildBundle({
+        meta: { title: proj.topic || proj.name || "参考稿", project: proj.name || "", stamp: WQCore.stamp(), label: (window.YANMO && YANMO.label) || "研墨", model: (proj.ref && proj.ref.model) || "", missingImages: prep.missing },
+        sections: secs,
+        assets: prep.images,
+        refs: { style: "GB/T 7714-2015", items: items },
+        attribution: { lines: [], marks: [], total: "", statement: "" },
+        checks: []
+      });
+    }
     $("qFinalMd").onclick = async function () {
-      var md = mdFull;
-      try {
-        if (window.YMMd && YMMd.prepareImageSections) {
-          var prep = await YMMd.prepareImageSections([md]);
-          md = YMMd.spliceImages(prep.texts[0] || md, prep.images, "md");
-        }
-      } catch (e) { console.warn("参考稿图片内联失败，按原文导出", e); }
-      dlFile((proj.name || "参考稿") + ".md", md, "text/markdown");
+      var b = await mkBundle();
+      if (b) {
+        var md = window.YMDoc.renderMarkdown(b, { frontMatter: false, attribution: false, includeUnwritten: true });
+        dlFile((proj.name || "参考稿") + ".md", md, "text/markdown");
+        return;
+      }
+      dlFile((proj.name || "参考稿") + ".md", mdFull, "text/markdown");
     };
     $("qFinalDoc").onclick = async function () {
-      try {
-        if (window.YMMd && YMMd.wordBlob) {
-          var blob = await YMMd.wordBlob(qlast.md);
+      var b = await mkBundle();
+      if (b && window.YMMd && YMMd.wordBlob) {
+        try {
+          var md2 = window.YMDoc.renderWordMarkdown(b, { attribution: false, includeUnwritten: true });
+          var blob = await YMMd.wordBlob(md2);
           dlFile((proj.name || "参考稿") + ".doc", blob, "application/msword");
           return;
-        }
-      } catch (e) { console.warn("统一 Word 导出失败，回退旧导出", e); }
+        } catch (e) { console.warn("统一 Word 导出失败，回退旧导出", e); }
+      }
       var doc = "<html><head><meta charset=\"utf-8\"><style>body{font-family:SimSun,serif;font-size:12pt;line-height:1.8;max-width:760px;margin:32px auto;color:#111}h1,h2,h3{font-family:Hei,SimHei,sans-serif}table{border-collapse:collapse;width:100%}th,td{border-top:1px solid #000;border-bottom:1px solid #000;padding:5px 8px}a{color:#16408a}</style></head><body>"
         + body.innerHTML + "</body></html>";
       dlFile((proj.name || "参考稿") + ".doc", doc, "application/msword");

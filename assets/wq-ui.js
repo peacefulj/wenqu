@@ -669,47 +669,9 @@
   (function bindExport2() {
     if (!has("btnExportDoc2")) return;
     $("btnExportDoc2").addEventListener("click", () => {
-      const p = P(); if (!p) return toast("先新建项目");
-      const pq = PQ(p);
-      const secList = exportSecList(p, pq);
-      const drafted = secList.filter(s => p.draft && p.draft[s]);
-      if (!drafted.length) { toast("还没有「我的稿」内容：先在 ② 设计与写作采用/写作，再导出"); return; }
-      const esc2 = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      const parts = secList.map(s => {
-        const rich = (p.draftRich || {})[s];
-        let t = p.draft?.[s] || "";
-        const richClean = rich ? sanitizeRich(rich).replace(/〔生成：[^〕]*〕/g, "") : "";
-        if (t) t = t.replace(/〔生成：[^〕]*〕/g, "").trim();
-        return `<h2>${esc2(s)}</h2>` + (richClean ? richClean : (t ? t.split(/\n+/).map(x => `<p>${esc2(x)}</p>`).join("") : "<p>〔本节未写〕</p>"));
-      }).join("\n");
-      /* 归属说明：按账本，不再只看〔生成：〕标记 */
-      const led = WQCore.ledger.analyzeProject(p);
-      const pct = v => Math.round(v * 100) + "%";
-      const declLines = [];
-      Object.keys(led.bySec).forEach(sec => {
-        const a = led.bySec[sec];
-        declLines.push(sec + "：本人贡献 " + pct(a.contribution) + "（亲笔 " + a.userChars + " 字 / 混合 " + a.mixedChars + " 字 / 参考原样 " + a.aiChars + " 字）");
-      });
-      const aiDecl = '<h2>AI 辅助说明</h2><p style="font-size:10.5pt;color:#555">本稿在「研墨」辅助下完成：AI 提供参考稿与改写建议，作者逐节修改并定稿。各节归属（按字符估算）：<br>' +
-        (declLines.map(esc2).join("<br>") || "（账本为空）") +
-        '<br>模型：' + esc2((p.ref && p.ref.model) || WQCore.ai.conf().model || "") + ' · 报告日期：' + WQCore.stamp() +
-        '。作者对全部内容与引用的真实性负责。</p>';
-      /* 校验摘要：各类型最近一次 */
-      const latest = {};
-      (p.checks || []).forEach(c => { if (!latest[c.kind]) latest[c.kind] = c; });
-      const ckLines = Object.values(latest).map(c => c.label + "：" + (c.stats && c.stats.problem != null ? (c.stats.problem ? c.stats.problem + " 项待处理" : "通过") + "（" + c.ts + "）" : c.ts));
-      const ckDecl = ckLines.length ? '<h2>校验记录（最近）</h2><p style="font-size:10.5pt;color:#555">' + ckLines.map(esc2).join("<br>") + "</p>" : "";
-      /* v1.1.0：参考文献按 GB/T 7714 生成 */
-      const refLines = window.YMBib ? YMBib.gbList(p.papers) : p.papers.map((f, i) => "[" + (i + 1) + "] " + refTxt(f));
-      const refs = p.papers.length ? "<h2>参考文献</h2><p style=\"font-size:10.5pt;line-height:1.4\">" + refLines.map(esc2).join("<br>") + "</p>" : "";
       const css = cleanCss((window.WQTemplate && WQTemplate.activeCss()) || EXP_CSS[$("expFmt") ? $("expFmt").value : "plain"] || EXP_CSS.plain);
-      const html = `<html><head><meta charset="utf-8"><style>${css}table{border-collapse:collapse}th,td{border:1px solid #999;padding:4px 8px}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}${aiDecl}${ckDecl}<p style="color:#888">—— 由${esc2((window.YANMO && YANMO.label) || "研墨")}辅助完成（${WQCore.stamp()}）；引用与数据请人工核对 ——</p></body></html>`;
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" }));
-      a.download = (p.topic || p.name || "论文全文").replace(/[\\/:*?"<>|]/g, "_") + ".doc";
-      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      trailAdd(p, "export", "导出全文+归属说明", "已写 " + drafted.length + "/" + pq.sections.length + " 节 · 贡献度 " + pct(led.contribution));
-      save(); renderProcessLog();
+      if (window.wqExportDoc) return wqExportDoc("doc", { attribution: true, css: css });
+      toast("导出组件尚未加载：刷新页面后重试");
     });
   })();
 

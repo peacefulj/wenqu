@@ -429,7 +429,11 @@ document.querySelectorAll(".tab").forEach(btn => {
     document.querySelectorAll(".tabpane").forEach(p => p.hidden = p.id !== "tab-" + btn.dataset.tab);
   });
 });
-function gotoTab(name) { document.querySelector(`.tab[data-tab="${name}"]`)?.click(); }
+function gotoTab(name) {
+  const b = document.querySelector(`.tab[data-tab="${name}"]`);
+  if (b && b.dataset.more) document.getElementById("tabs")?.classList.remove("more-off");
+  b?.click();
+}
 
 /* ================= Tab1 找文献 ================= */
 const OA = "https://api.openalex.org/works";

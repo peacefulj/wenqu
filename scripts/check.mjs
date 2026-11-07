@@ -6,7 +6,7 @@
  * 零依赖，Node.js 18+。
  */
 import { spawnSync, spawn } from "node:child_process";
-import { readFileSync, readdirSync, existsSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, writeFileSync, statSync, mkdtempSync, rmSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -48,6 +48,15 @@ for (const h of htmls) {
   }
 }
 check(!inlineBad.length, htmls.length + " 个页面的 " + inlineN + " 段内联脚本语法正确", inlineBad.join("\n"));
+/* 可及性与移动端基线：所有页面都要有 viewport 与语言声明 */
+const noVp = htmls.filter(h => !/<meta[^>]+name="viewport"/i.test(read(h)));
+const noLang = htmls.filter(h => !/<html[^>]+lang="zh-CN"/i.test(read(h)));
+check(!noVp.length, htmls.length + " 个页面声明 viewport（窄屏可用）", noVp.join("，"));
+check(!noLang.length, htmls.length + " 个页面声明 lang=zh-CN（读屏可识别）", noLang.join("，"));
+/* 性能预算：自有脚本 + 样式（不含 vendor）控制在 1.1 MB 内 */
+let ownBytes = 0;
+for (const f of [...list("assets", /\.(js|css)$/)]) ownBytes += statSync(join(ROOT, f)).size;
+check(ownBytes < 1.1 * 1024 * 1024, "自有脚本与样式 " + Math.round(ownBytes / 1024) + " KB（预算 1126 KB）");
 
 /* ---------------- 2 版本号 ---------------- */
 section("2. 版本号一致");
