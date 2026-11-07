@@ -48,6 +48,11 @@
     var keep = [];
     var put = function (tex) { keep.push(tex); return PH + (keep.length - 1) + PH; };
     s = String(s == null ? "" : s).split(PH).join("").split(BAR).join("");
+    /* 图片占位符 → includegraphics（由导出前 prepareImageSections 生成） */
+    s = s.replace(/@@YMIMG(\d+)\|([^@]*)@@/g, function (m, i) {
+      var im = (ctx.images || [])[+i];
+      return im ? put("\\includegraphics[width=0.8\\linewidth]{" + im.name + "}") : "";
+    });
     s = s.replace(/\$\$[\s\S]+?\$\$/g, function (m) { return put(m); })
       .replace(/\\\[[\s\S]+?\\\]/g, function (m) { return put(m); })
       .replace(/\\\([\s\S]+?\\\)/g, function (m) { return put(m); })
@@ -117,6 +122,12 @@
         continue;
       }
       if (!line) { flush(); continue; }
+      /* 独占一行的图片：居中，单独成图 */
+      if (/^@@YMIMG\d+\|[^@]*@@$/.test(line)) {
+        flush();
+        out.push("\\begin{center}", inlineTex(line, ctx), "\\end{center}", "");
+        continue;
+      }
       if ((m = line.match(/^\$\$([\s\S]+)\$\$$/)) && m[1].indexOf("$$") < 0) { flush(); out.push("\\[", m[1].trim(), "\\]", ""); continue; }
       if (/^\$\$/.test(line) && line.indexOf("$$", 2) < 0) {
         flush();
@@ -247,13 +258,26 @@
     }
     if (env.checks && env.checks.length) { L.push("## 校验记录（最近）", ""); env.checks.forEach(function (x) { L.push("- " + x); }); L.push(""); }
     L.push("---", "", "*由 " + env.label + " 辅助完成（" + env.stamp + "）；引用与数据请人工核对*", "");
-    return { text: L.join("\n"), drafted: pre.drafted };
+    var text = L.join("\n");
+    if (env.images && env.images.length) text = spliceImgMd(text, env.images);
+    return { text: text, drafted: pre.drafted };
+  }
+  /* Markdown 里把图片占位符换成内联 dataURL：单文件换机器打开也不丢图 */
+  function spliceImgMd(text, images) {
+    return String(text || "").replace(/@@YMIMG(\d+)\|([^@]*)@@/g, function (m, i, alt) {
+      var im = (images || [])[+i];
+      if (!im) return "";
+      var a = "";
+      try { a = decodeURIComponent(alt || ""); } catch (e) { a = alt || ""; }
+      return "![" + a + "](" + im.dataUrl + ")";
+    });
   }
 
   function buildLatex(p, env) {
     var B = env.YMBib, papers = (p && p.papers) || [];
     var newKeys = papers.length ? B.ensureKeys(papers) : 0;
     var ctx = newCtx(papers.map(function (f) { return f.key; }));
+    ctx.images = env.images || [];
     var pre = prepSecs(env), d = declOf(env, pre.metaLines);
     var title = String(p.topic || p.name || "未命名");
     var body = pre.secs.map(function (s) {
@@ -302,7 +326,7 @@
 
   return {
     texEsc: texEsc, inlineTex: inlineTex, mdToTex: mdToTex, demoteMd: demoteMd, newCtx: newCtx,
-    buildMarkdown: buildMarkdown, buildLatex: buildLatex
+    buildMarkdown: buildMarkdown, buildLatex: buildLatex, spliceImgMd: spliceImgMd
   };
 });
 
@@ -320,6 +344,12 @@
   function dl(name, text, mime) {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([text], { type: mime + ";charset=utf-8" }));
+    a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  function dlBlob(name, blob) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
     a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
@@ -420,22 +450,46 @@
     };
   }
 
-  function run(kind) {
+  async function run(kind) {
     const p = cur(); if (!p) return notice("先新建项目");
     const env = envOf(p);
     if (!env.secs.some(s => String(s.md || "").replace(/〔生成：[^〕]*〕/g, "").trim())) {
-      return notice("还没有「我的稿」内容", ["先在 ④ 写作或 ⑤ 参考稿修改里写好 / 采用至少一节，再导出"]);
+      return notice("还没有「我的稿」内容", ["先在 ② 设计与写作里写好 / 采用至少一节（参考稿修改也在这一阶段），再导出"]);
+    }
+    /* 统一图片管线：先解析 IndexedDB 里的图片，再按导出格式还原占位符 */
+    let prep = { texts: env.secs.map(s => s.md), images: [], missing: 0 };
+    if (window.YMMd && YMMd.prepareImageSections) {
+      try {
+        prep = await YMMd.prepareImageSections(env.secs.map(s => s.md));
+        env.secs = env.secs.map((s, i) => ({ name: s.name, md: prep.texts[i] }));
+        env.images = prep.images;
+      } catch (e) { console.warn("图片预处理失败，按原文本导出", e); }
     }
     if (kind === "md") {
       const r = X.buildMarkdown(p, env);
       dl(fileBase(p) + ".md", r.text, "text/markdown");
-      trailAdd(p, "export", "导出全文（Markdown）", "已写 " + r.drafted + "/" + env.secs.length + " 节 · 参考文献 " + p.papers.length + " 篇");
+      trailAdd(p, "export", "导出全文（Markdown）", "已写 " + r.drafted + "/" + env.secs.length + " 节 · 参考文献 " + p.papers.length + " 篇" + (prep.images.length ? " · 图片 " + prep.images.length + " 张已内联" : ""));
       save(); renderProcessLog();
-      tip("已导出 Markdown ✓");
+      tip("已导出 Markdown ✓" + (prep.images.length ? "（图片已内联）" : ""));
+      if (prep.missing) notice("有 " + prep.missing + " 张图片未能从本机取回", ["其余内容已正常导出；可在原草稿里重新粘贴这几张图"]);
       return;
     }
     const r = X.buildLatex(p, env);
-    dl(fileBase(p) + ".tex", r.text, "application/x-tex");
+    const base = fileBase(p);
+    if (prep.images.length && window.YMZip && window.YMMd && YMMd.dataUrlBytes) {
+      const files = {}; files[base + ".tex"] = r.text;
+      prep.images.forEach(im => { try { files[im.name] = YMMd.dataUrlBytes(im.dataUrl); } catch (e) {} });
+      dlBlob(base + ".zip", new Blob([window.YMZip.build(files)], { type: "application/zip" }));
+      trailAdd(p, "export", "导出全文（LaTeX）", "已写 " + r.drafted + "/" + env.secs.length + " 节 · \\cite " + r.cited + " 篇 · 图片 " + prep.images.length + " 张");
+      save(); renderProcessLog();
+      notice("已导出 LaTeX（含图片）✓", [
+        "压缩包内：" + base + ".tex + yanmo-images/（" + prep.images.length + " 张）",
+        "上传 Overleaf 后保持目录结构，菜单 Compiler 选 XeLaTeX；参考文献已内嵌",
+        p.papers.length ? "正文引用 " + r.cited + " 篇已转成 \\cite{}" : "文献库是空的，导出的 .tex 没有参考文献"
+      ]);
+      return;
+    }
+    dl(base + ".tex", r.text, "application/x-tex");
     trailAdd(p, "export", "导出全文（LaTeX）", "已写 " + r.drafted + "/" + env.secs.length + " 节 · \\cite " + r.cited + " 篇" + (r.unresolved.length ? " · " + r.unresolved.length + " 处编号未匹配" : ""));
     save(); renderProcessLog();
     const lines = [
@@ -443,6 +497,7 @@
       p.papers.length ? "正文里引用到的 " + r.cited + " 篇已转成 \\cite{}，LaTeX 会按首次引用的顺序重新编号" : "文献库是空的，导出的 .tex 没有参考文献"
     ];
     if (r.unresolved.length) lines.push(r.unresolved.length + " 处 [n] 对不上文献库编号，已原样保留：" + r.unresolved.slice(0, 5).join(" ") + (r.unresolved.length > 5 ? " …" : ""));
+    if (prep.missing) lines.push("有 " + prep.missing + " 张图片未能从本机取回，已跳过");
     notice("已导出 LaTeX ✓", lines);
   }
 
@@ -451,7 +506,7 @@
     if (!anchor || $("ymExpMd")) return;
     anchor.insertAdjacentHTML("afterend",
       '<button id="ymExpMd" class="btn2 ghost" title="Markdown：正文 + GB/T 7714 参考文献 + AI 辅助说明（Typora / Obsidian / Pandoc 都能打开）">⤓ Markdown</button>' +
-      '<button id="ymExpTex" class="btn2 ghost" title="单个 .tex：ctexart + gbt7714，参考文献内嵌；上传 Overleaf 选 XeLaTeX 即可编译">⤓ LaTeX（Overleaf）</button>');
+      '<button id="ymExpTex" class="btn2 ghost" title="ctexart + gbt7714，参考文献内嵌；无图片时导出单个 .tex，有图片时打包 zip（.tex + yanmo-images/）">⤓ LaTeX（Overleaf）</button>');
     $("ymExpMd").addEventListener("click", () => run("md"));
     $("ymExpTex").addEventListener("click", () => run("tex"));
   })();

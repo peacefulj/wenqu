@@ -5,7 +5,7 @@
 - 网页版：https://www.yanmo.io/
 - 专业版（可安装到桌面）：https://peacefulj.github.io/wenqu/
 - 不需要后端，不需要数据库，数据默认只存在你的浏览器里。
-- 当前版本：**v1.3.0**（[更新日志](CHANGELOG.md)）
+- 当前版本：**v1.4.2**（[更新日志](CHANGELOG.md)）
 
 ## 在线试用
 
@@ -33,6 +33,8 @@
 - 用“归属账本”记录哪些段落由 AI 生成、哪些经过你改写；
 - 上传 PDF 在研墨里阅读、高亮、写批注，让 AI 按页精读（每条结论标注页码）；
 - 引用格式一键转 GB/T 7714，并做正文与文献表的反向核对；
+- 写作时直接产出三线表、结构图和数据图，支持公式、图片与脚注；
+- 生成 Stata / R / Python 实证代码模板，把 esttab / CSV 输出转成三线表；
 - 和 Zotero、Overleaf、Claude Desktop 等工具互通（见下文）。
 
 ## 它不做什么
@@ -84,6 +86,23 @@ Key 只保存在当前浏览器里，不会上传到我们的服务器；在公�
 - **Markdown**：带 front matter、GB/T 7714 参考文献和 AI 辅助说明，Typora、Obsidian、Pandoc 都能用；
 - **LaTeX**：单个 `.tex` 文件（ctexart + gbt7714），参考文献内嵌在文件里，正文的 [n] 自动转成 `\cite{}`。上传到 Overleaf，菜单 Compiler 选 XeLaTeX 即可编译；本地用 `xelatex → bibtex → xelatex → xelatex`。
 
+### 公式、图片、结构图与数据图
+
+- **公式**：正文里写 `$E=mc^2$` 或独立公式 `$$\beta_1$$`，用本地 KaTeX 渲染，离线可用；导出 Word 时转成 MathML。
+- **图片**：在草稿框里直接粘贴或拖入图片，图片存进本机 IndexedDB，正文用 `![](ym-img:…)` 引用；导出 .md / Word 时内联。
+- **结构图**：让 AI 输出 `ymflow` 代码块，或手写：
+
+```ymflow
+title: 理论框架
+数字金融 -> 农户创业: 促进
+数字金融 -> 信贷可得性: 提升
+信贷可得性 -> 农户创业
+```
+
+也支持 JSON（`{"nodes":[…],"edges":[…]}`）。图在本地画成 SVG，Word 导出时转 PNG。
+- **数据图**：`ymchart` 代码块支持柱状图、折线图、散点图、系数图与事件研究图。AI 生成的数据图会带「示意数据·待替换」水印；自己的数据可在工具台「📊 实证代码·三线表」里粘贴 CSV 生成。
+- **三线表**：写作提示词默认产出 Markdown 表格，渲染为三线表；esttab / CSV / Excel 复制内容可一键转换。
+
 ### Claude Desktop / Cursor 等 AI 客户端（MCP）
 
 `mcp/yanmo-mcp.mjs` 是一个只读的 [MCP](https://modelcontextprotocol.io) 服务，让支持 MCP 的 AI 客户端读取你的研墨项目：项目概况、各节正文、文献库、PDF 批注与 AI 精读、全文搜索、参考文献导出（BibTeX / RIS / CSL-JSON / GB/T 7714）。零依赖，需要 Node.js 18+，不联网、不修改任何文件。
@@ -123,11 +142,14 @@ assets/
   ym-pdf.js      PDF 阅读器、批注、AI 精读
   ym-export.js   Markdown / LaTeX 导出
   ym-sync.js     本地同步文件
+  ym-md.js       增强 Markdown：KaTeX 公式、图片仓库、脚注、ymflow 结构图、ymchart 数据图、Word 导出
+  ym-emp.js      实证代码模板（Stata / R / Python）与 esttab / CSV → 三线表、CSV 作图
+  ym-icons.js    自绘 SVG 线性图标：替换界面 emoji（用户正文不替换）
   ym-selftest.js 功能自测用例（scripts/check.mjs 与 try.html 共用）
   ym-try.js      试用与测试页
   demo/          示例文件：sample.bib / sample.ris / sample-csl.json、demo-paper.pdf（虚构内容）
   paradigms.js   学科范式与层级配置
-  vendor/        cytoscape、marked、pdf.js、DOMPurify、citation.js
+  vendor/        cytoscape、marked、pdf.js、DOMPurify、citation.js、katex
 mcp/yanmo-mcp.mjs     只读 MCP 服务
 scripts/check.mjs     发布前自检
 scripts/release.mjs   发版脚本
@@ -160,7 +182,10 @@ sw.js                 Service Worker（PWA 离线缓存）
 - 参考稿 Agent 仍在迭代，日常更推荐“项目工作流 + 工具台”；
 - 本地同步需要 Chrome / Edge（File System Access API），并且每次重新打开页面要点一下「继续同步」授权；
 - PDF 高亮和 AI 精读需要文字版 PDF，扫描版只能阅读；
-- LaTeX 导出需要用 XeLaTeX 编译；
+- LaTeX 导出需要用 XeLaTeX 编译；有图片时会导出 `.zip`（`.tex` + `yanmo-images/`），上传 Overleaf 后请保持目录结构；
+- Markdown 里的图片以内联 dataURL 保存，换机器打开不会丢图，但文件体积会变大；
+- 结构图只支持方框与连线（`ymflow`），复杂排版请导出后手工调整；数据图需要你自己的数据，AI 生成的图只是示意；
+- Word 里的公式、结构图与图片效果依赖 Word 版本，导出后请打开确认一次；
 - MCP 服务只读，数据以同步文件为准，可能比浏览器里稍旧；
 - 依赖较新的 JavaScript 语法，旧浏览器可能无法运行。
 

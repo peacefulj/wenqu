@@ -168,6 +168,22 @@ document.querySelectorAll(".stage[data-s]").forEach(b => b.addEventListener("cli
   if (typeof renderNumBar === "function") renderNumBar();
 }));
 
+/* ---------- 工作流重组：① 选题 → ② 设计与写作 → ③ 质检与投稿 ----------
+ * 文献库 / 阅读与综合 移入右侧工具台（不再占阶段编号）；参考稿修改并入 ② 的折叠面板。 */
+(function restructureStages() {
+  const move = (srcId, tabId) => {
+    const sp = document.getElementById(srcId), tp = document.getElementById(tabId);
+    if (!sp || !tp) return;
+    tp.appendChild(sp);
+    sp.hidden = false;
+    sp.classList.remove("stagepane");
+  };
+  move("s2", "tab-lit");
+  move("s3", "tab-synth");
+  const s5 = document.getElementById("s5"), s4 = document.getElementById("s4");
+  if (s5 && s4) s4.appendChild(s5);
+})();
+
 /* ---------- 项目栏 ---------- */
 function renderProjects() {
   $("projList").innerHTML = DB.projects.map(p => `
@@ -347,7 +363,7 @@ ${pq.evalFocus}
     const p = liveProj(pid); if (!p) { prog.textContent = "项目已被删除，结果丢弃"; return; }
     p.topic = topic; p.selection = withMeta(txt, "OpenAlex 趋势 + 摘要级证据"); addVersion(p, "选题评估", p.selection, "selection"); save();
     out.hidden = false; setMD(out, txt);
-    prog.textContent = "完成 ✓ 已存入项目（阶段4写大纲时会用到）";
+    prog.textContent = "完成 ✓ 已存入项目（② 设计与写作生成大纲时会用到）";
   } catch (e) { prog.textContent = "评估失败：" + e.message; }
 }));
 
@@ -434,7 +450,7 @@ function renderPapers() {
     const p2 = cur(); if (!p2) return;
     /* v1.0.1（编号双轨）：快速稿的 [n] 与文献库顺序绑定，删除会使既有编号错位——先警告 */
     if (p2.mode === "quick" && p2.ref) {
-      const ok = await (window.wqConfirmAI ? wqConfirmAI({ title: "删除文献会使参考稿引用编号错位？", lines: ["参考稿各节的 [n] 编号与文献库顺序一致", "删除后请到④工作台重核相关引用（或改用「保留条目、仅修订题录」）"], okText: "仍要删除" }) : confirm("删除会使参考稿引用编号错位，仍要删除？"));
+      const ok = await (window.wqConfirmAI ? wqConfirmAI({ title: "删除文献会使参考稿引用编号错位？", lines: ["参考稿各节的 [n] 编号与文献库顺序一致", "删除后请到 ② 设计与写作重核相关引用（或改用「保留条目、仅修订题录」）"], okText: "仍要删除" }) : confirm("删除会使参考稿引用编号错位，仍要删除？"));
       if (!ok) return;
     }
     p2.papers = p2.papers.filter(f => f.id !== b.dataset.rm);
@@ -508,7 +524,7 @@ $("btnMatrix").addEventListener("click", () => withBusy($("btnMatrix"), async ()
   const p = liveProj(pid); if (!p) return;
   addVersion(p, "文献矩阵（" + rows.length + " 篇）", p.matrix, "matrix"); save();
   drawMatrix(rows);
-  prog.textContent = `完成 ✓ ${rows.length} 篇入库（编号与文献库顺序一致，阶段4生成大纲时自动引用）`;
+  prog.textContent = `完成 ✓ ${rows.length} 篇入库（编号与文献库顺序一致，② 设计与写作生成大纲时自动引用）`;
 }));
 
 function drawMatrix(rows) {
@@ -544,9 +560,13 @@ $("btnOutline").addEventListener("click", () => withBusy($("btnOutline"), async 
   try {
     const pq = PQ(p0), lv = LV(p0);
     const txt = await callAI(`你是学术写作教练（${pq.name}范式，${pq.venueHint}）。请基于以下选题与文献矩阵，生成一篇${lv.name}论文的完整大纲（多视角综合）：
-1. 章节结构（可参考本范式推荐章节：${pq.sections.join(" / ")}；按学科惯例微调），每节配 3-5 条要点
+题目：${($("wTitle") && $("wTitle").value.trim()) || p0.topic || "（未定）"}
+研究方法：${p0.method || "（未指定）"}
+论文类型：${p0.type || "（未指定）"}
+1. 章节结构（可参考本范式推荐章节：${pq.sections.join(" / ")}；按学科惯例与所选方法微调），每节配 3-5 条要点
 2. 每条要点后标注应引用的文献编号（如[2][5]），编号必须来自文献矩阵；标注「禁止引用」的编号一律不得使用
 3. 单独给出「创新点陈述」（2-3条）与「预计投稿/答辩方向」（1-2类）
+4. 最后单独输出一行章节清单，格式严格为：【章节清单】摘要|引言|文献综述|研究假设|数据与研究设计|实证结果|稳健性检验|结论与讨论（按实际章节替换，用竖线分隔）
 创新标尺（${lv.name}）：${lv.innovation}
 ${styleBlock()}
 
@@ -585,18 +605,150 @@ ${(p0.matrix || "（未生成）").slice(0, 2500)}`, 6000);
   } catch (e) { prog.textContent = "失败：" + e.message; }
 }));
 
-/* 分节写作：章节按钮由范式包动态渲染；字数由层级决定；注入个人写作档案 */
+/* ---------- ② 设计与写作：题目 / 大纲（学科·方法·类型）/ 逐节写作 ---------- */
+const W4_METHODS = [
+  "DID（双重差分）", "IV（工具变量）", "RDD（断点回归）", "面板固定效应", "双向固定效应", "事件研究法",
+  "倾向得分匹配（PSM）", "合成控制法", "中介效应", "调节效应", "门槛回归", "空间计量",
+  "时间序列", "结构方程模型（SEM）", "问卷调研", "实验研究", "案例研究", "扎根理论",
+  "内容分析", "文本分析", "机器学习", "DEA（数据包络）", "社会网络分析", "混合方法",
+  "比较研究", "历史研究", "法教义学", "田野调查", "政策评估", "大数据分析", "其他定量方法", "其他定性方法"
+];
+const W4_TYPES = ["学位论文", "期刊论文", "开题报告", "文献综述", "工作论文", "会议论文", "研究报告", "案例报告"];
+function w4Custom(key) { try { const a = JSON.parse(localStorage.getItem(key) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function w4AddCustom(key, name) {
+  const a = w4Custom(key);
+  if (name && a.indexOf(name) < 0) a.push(name);
+  try { localStorage.setItem(key, JSON.stringify(a)); } catch (e) {}
+}
+function outlineSections(p) {
+  const txt = String((p && p.outline) || "");
+  let list = [];
+  const m = txt.match(/【章节清单】([\s\S]*?)(?:\n\s*\n|$)/);
+  if (m) list = m[1].split(/[\n|｜;；]/).map(s => s.replace(/^[\s\d.、,，\-*※]+/, "").replace(/[（(].*?[)）]/g, "").trim()).filter(Boolean);
+  if (!list.length) {
+    list = (txt.match(/^\s*(?:\d+[.、)]|第[一二三四五六七八九十]+[章节])\s*([^\n：:]{2,30})/gm) || [])
+      .map(s => s.replace(/^\s*(?:\d+[.、)]|第[一二三四五六七八九十]+[章节])\s*/, "").trim());
+  }
+  if (!list.length) list = PQ(p).sections.slice();
+  list = list.filter(s => !/^(参考文献|致谢|附录)/.test(s));
+  if (!list.some(s => /摘要/.test(s))) list.unshift("摘要");
+  return [...new Set(list)].slice(0, 20);
+}
+function fillW4Selects(p) {
+  const disc = $("wDisc"), meth = $("wMethod"), type = $("wType");
+  if (!disc || !meth || !type) return;
+  disc.innerHTML = (window.WQ_PARADIGMS || []).map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
+  const ms = W4_METHODS.concat(w4Custom("wenqu_methods"));
+  meth.innerHTML = '<option value="">（不限 / 未指定）</option>' + ms.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("") + '<option value="__custom">＋ 自定义…</option>';
+  const ts = W4_TYPES.concat(w4Custom("wenqu_types"));
+  type.innerHTML = ts.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("") + '<option value="__custom">＋ 自定义…</option>';
+  disc.value = (p && p.paradigm) || "quant";
+  meth.value = (p && p.method) || "";
+  type.value = (p && p.type) || "学位论文";
+}
+function titleCands(p) {
+  const out = [];
+  if (p && p.topic) out.push(p.topic);
+  String((p && p.selection) || "").split("\n").forEach(line => {
+    const m = line.match(/(?:研究题目|论文题目|题目|标题)[：:]\s*([^\n；;。]{2,80})/);
+    if (m) out.push(m[1].trim());
+  });
+  return [...new Set(out)].filter(Boolean).slice(0, 8);
+}
+let w4Inited = false;
+function renderW4() {
+  const p = cur(); if (!p || !$("wTitle")) return;
+  fillW4Selects(p);
+  const cands = titleCands(p);
+  $("wTitlePick").innerHTML = '<option value="">从 ① 选题导入…</option>' + cands.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("") + '<option value="__custom">（自己填写）</option>';
+  if (!$("wTitle").value || document.activeElement !== $("wTitle")) $("wTitle").value = p.topic || "";
+  if (!w4Inited) {
+    w4Inited = true;
+    $("wTitlePick").addEventListener("change", () => {
+      const v = $("wTitlePick").value;
+      if (!v) return;
+      if (v === "__custom") { $("wTitle").value = ""; $("wTitle").focus(); return; }
+      $("wTitle").value = v; $("wTitleMsg").textContent = "已填入——可直接修改，确认后点「保存题目」";
+    });
+    $("wTitleSave").addEventListener("click", () => {
+      const pp = cur(); if (!pp) return;
+      const v = $("wTitle").value.trim();
+      if (v.length < 2) { $("wTitleMsg").textContent = "题目至少 2 个字"; return; }
+      pp.topic = v;
+      if (!pp.name || /^未命名|^新建/.test(pp.name)) pp.name = v.slice(0, 40);
+      trailAdd(pp, "act", "保存题目", v.slice(0, 60));
+      save(); renderProjects(); renderStageBadges();
+      $("wTitleMsg").textContent = "已保存 ✓ 大纲与分节写作都会使用这个题目";
+    });
+    $("wDisc").addEventListener("change", () => { const pp = cur(); if (pp) { pp.paradigm = $("wDisc").value; save(); renderProjects(); renderStageCards(); renderSecBtns(); } });
+    $("wMethod").addEventListener("change", () => {
+      const pp = cur(); if (!pp) return;
+      let v = $("wMethod").value;
+      if (v === "__custom") { v = (prompt("输入研究方法名称") || "").trim(); if (v) w4AddCustom("wenqu_methods", v); fillW4Selects(pp); }
+      pp.method = v === "__custom" ? "" : v; save(); $("wMethod").value = pp.method || "";
+    });
+    $("wType").addEventListener("change", () => {
+      const pp = cur(); if (!pp) return;
+      let v = $("wType").value;
+      if (v === "__custom") { v = (prompt("输入论文类型名称") || "").trim(); if (v) w4AddCustom("wenqu_types", v); fillW4Selects(pp); }
+      pp.type = v === "__custom" ? "学位论文" : v; save(); $("wType").value = pp.type;
+    });
+  }
+  renderSecBtns();
+}
+/* 分节按钮：章节来自大纲（【章节清单】）；已写过的节带 ✓ */
 function renderSecBtns() {
   const p = cur(); if (!p) { $("secBtns").innerHTML = '<p class="hint">先新建项目</p>'; return; }
-  const pq = PQ(p);
   const ok = keyOK();
   const dis = ok ? "" : " disabled title=\"需先在页头配置 AI Key\"";
-  $("secBtns").innerHTML = pq.sections.map(s => `<button class="btn2 sec" data-sec="${esc(s)}" ${dis}>写：${esc(s)}</button>`).join("");
+  $("secBtns").innerHTML = outlineSections(p).map(s =>
+    `<button class="btn2 sec${(p.draft || {})[s] ? " done" : ""}" data-sec="${esc(s)}" ${dis}>${(p.draft || {})[s] ? "✓ " : ""}写：${esc(s)}</button>`).join("");
 }
 $("secBtns").addEventListener("click", (e) => {
   const b = e.target.closest("[data-sec]"); if (!b) return;
   withBusy(b, () => draftSection(b.dataset.sec, b));
 });
+function sectionPrompt(p0, sec) {
+  const pq = PQ(p0), lv = LV(p0);
+  const en = $("enMode") && $("enMode").checked;
+  const langSpec = en
+    ? "Write in polished academic English suitable for the target journal. Keep citation markers like [n] as-is."
+    : "用学术简体中文撰写，术语首现括注英文原文。";
+  const designCtx = p0.design ? `\n\n研究设计审查报告（方法/实验设计以此为准）：\n${p0.design.slice(0, 2000)}` : "";
+  const hint = pq.secHint[sec] ? `\n本节范式要求：${pq.secHint[sec]}` : "";
+  const useDesign = p0.design && /设计|方法|对象|数据/.test(sec);
+  return `你是学术写作助手（${pq.name}范式）。请基于大纲与文献矩阵，起草论文的「${sec}」一节：${lv.length}。${hint}
+题目：${p0.topic || "（未定）"}
+研究方法：${p0.method || "（未指定）"}
+论文类型：${p0.type || "（未指定）"}
+论述中在对应位置标注引用编号[n]（编号只能取自文献矩阵且禁止虚构；标注「禁止引用」的编号一律不得使用）。需要数据处用〔待补：xxx〕占位，不要虚构数值。${useDesign ? "\n本节涉及研究设计/方法，须严格按下方审查报告的方案撰写。" : ""}${sec === "引言" ? "\n引言末尾补一段 Contribution Statement（相对文献矩阵的三点边际贡献）。" : ""}
+图表规范：需要表格时输出 Markdown 表格（表上方单起一行「表n 标题」）；变量定义、描述性统计骨架、文献对比、稳健性检验等，能用表格就用表格；缺真实数据的格子写〔待补〕。需要结构图/框架图/技术路线图时，输出 \`\`\`ymflow 代码块（JSON：title/nodes/edges）。需要数据图（柱状/折线/散点/系数图/事件研究图）时，输出 \`\`\`ymchart 代码块（JSON：type/title/labels/series 或 data），并设 "demo": true —— 禁止编造真实数值，渲染时自动带「示意数据·待替换」水印，导出前须用你的真实数据替换。摘要节不放图表。
+语言要求：${langSpec}${styleBlock()}
+
+大纲：${(p0.outline || "（未生成大纲，建议先点「生成大纲」按钮）").slice(0, 2000)}
+${outlineCtx(p0)}${designCtx}`;
+}
+async function generateSectionText(p0, sec, out, prog) {
+  const prompt = sectionPrompt(p0, sec);
+  let txt = "", usage = null;
+  if (window.WQCore && WQCore.ai.stream) {
+    if (out) out.hidden = false;
+    let lastPaint = 0;
+    const r = await WQCore.ai.stream(prompt, { max_tokens: 6000 }, (_d, full) => {
+      const now = Date.now();
+      if (out && now - lastPaint > 250) { lastPaint = now; out.textContent = full; out.scrollTop = out.scrollHeight; }
+    });
+    txt = r.text; usage = r.usage || null;
+  } else {
+    txt = await callAI(prompt, 6000);
+  }
+  const model = (WQCore.ai.conf().model || "默认");
+  const cost = WQCore.ai.estCostText(usage ? (usage.inTok || 0) : 0, usage ? (usage.outTok || 0) : 0);
+  return { txt, usage, model, cost };
+}
+function looksUnfinished(txt) {
+  return /当前状态诊断|请您提供|请先提供|无法支撑|缺乏研究主题|缺乏研究大纲|输入不足|无法撰写|需要您补充|暂无足够|无法为您|无法直接撰写/.test(txt) && txt.length < 2600;
+}
 async function draftSection(sec, btn) {
   const p0 = cur(); if (!p0) return wqNotice("先新建项目");
   const pid = p0.id;
@@ -604,53 +756,127 @@ async function draftSection(sec, btn) {
   if (!(await askAI("起草「" + sec + "」？", ["调用 AI 1 次，约 30-60 秒"].concat(wqGaps(p0)), "开始起草"))) { prog.textContent = "已取消"; return; }
   prog.textContent = `起草「${sec}」中…`; out.hidden = true;
   try {
-    const pq = PQ(p0), lv = LV(p0);
-    const en = $("enMode").checked;
-    const langSpec = en
-      ? "Write in polished academic English suitable for the target journal. Keep citation markers like [n] as-is."
-      : "用学术简体中文撰写，术语首现括注英文原文。";
-    const designCtx = p0.design ? `\n\n研究设计审查报告（方法/实验设计以此为准）：\n${p0.design.slice(0, 2000)}` : "";
-    const hint = pq.secHint[sec] ? `\n本节范式要求：${pq.secHint[sec]}` : "";
-    const designLike = sec.includes("设计") || sec.includes("方法") || sec.includes("对象");
-    const useDesign = p0.design && designLike;
-    /* v1.0.1（QA P2-19）：长文分节写作改流式输出（与参考稿一致），完成后仍走 Markdown 渲染与落盘 */
-    const __prompt = `你是学术写作助手（${pq.name}范式）。请基于大纲与文献矩阵，起草论文的「${sec}」一节：${lv.length}。${hint}
-论述中在对应位置标注引用编号[n]（编号只能取自文献矩阵且禁止虚构；标注「禁止引用」的编号一律不得使用），需要补充数据处用〔待补：xxx〕占位。不要虚构文献。${useDesign ? "\n本节涉及研究设计/方法，须严格按下方审查报告的方案撰写。" : ""}${sec === "引言" ? "\n引言末尾补一段 Contribution Statement（相对文献矩阵的三点边际贡献）。" : ""}${en ? "" : ""} 语言要求：${langSpec}${styleBlock()}
-
-大纲：${(p0.outline || "（未生成大纲，建议先点「生成大纲」按钮）").slice(0, 2000)}
-${outlineCtx(p0)}${designCtx}`;
-    let txt = "";
-    let __usage = null;
-    if (window.WQCore && WQCore.ai.stream) {
-      out.hidden = false;
-      let __lastPaint = 0;
-      const r = await WQCore.ai.stream(__prompt, { max_tokens: 6000 }, (_d, full) => {
-        const now = Date.now();
-        if (now - __lastPaint > 250) { __lastPaint = now; out.textContent = full; out.scrollTop = out.scrollHeight; }
-      });
-      txt = r.text; __usage = r.usage || null;
-    } else {
-      txt = await callAI(__prompt, 6000);
-    }
+    const r = await generateSectionText(p0, sec, out, prog);
+    const txt = r.txt;
     const p = liveProj(pid); if (!p) { prog.textContent = "项目已被删除，结果丢弃"; return; }
-    if (/当前状态诊断|请您提供|请先提供|无法支撑|缺乏研究主题|缺乏研究大纲|输入不足|无法撰写|需要您补充|暂无足够|无法为您|无法直接撰写/.test(txt) && txt.length < 2600) {
+    if (looksUnfinished(txt)) {
       out.hidden = false; setMD(out, txt); $("btnWCopy").hidden = false;
       prog.textContent = "⚠ 检测到 AI 未成稿（输入不足的说明而非草稿）——未存入草稿。请先补齐主题/文献矩阵后重试。";
       return;
     }
-    /* S1：建议态——AI 成稿先出 diff 预览，采纳才写入正文（与导图同一 commit 管线）
-       v1.3.0：本节原来是空的（新写一节）时没有原有引用可比，只拦超出文献库范围的编号——原来所有 [n] 都算「新增」，采纳按钮永远锁死 */
+    /* S1：建议态——AI 成稿先出 diff 预览，采纳才写入正文（与导图同一 commit 管线） */
     const base0 = (p.draft || {})[sec] || "", nPapers = (p.papers || []).length;
     const gate = base0.trim() ? WQCore.citeDiff(base0, txt)
       : { lost: [], gained: Object.keys(WQCore.citeSet(txt)).filter(k => +k < 1 || +k > nPapers), fresh: true, n: nPapers };
-    const usage = __usage;
-    const model = (WQCore.ai.conf().model || "默认");
-    const cost = WQCore.ai.estCostText(usage ? (usage.inTok || 0) : 0, usage ? (usage.outTok || 0) : 0);   /* v1.1.0：stream 返回的是 inTok/outTok */
-    openSuggest4({ pid, sec, txt, gate, prog, out, model, cost, baseText: (p.draft || {})[sec] || "" });
+    openSuggest4({ pid, sec, txt, gate, prog, out, model: r.model, cost: r.cost, baseText: base0 });
   } catch (e) { prog.textContent = "失败：" + e.message; }
 }
+/* 引用部分：不调用 AI，用文献库生成 GB/T 7714 参考文献表，并标出正文未引用的条目 */
+$("btnRefsSec").addEventListener("click", () => {
+  const p = cur(); if (!p) return wqNotice("先新建项目");
+  if (!p.papers.length) { $("wProg").textContent = "文献库为空：先到工具台「📚 文献库」添加或导入文献。"; return; }
+  const refs = window.YMBib ? YMBib.gbList(p.papers) : p.papers.map((f, i) => `[${i + 1}] ${f.author || "作者待补"}. ${f.title}[${f.type || "J"}]. ${f.venue || ""}, ${f.year || ""}.`);
+  const used = {};
+  Object.values(p.draft || {}).forEach(t => { (String(t).match(/\[(\d{1,3})\]/g) || []).forEach(x => used[parseInt(x.slice(1, -1), 10)] = 1); });
+  const unused = p.papers.map((f, i) => i + 1).filter(n => !used[n]);
+  const md = "## 参考文献\n\n" + refs.join("\n") + (unused.length ? "\n\n〔提示：正文尚未引用第 " + unused.join("、") + " 条，导出前可按需补充或从文献库删除〕" : "");
+  p.outs = p.outs || {}; p.outs.references = withMeta(md, "文献库（" + p.papers.length + " 篇）");
+  p.showW = "references"; addVersion(p, "引用部分", p.outs.references, "outs.references"); save();
+  $("wOut").hidden = false; setMD($("wOut"), p.outs.references); $("btnWCopy").hidden = false;
+  $("wProg").textContent = "✓ 参考文献表已生成（" + p.papers.length + " 条" + (unused.length ? "；正文未引用 " + unused.length + " 条" : "") + "）——不写入草稿";
+});
+/* 一键全文：按节选择、费用预估、文献门禁；只写还没有草稿的节，逐节落盘；中途停止后再次点击可续写 */
+let wAllStop = false;
+function wAllEmpty(p) { return outlineSections(p).filter(s => !String((p.draft || {})[s] || "").trim()); }
+function wAllSelected(p) {
+  const box = $("wAllPick"); if (!box) return wAllEmpty(p);
+  const boxes = [...box.querySelectorAll("[data-wall]")];
+  if (!boxes.length) return wAllEmpty(p);
+  return boxes.filter(b => b.checked).map(b => b.dataset.wall);
+}
+function wAllEstimate(p, secs) {
+  if (!secs.length || !window.WQCore || !WQCore.ai || !WQCore.ai.estimateTokens) return "—";
+  const perIn = WQCore.ai.estimateTokens(sectionPrompt(p, secs[0])) + 240;
+  return WQCore.ai.estCostText(perIn * secs.length, 4000 * secs.length);
+}
+function renderWAllPick(p, force) {
+  const box = $("wAllPick"); if (!box) return;
+  const todo = wAllEmpty(p);
+  const sig = todo.join("|");
+  /* 同一批空白节不重绘，保留用户刚取消的勾选 */
+  if (!force && box.dataset.sig === sig && box.querySelector("[data-wall]")) return;
+  box.dataset.sig = sig;
+  box.innerHTML = todo.length
+    ? todo.map(s => `<label class="hint" style="display:flex;gap:7px;align-items:center;margin:3px 0"><input type="checkbox" data-wall="${esc(s)}" checked> ${esc(s)}</label>`).join("")
+    : '<span class="hint">没有空白节；要重写请单节点「写：…」</span>';
+  updateWAllEst(p);
+}
+function updateWAllEst(p) {
+  const est = $("wAllEst"); if (!est) return;
+  const secs = wAllSelected(p);
+  est.textContent = secs.length ? "已选 " + secs.length + " 节 · 预计 " + wAllEstimate(p, secs) : "未选择任何节";
+}
+$("btnStopAll").addEventListener("click", () => { wAllStop = true; $("wAllProg").textContent = "将在本节写完后停止…"; });
+$("wAllPickWrap")?.addEventListener("toggle", () => { if ($("wAllPickWrap").open) { const p = cur(); if (p) renderWAllPick(p); } });
+$("wAllPick")?.addEventListener("change", () => { const p = cur(); if (p) updateWAllEst(p); });
+$("wAllPickAll")?.addEventListener("click", () => {
+  const box = $("wAllPick"); if (!box) return;
+  box.querySelectorAll("[data-wall]").forEach(b => { b.checked = true; });
+  const p = cur(); if (p) updateWAllEst(p);
+});
+$("btnWriteAll").addEventListener("click", () => withBusy($("btnWriteAll"), async () => {
+  const p0 = cur(); if (!p0) return wqNotice("先新建项目");
+  const empty = wAllEmpty(p0);
+  if (!empty.length) { $("wAllProg").textContent = "所有节都已有草稿；要重写请单节点「写：…」"; return; }
+  renderWAllPick(p0);
+  const todo = wAllSelected(p0);
+  if (!todo.length) { $("wAllProg").textContent = "没有选中的节"; $("wAllPickWrap").open = true; return; }
+  /* 文献门禁：没有文献时先拦一下，避免写出一篇没有 [n] 的稿 */
+  if (!(p0.papers || []).length) {
+    const pick = window.wqChoose
+      ? await wqChoose("文献库为空，正文不会有引用", ["一键全文仍可写，但正文不会出现 [n]，答辩/投稿时大概率要返工。", "建议先到工具台「文献库」导入 10 篇以上，再回来一键写。"], [
+        { key: "lit", label: "先去补文献", primary: true }, { key: "go", label: "仍然继续" }, { key: "cancel", label: "取消" }])
+      : (confirm("文献库为空，正文不会有引用。仍然继续？") ? "go" : "cancel");
+    if (pick === "lit") {
+      document.querySelector('[data-mode="tools"]')?.click();
+      document.querySelector('.tab[data-tab="lit"]')?.click();
+      $("wAllProg").textContent = "已切到文献库；导入后再回来一键写";
+      return;
+    }
+    if (pick !== "go") { $("wAllProg").textContent = "已取消"; return; }
+  }
+  const est = wAllEstimate(p0, todo);
+  const plans = [
+    "将写 " + todo.length + " 个空白节：" + todo.slice(0, 6).join("、") + (todo.length > 6 ? " 等" : ""),
+    "预计 " + est + "（按每节约 4000 输出 token 估算，实际以服务商计量为准）",
+    "每节写完先查引用编号，通过才写入草稿并存版本；可随时停止后续写"
+  ].concat(wqGaps(p0));
+  if (!(await askAI("按大纲一键写全文？", plans, "开始写全文"))) { $("wAllProg").textContent = "已取消"; return; }
+  wAllStop = false; $("btnStopAll").hidden = false;
+  const out = $("wOut"), prog = $("wProg");
+  let ok = 0; const bad = [];
+  for (let i = 0; i < todo.length; i++) {
+    if (wAllStop) break;
+    const sec = todo[i];
+    const p = liveProj(p0.id); if (!p) break;
+    $("wAllProg").textContent = `${i}/${todo.length} · 正在写「${sec}」…`;
+    try {
+      const r = await generateSectionText(p, sec, out, prog);
+      const n = (p.papers || []).length;
+      const badCites = Object.keys(WQCore.citeSet(r.txt)).filter(k => +k < 1 || +k > n);
+      if (!r.txt.trim() || looksUnfinished(r.txt)) { bad.push(sec + "（未成稿）"); continue; }
+      if (badCites.length) { bad.push(sec + "（引用越界 " + badCites.join(",") + "）"); continue; }
+      WQCore.commit(p, { field: "draft:" + sec, content: withMeta(r.txt, "文献矩阵 + 大纲"), kind: "草稿·" + sec, actor: "ai", model: r.model, cost: r.cost, note: "一键全文，经用户发起" });
+      save(); ok++;
+    } catch (e) { bad.push(sec + "（" + e.message + "）"); }
+    await sleep(250);
+  }
+  $("btnStopAll").hidden = true;
+  $("wAllProg").textContent = `完成 ${ok}/${todo.length}` + (bad.length ? "；未写入：" + bad.join("、") : "") + (wAllStop ? "（已停止，可再次点一键续写）" : "");
+  renderSecBtns(); renderStageBadges();
+}));
 
-/* S1：④分节写作的建议态预览（与导图共用 commit 管线；X2/诚信#1 的写入口收紧） */
+/* S1：②分节写作的建议态预览（与导图共用 commit 管线；X2/诚信#1 的写入口收紧） */
 function openSuggest4(o) {
   const rows = WQCore.diff.paras(o.baseText, o.txt);
   let html = "", same = 0;
@@ -792,29 +1018,49 @@ function exportSecList(p, pq) {
   return list;
 }
 
-/* 全文合并导出（Word 可直接打开的 .doc；章节顺序=范式章节表） */
-$("btnExportDoc").addEventListener("click", () => {
+/* 全文合并导出（Word 可直接打开的 .doc；章节顺序=大纲/范式章节表）
+ * v1.4：优先走 YMMd.wordBlob —— 三线表、KaTeX 公式（MathML）、结构图/数据图（PNG）、内联图片 */
+$("btnExportDoc").addEventListener("click", async () => {
   const p = cur(); if (!p) return wqNotice("先新建项目");
   const pq = PQ(p);
   const esc2 = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const metaLines = [];
   const secList = exportSecList(p, pq);
-  const parts = secList.map(s => {
+  const mdParts = secList.map(s => {
     let t = p.draft?.[s] || "";
     if (t) t = t.replace(/〔生成：[^〕]*〕/g, (m) => { metaLines.push(s + "：" + m.replace(/^〔|〕$/g, "")); return ""; }).trim();
+    return "## " + s + "\n\n" + (t || "〔本节未起草〕");
+  });
+  const refLines = window.YMBib ? YMBib.gbList(p.papers) : p.papers.map((f, i) => `[${i + 1}] ${f.author || "作者待补"}. ${f.title}[${f.type || "J"}]. ${f.venue || "出处待补"}, ${f.year || "年份待补"}${f.doi ? ". DOI:" + f.doi : ""}.`);
+  const md = "# " + (p.topic || p.name) + "\n\n" + mdParts.join("\n\n")
+    + (refLines.length ? "\n\n## 参考文献\n\n" + refLines.join("\n") : "")
+    + (metaLines.length ? "\n\n## AI 辅助说明\n\n本稿以下章节含 AI 辅助起草内容（模型 · 日期 · 依据）：\n\n" + metaLines.map(x => "- " + x).join("\n") : "")
+    + "\n\n—— 由" + ((window.YANMO && YANMO.label) || "研墨") + "辅助起草（" + WQCore.localDay() + "），引用与数据请人工核对 ——";
+  if (window.YMMd && YMMd.wordBlob) {
+    try {
+      const blob = await YMMd.wordBlob(md);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = (p.topic || p.name || "论文全文").replace(/[\\/:*?"<>|]/g, "_") + ".doc";
+      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      const drafted0 = secList.filter(s => p.draft && p.draft[s]).length;
+      trailAdd(p, "export", "导出全文（Word）", (p.topic || p.name) + " · 已起草 " + drafted0 + "/" + secList.length + " 节");
+      save(); renderProcessLog();
+      return;
+    } catch (e) { console.warn("YMMd 导出失败，回退旧导出", e); }
+  }
+  const parts = secList.map(s => {
+    const t = p.draft?.[s] || "";
     return `<h2>${esc2(s)}</h2>` + (t ? t.split(/\n+/).map(x => `<p>${esc2(x)}</p>`).join("") : "<p>〔本节未起草〕</p>");
   }).join("\n");
-  const aiDecl = metaLines.length ? `<h2>AI 辅助说明</h2><p style="font-size:10.5pt;color:#555">本稿以下章节含 AI 辅助起草内容（模型 · 日期 · 依据）：<br>${metaLines.map(esc2).join("<br>")}</p>` : "";
-  /* v1.1.0：参考文献按 GB/T 7714 生成（有卷期页码等结构化题录时更完整） */
-  const refLines = window.YMBib ? YMBib.gbList(p.papers) : p.papers.map((f, i) => `[${i + 1}] ${f.author || "作者待补"}. ${f.title}[${f.type || "J"}]. ${f.venue || "出处待补"}, ${f.year || "年份待补"}${f.doi ? ". DOI:" + f.doi : ""}.`);
   const refs = p.papers.length ? `<h2>参考文献</h2><p style="font-size:10.5pt;line-height:1.4">` + refLines.map(esc2).join("<br>") + "</p>" : "";
-  const html = `<html><head><meta charset="utf-8"><style>body{font-family:SimSun,serif;font-size:12pt;line-height:1.6}h1{font-size:16pt;text-align:center}h2{font-size:14pt}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}${aiDecl}<p style="color:#888">—— 由${esc2((window.YANMO && YANMO.label) || "研墨")}辅助起草（${WQCore.localDay()}），引用与数据请人工核对 ——</p></body></html>`;
+  const html = `<html><head><meta charset="utf-8"><style>body{font-family:SimSun,serif;font-size:12pt;line-height:1.6}h1{font-size:16pt;text-align:center}h2{font-size:14pt}</style></head><body><h1>${esc2(p.topic || p.name)}</h1>${parts}${refs}</body></html>`;
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" }));
   a.download = (p.topic || p.name || "论文全文").replace(/[\\/:*?"<>|]/g, "_") + ".doc";
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   const drafted = secList.filter(s => p.draft && p.draft[s]).length;
-  trailAdd(p, "export", "导出全文（Word）", (p.topic || p.name) + " · 已起草 " + drafted + "/" + pq.sections.length + " 节" + (drafted ? "" : "（尚为空稿占位）"));
+  trailAdd(p, "export", "导出全文（Word）", (p.topic || p.name) + " · 已起草 " + drafted + "/" + secList.length + " 节");
   save(); renderProcessLog();
 });
 
@@ -996,11 +1242,11 @@ function renderStageCards() {
   const done = Object.values(has).filter(Boolean).length;
   const ck = (v, yes, no) => v ? "✓ " + yes : "○ " + no;
   const set = (id, html) => { const el = $(id); if (el) el.innerHTML = html; };
-  set("sc1", "<b>阶段目标：</b>确定研究问题与创新点　<b>产出：</b>趋势图 + 选题卡<br>" + ck(has.trend, "趋势图已生成", "趋势未生成") + " · " + ck(has.sel, "选题卡已存入", "选题卡未生成（点「AI 评估选题」）") + "　<b>下一步 →</b> ② 文献获取与管理");
-  set("sc2", "<b>阶段目标：</b>建立项目文献库　<b>当前：</b>" + (p?.papers.length || 0) + " 篇（" + abs + " 篇带摘要）　<b>建议规模：</b>" + LV(p).lit + "<br>工具：上方免费检索 / 批量 DOI / 收藏篮导入 / 逐条添加　<b>下一步 →</b> ③ 阅读与综合");
-  set("sc3", "<b>前置依赖：</b>带摘要文献 " + abs + " 篇 " + (abs === 0 ? "—— ⚠ 为 0 时矩阵无法生成，请先回阶段2补摘要" : "") + "<br><b>产出：</b>文献矩阵（依据：摘要级）+ AI 读论文精读 + 综述素材　<b>下一步 →</b> ④ 设计与写作");
-  set("sc4", "<b>前置：</b>" + ck(has.sel, "选题卡", "选题卡缺（生成质量下降）") + " · " + ck(has.matrix, "文献矩阵", "矩阵缺（无法标注引用编号）") + "<br><b>产出：</b>大纲 + 研究设计审查 + 分节草稿 " + draftN + " 篇 + 全文导出　<b>下一步 →</b> ⑤ 参考稿修改（有参考稿时）或 ⑥ 质检与投稿");
-  set("sc5", "<b>阶段目标：</b>把参考稿逐段改成你自己的东西　<b>产出：</b>我的稿（逐节）+ 归属账本 + 本人贡献度 + 归属报告<br>用法：左侧参考稿逐段「采用/改写/追问依据」→ 右侧编辑保存（正文 [n] 可点击跳到文末参考文献并可修订题录）　<b>下一步 →</b> ⑥ 质检与投稿");
+  set("sc1", "<b>阶段目标：</b>确定研究问题与创新点　<b>产出：</b>趋势图 + 选题卡<br>" + ck(has.trend, "趋势图已生成", "趋势未生成") + " · " + ck(has.sel, "选题卡已存入", "选题卡未生成（点「AI 评估选题」）") + "　<b>下一步 →</b> ② 设计与写作（文献与阅读在右侧工具台）");
+  set("sc2", "<b>阶段目标：</b>建立项目文献库　<b>当前：</b>" + (p?.papers.length || 0) + " 篇（" + abs + " 篇带摘要）　<b>建议规模：</b>" + LV(p).lit + "<br>工具：上方免费检索 / 批量 DOI / 收藏篮导入 / 逐条添加　<b>下一步 →</b> 工具台「🗂 阅读与综合」");
+  set("sc3", "<b>前置依赖：</b>带摘要文献 " + abs + " 篇 " + (abs === 0 ? "—— ⚠ 为 0 时矩阵无法生成，请先回「📚 文献库」补摘要" : "") + "<br><b>产出：</b>文献矩阵（依据：摘要级）+ AI 读论文精读 + 综述素材　<b>下一步 →</b> ② 设计与写作");
+  set("sc4", "<b>一条线：</b>① 题目 → ② 大纲（学科 / 方法 / 类型）→ ③ 按大纲逐节写 → 引用部分<br><b>前置：</b>" + ck(has.sel, "选题卡", "选题卡缺（生成质量下降）") + " · " + ck(has.matrix, "文献矩阵", "矩阵缺（无法标注引用编号）") + "<br><b>产出：</b>大纲 + 研究设计审查 + 分节草稿 " + draftN + " 篇 + 全文导出　<b>下一步 →</b> ③ 质检与投稿");
+  set("sc5", "<b>参考稿修改（可选）：</b>整节/全文一键采用，或按你的表达改写本节；归属账本自动记录　<b>下一步 →</b> ③ 质检与投稿");
   set("sc6", "<b>产出：</b>引用核验 + 论断抽查 + 三专家内审 + 一致性检查 + 期刊/答辩包　<b>完成后：</b>" + (LV(p).name === "本科毕设" ? "导出全文 → 查重 → 答辩" : LV(p).id === "general" ? "导出全文 → 同行/合作者反馈（如需投稿再走期刊匹配）" : "投稿 → 返修用「审稿回复起草」"));
   const pl = $("progressLine");
   if (pl) pl.innerHTML = "关键产出 <b>" + done + "/8</b>：趋势 " + (has.trend ? "✓" : "○") + " · 选题卡 " + (has.sel ? "✓" : "○") + " · 文献≥10 " + (has.lit10 ? "✓" : "○") + " · 摘要≥5 " + (has.abs5 ? "✓" : "○") + " · 矩阵 " + (has.matrix ? "✓" : "○") + " · 大纲 " + (has.outline ? "✓" : "○") + " · 设计审查 " + (has.design ? "✓" : "○") + " · 草稿 " + (has.draft ? "✓" : "○");
@@ -1013,18 +1259,19 @@ function vStamp() {
 }
 function addVersion(p, kind, content, field) {
   if (!p || !content) return;
-  p.versions = p.versions || [];
-  /* v1.1.0：不再截断到 12000 字；超出配额时由 save() 的自愈把长正文归档到 IndexedDB */
-  p.versions.unshift({ ts: vStamp(), kind: kind, content: String(content), field: field || "", star: false });
-  /* v3.1（E1）：40 条上限，⭐星标豁免淘汰；淘汰发生时明示条数，不再静默 */
-  let vDrop = 0;
-  while (p.versions.length > 40) {
-    let vIdx = -1;
-    for (let vi = p.versions.length - 1; vi >= 0; vi--) { if (!p.versions[vi].star) { vIdx = vi; break; } }
-    if (vIdx < 0) break;
-    p.versions.splice(vIdx, 1); vDrop++;
+  /* 统一走 WQCore.versionPush：上限 200、同节 5 分钟内合并、超限旧版转归档（不删除） */
+  if (window.WQCore && WQCore.versionPush) {
+    WQCore.versionPush(p, { ts: vStamp(), kind: kind, content: String(content), field: field || "", star: false });
+  } else {
+    p.versions = p.versions || [];
+    p.versions.unshift({ ts: vStamp(), kind: kind, content: String(content), field: field || "", star: false });
+    while (p.versions.length > 200) {
+      let vIdx = -1;
+      for (let vi = p.versions.length - 1; vi >= 0; vi--) { if (!p.versions[vi].star) { vIdx = vi; break; } }
+      if (vIdx < 0) break;
+      p.versions.splice(vIdx, 1);
+    }
   }
-  if (vDrop && typeof wqNotice === "function") wqNotice("较早的 " + vDrop + " 条版本已移出档案（⭐星标版本保留）——重要版本请在版本档案加星标");
   /* v0.8：每次生成/留存自动记入轨迹（附模型·依据·字数） */
   const meta = (String(content).match(/〔生成：([^〕]{0,120})〕/) || [])[1];
   const isTool = (field || "") === "tool";
@@ -1044,12 +1291,13 @@ function verDl(v, fmt) {
   const p = cur();
   if (p) { trailAdd(p, "export", "导出版本", v.kind + " → " + (fmt === "doc" ? "Word(.doc)" : ".md")); save(); renderProcessLog(); }
 }
-async function verLoad(i) {
+async function verLoad(i, fromOld) {
   const p = cur(); if (!p) return;
-  const v = (p.versions || [])[i]; if (!v || !v.field || v.field === "tool") return;
+  const v = (fromOld ? (p.versionsOld || []) : (p.versions || []))[i];
+  if (!v || !v.field || v.field === "tool") return;
   /* v1.0：归档版本先回取全文（v1.1.0：按版本自身的 archiveKey 取，不再按下标） */
   let content = v.content;
-  if (v.archived && window.WQStore) {
+  if ((fromOld || v.archived) && window.WQStore) {
     const full = await window.WQStore.getVersion(p.id, v);
     if (!full) { wqNotice("这个版本的完整正文没能从本机取回（可能清理过浏览器数据），已取消载入，避免用预览覆盖正文"); return; }
     content = full;
@@ -1118,10 +1366,10 @@ function renderProcessLog() {
 const OUT_NAMES = { outline: "大纲", design: "设计审查", internal: "三专家内审", consistency: "一致性检查", aidecl: "AI 使用声明", cover: "投稿信", rebuttal: "回复信" };
 function fieldLabel(f) {
   f = f || "";
-  if (f.indexOf("draft:") === 0) return "④草稿·" + f.slice(6);
-  if (f.indexOf("sec:") === 0) return "④草稿·" + f.slice(4);
-  if (f.indexOf("outs.") === 0) { const k = f.slice(5); return "⑤" + (OUT_NAMES[k] || k); }
-  const m0 = { selection: "①选题卡", trend: "①选题趋势", matrix: "③文献矩阵", outline: "④大纲", design: "④设计审查", internal: "⑤三专家内审", consistency: "⑤一致性检查", aidecl: "⑤AI 使用声明", cover: "⑤投稿信", rebuttal: "⑤回复信", tool: "工具台产出" };
+  if (f.indexOf("draft:") === 0) return "②草稿·" + f.slice(6);
+  if (f.indexOf("sec:") === 0) return "②草稿·" + f.slice(4);
+  if (f.indexOf("outs.") === 0) { const k = f.slice(5); return "③" + (OUT_NAMES[k] || k); }
+  const m0 = { selection: "①选题卡", trend: "①选题趋势", matrix: "②文献矩阵", outline: "②大纲", design: "②设计审查", internal: "③三专家内审", consistency: "③一致性检查", aidecl: "③AI 使用声明", cover: "③投稿信", rebuttal: "③回复信", tool: "工具台产出" };
   return m0[f] || (f || "—");
 }
 /* B：版本间段落级对照（WQDiff 现成件接入版本档案） */
@@ -1176,20 +1424,20 @@ function buildInvRows(p) {
   row("① 选题卡", p.selection ? "已生成" : "未生成", p.selection || "", "selection");
   row("① 选题趋势", p.trend && p.trend.length ? p.trend.length + " 个方向" : "未生成", "", "");
   row("② 文献库", (p.papers.length || 0) + " 篇", "", "");
-  row("③ 文献矩阵", p.matrix ? "已生成" : "未生成", p.matrix || "", "matrix");
-  row("④ 大纲", p.outline ? "已生成" : "未生成", p.outline || "", "outline");
-  row("④ 设计审查", p.design ? "已生成" : "未生成", p.design || "", "design");
+  row("② 文献矩阵", p.matrix ? "已生成" : "未生成", p.matrix || "", "matrix");
+  row("② 大纲", p.outline ? "已生成" : "未生成", p.outline || "", "outline");
+  row("② 设计审查", p.design ? "已生成" : "未生成", p.design || "", "design");
   const secs = Object.keys(p.draft || {});
   if (secs.length) secs.forEach(s => {
     const len = (p.draft[s] || "").replace(/\s+/g, "").length;
     const lv = (p.versions || []).find(v => v.field === "draft:" + s);
-    row("④ 草稿·" + s, len + " 字" + (lv ? " · " + lv.ts : ""), p.draft[s] || "", "draft:" + s);
+    row("② 草稿·" + s, len + " 字" + (lv ? " · " + lv.ts : ""), p.draft[s] || "", "draft:" + s);
   });
-  else row("④ 草稿", "未生成", "", "");
-  [["⑤ 三专家内审", "internal"], ["⑤ 一致性检查", "consistency"], ["⑤ AI 使用声明", "aidecl"]].forEach(pair => {
+  else row("② 草稿", "未生成", "", "");
+  [["③ 三专家内审", "internal"], ["③ 一致性检查", "consistency"], ["③ AI 使用声明", "aidecl"]].forEach(pair => {
     row(pair[0], p.outs && p.outs[pair[1]] ? "已生成" : "未生成", (p.outs && p.outs[pair[1]]) || "", "outs." + pair[1]);
   });
-  row("⑤ 校验记录", (p.checks || []).length + " 条", "", "");
+  row("③ 校验记录", (p.checks || []).length + " 条", "", "");
   row("🕓 版本档案", (p.versions || []).length + " 条（⭐ " + starred + " 星标）", "", "");
   return rows;
 }
@@ -1286,8 +1534,7 @@ function renderStageBadges() {
     "2": (p.papers || []).length,
     "3": (p.matrix ? 1 : 0) + (p.datacards || []).length,
     "4": (p.outline ? 1 : 0) + (p.design ? 1 : 0) + Object.keys(p.draft || {}).length,
-    "5": (p.checks || []).length + Object.keys(p.outs || {}).filter(k => ["internal", "consistency", "aidecl", "cover", "rebuttal"].indexOf(k) >= 0).length,
-    "6": 0
+    "6": (p.checks || []).length + Object.keys(p.outs || {}).filter(k => ["internal", "consistency", "aidecl", "cover", "rebuttal"].includes(k)).length
   } : {};
   document.querySelectorAll(".stage[data-s]").forEach(b => {
     const n = counts[b.dataset.s] || 0;
@@ -1297,7 +1544,7 @@ function renderStageBadges() {
     s0.textContent = n;
   });
 }
-/* D：数据关联覆盖率常显条（④草稿区顶部；点击跳质检中心绑定面板） */
+/* D：数据关联覆盖率常显条（②草稿区顶部；点击跳质检中心绑定面板） */
 function renderNumBar() {
   const p = cur(); const pane = document.getElementById("s4");
   if (!pane || !p) return;
@@ -1331,6 +1578,7 @@ function renderNumBar() {
     });
   }
 }
+let verOldShow = 20;   /* F18：归档版本直接列在主列表下方（原来藏在 details 里没人发现），分批展开 */
 function verOpen() {
   window.renderStageBadges = renderStageBadges;
   window.renderNumBar = renderNumBar;
@@ -1338,10 +1586,17 @@ function verOpen() {
   $("verProj").textContent = p.name;
   const list = $("verList");
   const vs = p.versions || [];
+  const old = p.versionsOld || [];
+  const oldShown = Math.min(old.length, verOldShow);
   verFillCmp();
-  list.innerHTML = vs.length ? vs.map((v, i) =>
-    "<div class=\"vitem\" data-vi=\"" + i + "\"><b style=\"font-size:13px\">" + esc(v.kind) + (v.star ? " ⭐" : "") + "</b><div class=\"vmeta\">" + esc(v.ts) + " · " + esc(fieldLabel(v.field)) + " · " + (v.archived ? "已归档 · 点开回取" : v.content.length + " 字") + " · 点击展开</div><div class=\"vdetail\"></div></div>").join("")
-    : "<p class=\"hint\">还没有版本记录：每次 AI 生成（选题评估 / 矩阵 / 大纲 / 草稿 / 内审 / 一致性 / 声明 / 投稿材料）都会自动存档，按分秒保留最近 40 版。</p>";
+  list.innerHTML = (vs.length ? vs.map((v, i) =>
+    "<div class=\"vitem\" data-vi=\"" + i + "\"><b style=\"font-size:13px\">" + esc(v.kind) + (v.star ? " ⭐" : "") + "</b><div class=\"vmeta\">" + esc(v.ts) + " · " + esc(fieldLabel(v.field)) + " · " + (v.archived ? "已归档 · 点开回取" : (v.content || "").length + " 字") + (v.merged ? " · 合并 " + (v.merged + 1) + " 次保存" : "") + " · 点击展开</div><div class=\"vdetail\"></div></div>").join("")
+    : "<p class=\"hint\">还没有版本记录：每次 AI 生成（选题评估 / 矩阵 / 大纲 / 草稿 / 内审 / 一致性 / 声明 / 投稿材料）都会自动存档，按分秒保留最近 200 版。</p>")
+    + (old.length
+      ? "<div class=\"veroldhead\">🗄 归档（" + old.length + " 条）<span class=\"hint\">· 较早的版本没有删除，点开可回取</span></div>"
+        + old.slice(0, oldShown).map((v, i) => "<div class=\"vitem\" data-oi=\"" + i + "\"><b style=\"font-size:13px\">" + esc(v.kind) + (v.star ? " ⭐" : "") + "</b><div class=\"vmeta\">" + esc(v.ts) + " · " + esc(fieldLabel(v.field)) + " · " + (v.chars || 0) + " 字 · 已归档</div><div class=\"vdetail\"></div></div>").join("")
+        + (old.length > oldShown ? "<div class=\"row\" style=\"margin:2px 0 8px\"><button class=\"btn2 btn-sm\" id=\"verOldMore\">显示更多归档（还有 " + (old.length - oldShown) + " 条）</button></div>" : "")
+      : "");
   list.querySelectorAll("[data-vi]").forEach(el => el.addEventListener("click", async () => {
     const i = +el.dataset.vi, p2 = cur(), v = (p2?.versions || [])[i]; if (!v) return;
     const dt = el.querySelector(".vdetail");
@@ -1364,6 +1619,24 @@ function verOpen() {
     const vstar = dt.querySelector("[data-vstar]");
     if (vstar) vstar.addEventListener("click", (e) => { e.stopPropagation(); const p3 = cur(); const v3 = (p3 && p3.versions || [])[i]; if (!v3) return; v3.star = !v3.star; save(); renderVerCount(); verOpen(); });
   }));
+  list.querySelectorAll("[data-oi]").forEach(el => el.addEventListener("click", async () => {
+    const i = +el.dataset.oi, p2 = cur(), v = (p2?.versionsOld || [])[i]; if (!v) return;
+    const dt = el.querySelector(".vdetail");
+    if (el.classList.contains("open")) { el.classList.remove("open"); return; }
+    dt.innerHTML = '<p class="hint">从本机归档回取正文中…</p>';
+    let content = v.content;
+    if (window.WQStore) content = (await window.WQStore.getVersion(p2.id, v)) || v.content;
+    dt.innerHTML = mdRender(content) + "<div style=\"margin-top:8px\"><button class=\"pill\" data-odl=\"" + i + "\">⤓ .md</button> <button class=\"pill\" data-odw=\"" + i + "\">⤓ Word</button>" + (v.field && v.field !== "tool" ? " <button class=\"pill\" data-oldsld=\"" + i + "\">↻ 载入回项目</button>" : "") + "</div>";
+    el.classList.add("open");
+    const dl = dt.querySelector("[data-odl]");
+    if (dl) dl.addEventListener("click", (e) => { e.stopPropagation(); verDl({ ...v, content }, "md"); });
+    const dw = dt.querySelector("[data-odw]");
+    if (dw) dw.addEventListener("click", (e) => { e.stopPropagation(); verDl({ ...v, content }, "doc"); });
+    const osld = dt.querySelector("[data-oldsld]");
+    if (osld) osld.addEventListener("click", (e) => { e.stopPropagation(); verLoad(i, true); });
+  }));
+  const moreOld = document.getElementById("verOldMore");
+  if (moreOld) moreOld.addEventListener("click", (e) => { e.stopPropagation(); verOldShow += 30; verOpen(); });
   $("verDrawer").classList.add("open"); $("mask").classList.add("open");
 }
 $("btnVer").addEventListener("click", verOpen);
@@ -1475,7 +1748,7 @@ function renderAll() {
   $("projStatus").value = p?.status || "选题中";
   if (p) { $("cfgParadigm").value = p.paradigm; $("cfgLevel").value = p.level; }
   window.__renderErrs = [];
-  [["renderSecBtns",0],["renderDefense",0],["renderPapers",0],["renderStageCards",0],["renderOnboard",0],["renderBackupHint",0],["renderVerCount",0],["renderProcessLog",0],["refreshAIButtons",0],["renderStageBadges",0],["renderNumBar",0],["renderHome",0]].forEach(([f]) => { try { window[f](); } catch (e) { window.__renderErrs.push(f + ": " + e.message); } });
+  [["renderW4",0],["renderSecBtns",0],["renderDefense",0],["renderPapers",0],["renderStageCards",0],["renderOnboard",0],["renderBackupHint",0],["renderVerCount",0],["renderProcessLog",0],["refreshAIButtons",0],["renderStageBadges",0],["renderNumBar",0],["renderHome",0]].forEach(([f]) => { try { window[f](); } catch (e) { window.__renderErrs.push(f + ": " + e.message); } });
 }
 /* v0.7：多标签一致性——其他标签页写入时同步刷新，防止旧标签的内存快照覆盖版本档案 */
 window.addEventListener("storage", (e) => {
@@ -1506,6 +1779,12 @@ if (!DB.projects.length) newProject("示例项目：我的第一个研究");
     if (pid && DB.projects.some(x => x.id === pid)) DB.cur = pid;
     const st = q.get("stage");
     if (st && /^[1-6]$/.test(st)) setTimeout(() => document.querySelector('.stage[data-s="' + st + '"]')?.click(), 0);
+    /* ?tools=lit|synth|emp|search…：直接打开工具台的某个标签（文献库、阅读与综合等已从阶段栏移入工具台） */
+    const tl = q.get("tools") || q.get("tab");
+    if (tl) setTimeout(() => {
+      document.querySelector('[data-mode="tools"]')?.click();
+      document.querySelector('.tab[data-tab="' + CSS.escape(tl) + '"]')?.click();
+    }, 0);
   } catch (e) {}
 })();
 renderProjects(); renderAll();
@@ -1513,3 +1792,31 @@ renderProjects(); renderAll();
 const __wqRenderAll = renderAll;
 renderAll = function () { __wqRenderAll(); if (window.WQUI && window.WQUI.afterRender) { try { window.WQUI.afterRender(); } catch (e) { console.warn("WQUI.afterRender", e); } } };
 renderAll();
+
+/* ===== v1.4.1：首次配置引导（没有 Key 时给一条可点的路） ===== */
+window.wqSyncAiNeed = function () {
+  const el = $("aiNeed"); if (!el) return;
+  let has = false;
+  try { has = !!(window.WQCore && WQCore.ai && WQCore.ai.conf().key); } catch (e) {}
+  el.hidden = has;
+};
+window.wqSyncAiNeed();
+document.addEventListener("DOMContentLoaded", function () { if (window.wqSyncAiNeed) window.wqSyncAiNeed(); });
+(function () {
+  const b = $("aiNeedBtn"); if (!b) return;
+  b.addEventListener("click", function () {
+    const sp = $("setPanel"); if (sp) sp.hidden = false;
+    const bs = $("btnSet"); if (bs) bs.classList.add("on");
+    if (sp && sp.scrollIntoView) sp.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTimeout(function () { const k = $("aiKey"); if (k) { k.focus(); k.select(); } }, 260);
+  });
+})();
+
+/* v1.4.1：② 里给「文献库」一个直达入口（工具台按 找/读/写/验 分组后仍需可见） */
+(function () {
+  const b = $("btnGoLit"); if (!b) return;
+  b.addEventListener("click", function () {
+    const mt = document.querySelector('[data-mode="tools"]'); if (mt) mt.click();
+    const tb = document.querySelector('.tab[data-tab="lit"]'); if (tb) tb.click();
+  });
+})();

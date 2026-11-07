@@ -330,6 +330,7 @@ $("aiSave").addEventListener("click", () => {
   renderBaseWarn(); renderFmtHint();
   $("aiSave").textContent = sessionOnly ? "已保存 ✓（Key 仅本次会话）" : "已保存 ✓"; setTimeout(() => $("aiSave").textContent = "保存设置", 1800);
   if (typeof refreshAIButtons === "function") refreshAIButtons(); // 合并平台：保存后即时解除 AI 按钮置灰
+  if (typeof window.wqSyncAiNeed === "function") window.wqSyncAiNeed();
 });
 $("btnSet").addEventListener("click", () => { $("setPanel").hidden = !$("setPanel").hidden; });
 loadAI(); renderFmtHint();

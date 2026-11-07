@@ -56,6 +56,12 @@
       v.content = asStr(v.content); v.kind = asStr(v.kind); v.ts = asStr(v.ts); v.field = asStr(v.field);
       return v;
     });
+    /* 归档版本（超出上限后移出的旧版）：正文在 IndexedDB，这里只留摘要 */
+    p.versionsOld = asArr(p.versionsOld).filter(function (v) { return v && typeof v === "object" && !Array.isArray(v); }).map(function (v) {
+      v.content = asStr(v.content); v.kind = asStr(v.kind); v.ts = asStr(v.ts); v.field = asStr(v.field);
+      v.chars = +v.chars || String(v.content || "").length;
+      return v;
+    });
     p.trail = asArr(p.trail).filter(function (t) { return t && typeof t === "object"; });
     p.draft = asObj(p.draft);
     Object.keys(p.draft).forEach(function (k) { p.draft[k] = asStr(p.draft[k]); });
@@ -280,6 +286,13 @@
       return Promise.all(jobs).then(function () { return { moved: moved, freedChars: freed }; })
         .catch(function () { return { moved: 0, freedChars: 0 }; });
     }
+    if (op === "putVer") {
+      /* 版本超限时把旧版正文搬进 IDB（不删除） */
+      var pkey = arg && arg.key, ptext = String((arg && arg.text) || "");
+      if (!pkey) return Promise.resolve(false);
+      return tx("vers", "readwrite", function (s) { s.put(ptext, pkey); })
+        .then(function () { return true; }).catch(function () { return false; });
+    }
     if (op === "getVer") {
       var ref = arg.ref;
       var vkey = (ref && typeof ref === "object") ? (ref.archiveKey || "") : (arg.pid + ":" + ref);
@@ -292,6 +305,7 @@
       var keys = [];
       asArr(arg && arg.projects).forEach(function (p) {
         asArr(p.versions).forEach(function (v) { if (v.archived && v.archiveKey) keys.push(v.archiveKey); });
+        asArr(p.versionsOld).forEach(function (v) { if (v.archiveKey) keys.push(v.archiveKey); });
       });
       if (!keys.length) return Promise.resolve({});
       return idbOpen().then(function (idb) {
@@ -905,11 +919,11 @@
   /* 字段统一读写（工作台与导图共用；S1 起所有写入走 commit） */
   function fieldLabelCore(f) {
     f = f || "";
-    if (f.indexOf("draft:") === 0) return "④草稿·" + f.slice(6);
-    if (f.indexOf("sec:") === 0) return "④草稿·" + f.slice(4);
-    if (f.indexOf("ref:") === 0) return "③参考稿·" + f.slice(4);
-    if (f.indexOf("outs.") === 0) { var k = f.slice(5); var ON = { internal: "三专家内审", consistency: "一致性检查", aidecl: "AI 使用声明", cover: "投稿信", rebuttal: "回复信" }; return "⑤" + (ON[k] || k); }
-    var M = { selection: "①选题卡", trend: "①选题趋势", matrix: "③文献矩阵", outline: "④大纲", design: "④设计审查", topic: "主题" };
+    if (f.indexOf("draft:") === 0) return "②草稿·" + f.slice(6);
+    if (f.indexOf("sec:") === 0) return "②草稿·" + f.slice(4);
+    if (f.indexOf("ref:") === 0) return "②参考稿·" + f.slice(4);
+    if (f.indexOf("outs.") === 0) { var k = f.slice(5); var ON = { internal: "三专家内审", consistency: "一致性检查", aidecl: "AI 使用声明", cover: "投稿信", rebuttal: "回复信" }; return "③" + (ON[k] || k); }
+    var M = { selection: "①选题卡", trend: "①选题趋势", matrix: "②文献矩阵", outline: "②大纲", design: "②设计审查", topic: "主题" };
     return M[f] || f;
   }
   function readField(p, f) {
@@ -959,19 +973,61 @@
       p.refDraft.sections[s0] = { text: txt };
     }
   }
-  /* 版本推送（⭐星标豁免容量淘汰；淘汰明示） */
+  /* 版本推送：上限 200 条；同一节 5 分钟内连续保存合并；超限旧版转入 versionsOld（正文进 IDB，不删除） */
+  var VER_LIMIT = 200, VER_MERGE_MS = 5 * 60 * 1000;
+  var verNoticed = {};
+  function verTsMs(ts) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(String(ts || ""));
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : 0;
+  }
+  /* 提示节流：每个项目每次打开页面最多弹一次 */
+  function versionNotice(p, msg, notify) {
+    var id = (p && p.id) || "_";
+    if (verNoticed[id]) return false;
+    verNoticed[id] = 1;
+    var fn = typeof notify === "function" ? notify : (typeof wqNotice === "function" ? wqNotice : null);
+    if (fn) fn(msg);
+    return true;
+  }
+  function verArchive(p, v) {
+    var full = String(v.content || "");
+    var key = p.id + ":" + uid("arc");
+    p.versionsOld = p.versionsOld || [];
+    p.versionsOld.unshift({
+      ts: v.ts, kind: v.kind, field: v.field, star: !!v.star,
+      chars: full.length, archived: true, archiveKey: key,
+      content: full.slice(0, 300) + "\n…〔正文已归档，点开回取〕"
+    });
+    idbCall("putVer", { key: key, text: full }).catch(function () {});
+  }
   function versionPush(p, entry) {
     p.versions = p.versions || [];
     entry.star = !!entry.star;
+    var head = p.versions[0];
+    /* 和最新一版内容完全相同 → 不再新记一版 */
+    if (head && !head.archived && (head.field || "") === (entry.field || "")
+        && String(head.content || "") === String(entry.content || "")) return 0;
+    /* 同一节 5 分钟内连续保存 → 合并成一条（自动存档类不合并，避免丢旧稿） */
+    var safety = /自动存档|载入前|回滚前/.test(String(entry.kind || ""));
+    if (head && !head.archived && !head.star && !safety && (entry.field || "") !== "tool" && (head.field || "") === (entry.field || "")
+        && Date.now() - (verTsMs(head.ts) || 0) <= VER_MERGE_MS) {
+      head.content = String(entry.content || "");
+      head.ts = entry.ts || stamp();
+      head.kind = entry.kind || head.kind;
+      head.merged = (+head.merged || 0) + 1;
+      return 0;
+    }
     p.versions.unshift(entry);
-    var dropped = 0;
-    while (p.versions.length > 40) {
+    var moved = 0;
+    while (p.versions.length > VER_LIMIT) {
       var idx = -1;
       for (var i = p.versions.length - 1; i >= 0; i--) { if (!p.versions[i].star) { idx = i; break; } }
       if (idx < 0) break;
-      p.versions.splice(idx, 1); dropped++;
+      verArchive(p, p.versions[idx]);
+      p.versions.splice(idx, 1); moved++;
     }
-    return dropped;
+    if (moved) versionNotice(p, "为控制档案体积，" + moved + " 条较早版本已移入「🗄 归档」（没有删除，可在版本档案底部查看）");
+    return moved;
   }
   /* 引用编号集合差（X2/A1：AI 产出与原文 [n] 不一致时禁止直接采纳） */
   function citeSet(t) {
@@ -1060,8 +1116,7 @@
       if (p.ledger[f.slice(6)].length > 100) p.ledger[f.slice(6)].length = 100;
     }
     if (!o.skipVersion) {
-      var dropped = versionPush(p, { ts: stamp(), kind: o.kind || "更新", content: txt, field: f });
-      if (dropped && typeof wqNotice === "function") wqNotice("较早的 " + dropped + " 条版本已移出档案（⭐星标版本保留）");
+      versionPush(p, { ts: stamp(), kind: o.kind || "更新", content: txt, field: f });
     }
     journalAppend(p, { actor: o.actor, action: o.kind || "更新", target: fieldLabelCore(f), model: o.model || "", cost: o.cost || "", note: o.note || (o.actor === "ai" ? "AI 产出，经用户采纳" : "") });
     p.trail = p.trail || [];
@@ -1099,6 +1154,7 @@
     readField: readField,
     applyField: applyField,
     versionPush: versionPush,
+    versionNotice: versionNotice,
     citeSet: citeSet,
     citeDiff: citeDiff,
     nummapRemap: nummapRemap,

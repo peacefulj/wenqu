@@ -117,10 +117,28 @@
 .dmod .do { background: #fdecea; text-decoration: line-through; color: #7f2d28; }
 .dmod .dn { background: #eaf7ef; margin-top: 4px; color: #14532d; }
 
-/* 窄屏：侧栏浮起 */
+/* 窄屏：侧栏浮起，默认收起；选中节点或点「轨迹」才滑出 */
 @media (max-width: 900px) {
-  .mside { position: absolute; right: 0; top: 0; bottom: 0; box-shadow: -8px 0 24px rgba(2, 6, 23, .12); z-index: 5; }
+  /* 侧栏收起时用 transform 移出屏幕；裁掉主区横向溢出，避免窄屏 scrollWidth 被撑宽 */
+  .mmain { overflow: hidden; }
+  .mside {
+    position: absolute; right: 0; top: 0; bottom: 0; z-index: 5;
+    width: min(380px, 92vw); flex: 0 0 auto;
+    box-shadow: -8px 0 24px rgba(2, 6, 23, .12);
+    transform: translateX(106%); transition: transform .22s ease;
+  }
+  .mside.open, .mside:has(.mcardbox.open) { transform: none; }
+  #trailPane { display: none; }
+  .mside.open #trailPane { display: block; }
   #projSel { max-width: 150px; }
+}
+
+/* 更窄屏：顶栏允许换行，避免品牌与导航被挤成竖排单字 */
+@media (max-width: 640px) {
+  .mtop { flex-wrap: wrap; gap: 6px 10px; padding: 6px 12px; }
+  .mbrand small { display: none; }
+  .mnav { display: flex; flex-wrap: wrap; gap: 12px; }
+  .mnav a { margin-left: 0; white-space: nowrap; }
 }
 
 /* ---- Word 回流逐条消化 ---- */

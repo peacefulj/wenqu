@@ -47,9 +47,15 @@
   function renderKeyState() {
     $("nokey").hidden = hasKey();
     $("qGo").disabled = !hasKey();
-    $("qGo").title = hasKey() ? "" : "先在上方填入 API Key";
+    $("qGo").title = hasKey() ? "" : "先配置 API Key：见页面上方的提示";
   }
   (function initSettings() {
+    var jump = $("qkJump");
+    if (jump) jump.addEventListener("click", function () {
+      var k = $("qkKey"); if (!k) return;
+      if (k.scrollIntoView) k.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(function () { k.focus(); k.select(); }, 260);
+    });
     var c = WQCore.ai.conf();
     $("qkBase").value = c.base || ""; $("qkKey").value = c.key || ""; $("qkModel").value = c.model || "";
     $("qkPriceIn").value = c.priceIn || ""; $("qkPriceOut").value = c.priceOut || "";
@@ -217,13 +223,89 @@
   function lvObj(id) { return (window.WQ_LEVELS || []).find(function (x) { return x.id === id; }) || (window.WQ_LEVELS || [])[0]; }
   function pqObj(id) { return (window.WQ_PARADIGMS || []).find(function (x) { return x.id === id; }) || (window.WQ_PARADIGMS || [])[0]; }
 
+  /* ---------- 参考文献表（GB/T 7714）与外部原文链接 ---------- */
+  function citeUrl(r) {
+    if (r && r.doi) return "https://doi.org/" + String(r.doi).replace(/^https?:\/\/doi\.org\//, "");
+    return "https://openalex.org/works?search=" + encodeURIComponent((r && r.title) || "");
+  }
+  function gbtEntry(r) {
+    var au = String(r.author || "").replace(/，等$/, "");
+    var t = r.title || "（无题名）";
+    var v = r.venue || "";
+    var y = r.year || "";
+    var doi = r.doi ? " DOI: " + r.doi + "." : "";
+    return "[" + r.n + "] " + (au ? au + ". " : "") + t + "[J]" + (v ? ". " + v : "") + (y ? ", " + y : "") + "." + doi;
+  }
+  function refTableMd(refs) {
+    return "\n\n## 参考文献\n\n" + (refs || []).map(gbtEntry).join("\n");
+  }
+  var qlast = { md: "", name: "" };
+  function linkRefs(html, refs) {
+    return html.replace(/\[(\d{1,3})\]/g, function (m, n) {
+      var r = (refs || [])[+n - 1]; if (!r) return m;
+      return '<a class="citelink" href="' + esc(citeUrl(r)) + '" target="_blank" rel="noopener" title="' + esc(r.title || "") + '">' + m + "</a>";
+    });
+  }
+  function refsHTML(refs) {
+    if (!refs || !refs.length) return "";
+    return '<h2 id="qrefs">参考文献</h2><div class="qrefs">' + refs.map(function (r) {
+      return '<div class="qref"><a href="' + esc(citeUrl(r)) + '" target="_blank" rel="noopener">' + esc(gbtEntry(r)) + "</a></div>";
+    }).join("") + "</div>";
+  }
+  function renderFinal(proj, mdFull, refs) {
+    var body = $("qFinalBody");
+    if (!body) return;
+    qlast.md = mdFull; qlast.name = proj.name || "参考稿";
+    var bodyMd = String(mdFull || "").split("\n## 参考文献")[0];
+    var html = window.YMMd ? YMMd.mdToHTML(linkRefs(bodyMd, refs))
+      : (window.marked ? marked.parse(linkRefs(bodyMd, refs)) : "<pre>" + esc(bodyMd) + "</pre>");
+    html += refsHTML(refs);
+    body.innerHTML = window.YMMd ? html : (window.DOMPurify ? DOMPurify.sanitize(html, { ADD_ATTR: ["target", "rel"] }) : html);
+    if (window.YMMd) YMMd.hydrateImages(body);
+    $("qFinal").hidden = false;
+    $("qDoneRow").hidden = false;
+    $("qFinalMeta").textContent = (proj.ref.order || []).length + " 节 · " + (refs || []).length + " 篇文献 · 引用编号与文末条目均可点开原文";
+    $("qOut").hidden = true;
+    $("qFinalMd").onclick = async function () {
+      var md = mdFull;
+      try {
+        if (window.YMMd && YMMd.prepareImageSections) {
+          var prep = await YMMd.prepareImageSections([md]);
+          md = YMMd.spliceImages(prep.texts[0] || md, prep.images, "md");
+        }
+      } catch (e) { console.warn("参考稿图片内联失败，按原文导出", e); }
+      dlFile((proj.name || "参考稿") + ".md", md, "text/markdown");
+    };
+    $("qFinalDoc").onclick = async function () {
+      try {
+        if (window.YMMd && YMMd.wordBlob) {
+          var blob = await YMMd.wordBlob(qlast.md);
+          dlFile((proj.name || "参考稿") + ".doc", blob, "application/msword");
+          return;
+        }
+      } catch (e) { console.warn("统一 Word 导出失败，回退旧导出", e); }
+      var doc = "<html><head><meta charset=\"utf-8\"><style>body{font-family:SimSun,serif;font-size:12pt;line-height:1.8;max-width:760px;margin:32px auto;color:#111}h1,h2,h3{font-family:Hei,SimHei,sans-serif}table{border-collapse:collapse;width:100%}th,td{border-top:1px solid #000;border-bottom:1px solid #000;padding:5px 8px}a{color:#16408a}</style></head><body>"
+        + body.innerHTML + "</body></html>";
+      dlFile((proj.name || "参考稿") + ".doc", doc, "application/msword");
+    };
+    body.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function dlFile(name, data, mime) {
+    var blob = (data instanceof Blob) ? data : new Blob([data], { type: mime + ";charset=utf-8" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = String(name || "down").replace(/[\\/:*?"<>|]/g, "_");
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
   $("qGo").addEventListener("click", async function () {
     if (busy) return;
     var f = collectForm();
     if (!hasKey()) { renderKeyState(); return; }
     if (f.title.length < 2) { $("qMsg").textContent = "主题/关键词至少 2 个字"; $("qTitle").focus(); return; }
     busy = true; ctl = new AbortController();
-    $("qGo").disabled = true; $("qStop").hidden = false; $("qDoneRow").hidden = true; $("qMsg").textContent = "";
+    $("qGo").disabled = true; $("qStop").hidden = false; $("qDoneRow").hidden = true; $("qFinal").hidden = true; $("qMsg").textContent = "";
     usageStart = WQCore.ai.usageToday();
     var actualTimer = setInterval(function () { $("qActual").textContent = actualText(); }, 1500);
 
@@ -310,9 +392,9 @@
         $("qMsg").textContent = "提纲已生成（" + (proj.refDraft.outline.sections || []).length + " 节" + (proj._form.secs !== (proj.refDraft.outline.sections || []).length ? "，你设了 " + proj._form.secs + " 节" : "") + "）——请在上方确认/编辑后点「🚀 确认提纲，开始写正文」";
         $("qGo").textContent = "▶ 续跑（从断点继续）";
       } else {
-        $("qMsg").textContent = "完成 ✓ 参考稿已存入工作台（共 " + (proj.ref.order || []).length + " 节 / " + (proj.papers || []).length + " 篇文献）";
-        $("qGoStudio").href = "studio.html?p=" + proj.id + "&stage=5";
-        $("qDoneRow").hidden = false;
+        $("qMsg").textContent = "完成 ✓ 成稿已生成（共 " + (proj.ref.order || []).length + " 节 / " + (proj.papers || []).length + " 篇文献）——右侧可直接预览、导 .md / Word，或进工作台继续写";
+        renderFinal(proj, proj.ref.fullText || "", (proj.refDraft && proj.refDraft.refs) || []);
+        $("qGoStudio").href = "studio.html?p=" + proj.id + "&stage=4";
         var goMap = document.getElementById("qGoMap");
         if (goMap) { goMap.href = "map.html?p=" + encodeURIComponent(proj.id); }
       }
@@ -456,7 +538,8 @@
           "本节要点：\n- " + (sec.points || []).join("\n- ") + "\n" +
           "本节字数目标：约 " + perWords + " 字（不要低于一半、不要超过 " + Math.round(perWords * 1.4) + " 字）。\n" +
           "引用规范：在对应位置标注 [n]；编号只能取自文献列表；本节优先引用：" + secRefs.map(function (r0) { return r0.n; }).join("、") + "。禁止编造文献编号。\n" +
-          "数据规范：需要数据、表格、图、公式支撑的地方，写「〔图表占位：说明需要什么数据或图〕」，禁止编造具体数字。\n" +
+          "图表规范：需要表格时输出 Markdown 表格（表上方单起一行「表n 标题」），变量定义、描述性统计骨架、文献对比等能用表格就用表格；缺真实数据的格子写〔待补〕，禁止编造具体数值。需要理论框架/机制路径/技术路线图时，输出 ```ymflow 代码块（JSON：title/nodes/edges）。需要数据图时输出 ```ymchart 代码块（JSON：type/title/labels/series 或 data）并设 \"demo\": true（会自动加「示意数据·待替换」水印）。摘要节不放图表。\n" +
+          "公式规范：行内公式用 $...$，独立公式用 $$...$$（LaTeX 语法）。\n" +
           (prevTail ? "上一节（" + prevName + "）结尾：「…" + prevTail + "」，自然衔接，不要重复。\n" : "") +
           (c.proj._form.material && i === 0 ? "用户已有材料（尽量沿用其结构思路）：" + c.proj._form.material.slice(0, 800) + "\n" : "") +
           styleBlock() + "\n" +
@@ -542,7 +625,8 @@
         ref0.sections[name] = { text: ent.text || "", refs: ent.refs || [] };
         full.push("## " + name + "\n\n" + (ent.text || ""));
       });
-      ref0.fullText = full.join("\n\n");
+      /* 成稿末尾自动附参考文献表（GB/T 7714，用真实检索到的文献生成） */
+      ref0.fullText = full.join("\n\n") + refTableMd(rd.refs || []);
       c.proj.outline = "## 提纲（" + tp.name + " · " + order.length + " 节）\n\n" + rd.outline.sections.map(function (s, i) {
         return (i + 1) + ". **" + s.name + "** — " + (s.points || []).join("；") + "　〔引：" + (s.refs || []).join(",") + "〕";
       }).join("\n");
@@ -550,8 +634,8 @@
       c.proj.status = "写作中";
       /* 版本档案 + 轨迹（与 studio 的 addVersion/trailAdd 同构） */
       c.proj.versions = c.proj.versions || [];
-      c.proj.versions.unshift({ ts: WQCore.stamp(), kind: "参考稿·全文", content: ref0.fullText, field: "ref" });
-      if (c.proj.versions.length > 40) c.proj.versions.length = 40;
+      if (WQCore.versionPush) WQCore.versionPush(c.proj, { ts: WQCore.stamp(), kind: "参考稿·全文", content: ref0.fullText, field: "ref" });
+      else c.proj.versions.unshift({ ts: WQCore.stamp(), kind: "参考稿·全文", content: ref0.fullText, field: "ref" });
       c.proj.trail = c.proj.trail || [];
       c.proj.trail.unshift({ ts: WQCore.stamp(), type: "ai", label: "参考稿生成（" + order.length + " 节 / " + (c.proj.papers || []).length + " 篇文献）", note: "模型 " + ref0.model + " · 参考 Agent，逐节落盘" });
       delete c.proj._form; // 表单快照已完成使命（续跑判断用不到再保留）

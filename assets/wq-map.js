@@ -171,21 +171,37 @@
 
     /* --- 参考稿节（refDraft 优先，兼容 p.ref.sections） --- */
     var rfSrc = (p.refDraft && p.refDraft.sections) || (p.ref && p.ref.sections) || {};
+    /* 图表编号与整篇导出一致：按节序累加前面的图数 */
+    var rfBase = {}, rfc = 0;
+    var rfOrder = (p.ref && Array.isArray(p.ref.order) && p.ref.order.length) ? p.ref.order : Object.keys(rfSrc);
+    rfOrder.forEach(function (name) {
+      var ent0 = rfSrc[name];
+      var txt0 = typeof ent0 === "string" ? ent0 : (ent0 && ent0.text) || "";
+      rfBase[name] = rfc;
+      rfc += figsOf(txt0);
+    });
     Object.keys(rfSrc).forEach(function (name) {
       var ent = rfSrc[name];
       var txt = typeof ent === "string" ? ent : (ent && ent.text) || "";
       if (!String(txt).trim()) return;
       node("rf:" + pid + ":" + name, "refdraft", "📋 " + name, txt,
-        { name: name, partial: !!(ent && ent.partial), refs: (ent && ent.refs) || null });
+        { name: name, partial: !!(ent && ent.partial), refs: (ent && ent.refs) || null, figStart: rfBase[name] || 0 });
       if (have["ol:" + pid + ":" + name]) edge("ol:" + pid + ":" + name, "rf:" + pid + ":" + name, "logic");
       else edge("t:" + pid, "rf:" + pid + ":" + name, "logic");
     });
 
     /* --- 草稿节 --- */
+    var drBase = {}, drc = 0, drSeen = {};
+    ((p.ref && Array.isArray(p.ref.order) && p.ref.order.length) ? p.ref.order : []).concat(Object.keys(p.draft || {})).forEach(function (name) {
+      if (drSeen[name] || !String((p.draft || {})[name] || "").trim()) return;
+      drSeen[name] = 1;
+      drBase[name] = drc;
+      drc += figsOf(p.draft[name]);
+    });
     Object.keys(p.draft || {}).forEach(function (name) {
       var txt = p.draft[name];
       if (!String(txt).trim()) return;
-      node("dr:" + pid + ":" + name, "draft", "✍️ " + name, txt, { name: name });
+      node("dr:" + pid + ":" + name, "draft", "✍️ " + name, txt, { name: name, figStart: drBase[name] || 0 });
       if (have["ol:" + pid + ":" + name]) edge("ol:" + pid + ":" + name, "dr:" + pid + ":" + name, "logic");
       else edge("t:" + pid, "dr:" + pid + ":" + name, "logic");
     });
@@ -382,7 +398,12 @@
     startFlow(ele.connectedEdges());
   }
 
-  function mdRender(t) {
+  function figsOf(t) {
+    if (window.YMMd && YMMd.countFigs) return YMMd.countFigs(t);
+    return (String(t || "").match(/```(?:ymflow|ymchart)/g) || []).length;
+  }
+  function mdRender(t, figStart) {
+    if (window.YMMd) { try { return window.YMMd.mdToHTML(t, { figStart: +figStart || 0 }); } catch (e) {} }
     if (window.marked && window.DOMPurify) {
       try { return DOMPurify.sanitize(window.marked.parse(String(t || ""))); } catch (e) {}
     }
@@ -550,7 +571,7 @@
       metaBits.push("⚠ 问题 " + (d.meta.stats.problem || 0) + " / " + d.meta.stats.total + (d.meta.stats.bound != null ? " · 已绑定 " + d.meta.stats.bound : ""));
     if (d.kind === "paper" && d.meta.doi) metaBits.push('<a href="https://doi.org/' + WQCore.esc(d.meta.doi) + '" target="_blank" rel="noopener">doi.org ↗</a>');
 
-    var bodyHTML = "<div class='mbody'>" + mdRender(d.body || "（空）") + "</div>";
+    var bodyHTML = "<div class='mbody'>" + mdRender(d.body || "（空）", d.meta && d.meta.figStart) + "</div>";
 
     /* 数字绑定节：来源下拉（改完即存） */
     var extra = "";
@@ -674,9 +695,10 @@
     if (bSnap) bSnap.addEventListener("click", function () {
       var p = reloadDB();
       var f = fieldOf(d);
-      p.versions.unshift({ ts: WQCore.stamp(), kind: "导图·手动存档", content: String(d.body || ""), field: f });
+      p.versions = p.versions || [];
+      if (WQCore.versionPush) WQCore.versionPush(p, { ts: WQCore.stamp(), kind: "导图·手动存档", content: String(d.body || ""), field: f });
+      else p.versions.unshift({ ts: WQCore.stamp(), kind: "导图·手动存档", content: String(d.body || ""), field: f });
       p.trail.unshift({ ts: WQCore.stamp(), type: "ver", label: "导图存档「" + d.t + "」", note: "" });
-      capVersions(p);
       saveDB(); toast("已存版本 ✓"); rebuild(false, true); showCard(id);
     });
     document.querySelectorAll(".mbtn.mai").forEach(function (b) {
@@ -734,7 +756,7 @@
         "<div class='mrow'><button class='mbtn pri' id='fvSave'>💾 保存</button><button class='mbtn' id='fvCancel'>取消</button>" +
         "<span class='mhint'>保存写入原项目数据并自动存版本；AI 改写/扩写/缩写在左侧节点卡里</span></div>";
     } else {
-      inner = "<div class='fvread'>" + mdRender(d.body || "（无内容）") + "</div>" +
+      inner = "<div class='fvread'>" + mdRender(d.body || "（无内容）", d.meta && d.meta.figStart) + "</div>" +
         "<div class='mrow'><button class='mbtn' id='fvCopy'>📋 复制</button><button class='mbtn' id='fvDl'>⤓ .md</button><button class='mbtn' id='fvClose'>关闭</button></div>";
     }
     m.innerHTML = "<div class='fvcard'><div class='fvhead'><b>" + K.icon + " " + K.label + " · " + WQCore.esc(d.t) +
@@ -795,7 +817,7 @@
           if (ST.cy) { var ele0 = ST.cy.getElementById(d.id); if (ele0.nonempty()) ele0.data("body", full); }
           var rv = m.querySelector(".fvread");
           if (rv) {
-            rv.innerHTML = mdRender(full);
+            rv.innerHTML = mdRender(full, d.meta && d.meta.figStart);
             var hm = m.querySelector(".fmeta");
             if (hm) hm.textContent += " · 已从归档回取全文";
           }
@@ -820,19 +842,6 @@
     p.ledger[sec] = p.ledger[sec] || [];
     p.ledger[sec].unshift({ ts: WQCore.stamp(), action: action, chars: String(txt || "").replace(/\s+/g, "").length });
     if (p.ledger[sec].length > 100) p.ledger[sec].length = 100;
-  }
-
-  /* 版本容量：40 条上限，⭐星标豁免淘汰；淘汰发生时明示（专家评审 A6，不再静默） */
-  function capVersions(p) {
-    var dropped = 0;
-    while (p.versions.length > 40) {
-      var idx = -1;
-      for (var i = p.versions.length - 1; i >= 0; i--) { if (!p.versions[i].star) { idx = i; break; } }
-      if (idx < 0) break;
-      p.versions.splice(idx, 1); dropped++;
-    }
-    if (dropped) toast("较早的 " + dropped + " 条版本已移出档案（⭐星标版本保留）——重要版本请先星标或 ⤓ 备份");
-    return dropped;
   }
 
   /* ---- AI 改写/扩写/缩写（流式，写回前确认） ---- */
@@ -1126,7 +1135,7 @@
     var r0 = (p.reflows || []).find(function (x) { return x.id === d.meta.id; });
     if (!r0) { toast("记录不存在"); return; }
     var lines = ["# 修改说明（基于外部批注回流）", "",
-      "- 节：④草稿·" + r0.baseField, "- 回流时间：" + r0.ts, "- 来源：" + (r0.source || "导师") + "（来源由作者声明，系统未验证）",
+      "- 节：②草稿·" + r0.baseField, "- 回流时间：" + r0.ts, "- 来源：" + (r0.source || "导师") + "（来源由作者声明，系统未验证）",
       "- 哈希：SHA-256 " + (r0.hash || "—").slice(0, 16) + "…", "", "## 逐条处理", ""];
     var items = r0.items || [];
     if (!items.length) lines.push("（段落级无正文改动" + (r0.comments ? "；见意见附言" : "") + "）");
@@ -1149,7 +1158,7 @@
     if (!r0 || !String(r0.text).trim()) { toast("导师稿正文为空，无可采纳"); return; }
     var ok = await confirmBox({
       title: "以此稿为底稿（整稿采纳）？",
-      lines: ["「④草稿·" + r0.baseField + "」将被导师稿替换（当前稿自动存版，不会丢失）", "版本链将如实记录为「混合来源（外部采纳）」——诚实记录不是污点", "逐条消化状态保留在导师稿节点上"]
+      lines: ["「②草稿·" + r0.baseField + "」将被导师稿替换（当前稿自动存版，不会丢失）", "版本链将如实记录为「混合来源（外部采纳）」——诚实记录不是污点", "逐条消化状态保留在导师稿节点上"]
     });
     if (!ok) return;
     var sec = r0.baseField;
@@ -1200,8 +1209,9 @@
     else if (f === "design") cur = p.design;
     else if (f.indexOf("outs.") === 0) cur = (p.outs || {})[f.slice(5)];
     if (typeof cur === "string" && cur.trim() && cur !== content) {
-      p.versions.unshift({ ts: WQCore.stamp(), kind: "回滚前自动存档", content: String(cur), field: f });
-      capVersions(p);
+      p.versions = p.versions || [];
+      if (WQCore.versionPush) WQCore.versionPush(p, { ts: WQCore.stamp(), kind: "回滚前自动存档", content: String(cur), field: f });
+      else p.versions.unshift({ ts: WQCore.stamp(), kind: "回滚前自动存档", content: String(cur), field: f });
     }
     if (f === "selection") p.selection = content;
     else if (f === "outline") { p.outline = content; p.outs = p.outs || {}; p.outs.outline = content; }
@@ -1557,7 +1567,10 @@
       a.click();
     });
     document.getElementById("btnCard").addEventListener("click", function () {
-      document.getElementById("trailPane").classList.toggle("hidden");
+      var tp = document.getElementById("trailPane"), side = document.getElementById("side");
+      var open = !(side && side.classList.contains("open"));
+      if (side) side.classList.toggle("open", open);
+      if (tp) tp.classList.toggle("hidden", !open);
     });
     document.getElementById("cardClose").addEventListener("click", function () {
       document.getElementById("card").classList.remove("open");

@@ -96,6 +96,21 @@
       var r = X.buildMarkdown({ name: "P", topic: "T", papers: copy(papersX) }, envX("第一段[1]\n第二段\n## 小节\n内容"));
       return [r.text.indexOf('---\ntitle: "T"') === 0 && r.text.indexOf("第一段[1]\n\n第二段") >= 0 && r.text.indexOf("### 小节") >= 0 && r.text.indexOf("## 参考文献") >= 0, r.text.slice(0, 300)];
     });
+    /* v1.4.1：图片统一导出管线 */
+    var imgsX = [{ id: "i1", name: "yanmo-images/img1.png", dataUrl: "data:image/png;base64,AAAA" }];
+    var envImg = function (md) { var e = envX(md); e.images = imgsX; return e; };
+    t("LaTeX：图片占位符 → \\includegraphics", function () {
+      var s = X.mdToTex("正文前\n\n@@YMIMG0|示意图@@\n\n正文后", Object.assign(X.newCtx(), { images: imgsX }));
+      return [s.indexOf("\\begin{center}") >= 0 && s.indexOf("\\includegraphics[width=0.8\\linewidth]{yanmo-images/img1.png}") >= 0, s];
+    });
+    t("Markdown：图片占位符 → 内联 dataURL", function () {
+      var r = X.buildMarkdown({ name: "P", topic: "T", papers: copy(papersX) }, envImg("图前\n\n@@YMIMG0|示意图@@"));
+      return [r.text.indexOf("![示意图](data:image/png;base64,AAAA)") >= 0 && r.text.indexOf("@@YMIMG") < 0, r.text.slice(-200)];
+    });
+    t("LaTeX：图片命令不会被 texEsc 二次转义", function () {
+      var s = X.buildLatex({ name: "P", topic: "T", papers: copy(papersX) }, envImg("正文\n\n@@YMIMG0|图@@"));
+      return [s.text.indexOf("\\includegraphics[width=0.8\\linewidth]{yanmo-images/img1.png}") >= 0 && s.text.indexOf("textbackslash{}includegraphics") < 0, s.text.slice(-300)];
+    });
 
     /* ---------- AI 接口适配（v1.3.0，ym-ai.js） ---------- */
     if (AI) {

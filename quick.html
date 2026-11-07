@@ -22,6 +22,14 @@
   .refout{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff}
 .oeRow{border:1px dashed var(--line);border-radius:10px;padding:8px 10px;background:#fafbfd}
   .streampre{white-space:pre-wrap;font-size:13px;line-height:1.55}
+  .qstep-h{display:flex;align-items:baseline;gap:8px;border-bottom:1px solid var(--line);padding-bottom:6px;margin:6px 0 2px}
+  .qfinal-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 8px}
+  .qfinal-body{max-height:70vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:12px;padding:26px 34px}
+  .citelink{color:#16408a;text-decoration:none;border-bottom:1px dotted #16408a}
+  .qrefs{font-size:13.5px;line-height:1.75}
+  .qref{margin:4px 0;padding-left:1.8em;text-indent:-1.8em}
+  .qref a{color:#1c2b3a;text-decoration:none}
+  .qref a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -42,7 +50,8 @@
 
   <div id="nokey" class="callout c-info" hidden style="margin:10px 0">
     <b>还没有配置 AI Key。</b>参考稿由大模型生成，按 token 计费——<b>注册研墨送新人额度，生成几万字的参考稿用不完</b>：
-    <a href="https://yingcompute.com/" target="_blank" rel="noopener">注册研墨（新人礼包）</a> → 把 Key 粘到下方设置 → 回来点「开始生成」。
+    <a href="https://yingcompute.com/" target="_blank" rel="noopener">注册研墨（新人礼包）</a> → 在<b>本提示下方</b>填好 Key → 回来点「开始生成」。
+    <button class="btn2 ghost btn-sm" id="qkJump" type="button" style="margin-left:6px">↓ 去填写 Key</button>
     <div class="grid4" style="margin-top:10px">
       <div><label>API 地址</label><input id="qkBase" type="text" placeholder="https://yingcompute.com/v1"></div>
       <div><label>API Key</label><input id="qkKey" type="password" placeholder="sk-…"></div>
@@ -53,23 +62,31 @@
   </div>
 
   <div class="quickgrid">
-    <!-- 左：表单 -->
+    <!-- 左：表单（① 选题与定位 → ② 生成设置） -->
     <div class="qform">
+      <div class="qstep-h"><b>① 选题与定位</b><span class="hint">题目 → 范式 → 层级与类型</span></div>
       <label>论文题目 / 研究主题或关键词（2–80 字，想不出就点「帮我想题目」）</label>
       <textarea id="qTitle" rows="2" placeholder="例：数字经济对县域城乡收入差距的影响研究"></textarea>
       <div class="row" style="margin-top:4px"><button id="qSuggest" class="btn2 ghost btn-sm">💡 帮我想题目</button><span class="hint" id="qSugMsg"></span></div>
       <div id="qSugList" class="results" style="margin-top:6px"></div>
 
-      <label>层级</label>
-      <select id="qLevel"></select>
-      <label>类型</label>
-      <select id="qType">
-        <option value="thesis">毕业论文（整篇）</option>
-        <option value="proposal">开题报告</option>
-        <option value="review">文献综述</option>
-        <option value="journal">期刊论文</option>
-        <option value="task">任务书</option>
-      </select>
+      <label>研究范式</label>
+      <select id="qParadigm"></select>
+      <p class="hint" style="margin-top:2px">范式决定章节骨架、写作要求与图表规范；不确定就用默认。</p>
+      <div class="row">
+        <div style="flex:1"><label>层级</label><select id="qLevel"></select></div>
+        <div style="flex:1"><label>类型</label>
+          <select id="qType">
+            <option value="thesis">毕业论文（整篇）</option>
+            <option value="proposal">开题报告</option>
+            <option value="review">文献综述</option>
+            <option value="journal">期刊论文</option>
+            <option value="task">任务书</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="qstep-h" style="margin-top:16px"><b>② 生成设置</b><span class="hint">字数、分节与文献规模</span></div>
       <div class="row">
         <div style="flex:1"><label>总字数目标（2000–80000，可自定义）</label>
           <input id="qWords" type="number" min="2000" max="80000" step="500" value="12000"></div>
@@ -85,13 +102,10 @@
       <label>参考文献数量（OpenAlex 真实检索，可自定义 10–200）</label>
       <input id="qRefs" type="number" min="10" max="200" step="5" value="50">
       <details class="fold" style="margin-top:10px">
-        <summary>已有材料 / 高级选项（可选）</summary>
+        <summary>已有材料（可选）</summary>
         <div class="body">
           <label class="hint" style="font-weight:700">已有开题报告或提纲要点（粘贴文本，AI 会沿用你的结构）</label>
           <textarea id="qMat" rows="4" placeholder="例：第一章 绪论（研究背景/意义）…&#10;或粘贴开题报告的研究内容部分"></textarea>
-          <label class="hint" style="font-weight:700;margin-top:8px">研究范式</label>
-          <select id="qParadigm"></select>
-          <p class="hint">范式决定章节骨架与矩阵栏目；不确定就用默认。</p>
         </div>
       </details>
 
@@ -103,7 +117,7 @@
       <p class="hint" style="margin-top:6px">逐节落盘：中途关页/断网，回来点「续跑」不白花钱。层级不限制生成（硕士/博士同样可生成整篇参考稿，如何使用由你决定，归属账本会如实记录）。</p>
     </div>
 
-    <!-- 右：进度与输出 -->
+    <!-- 右：进度与成稿预览 -->
     <div>
       <div class="steps" id="qSteps"><p class="hint">步骤进度会显示在这里。</p></div>
       <div id="qOutlineEd" hidden style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:10px 0;background:#fff">
@@ -123,9 +137,21 @@
       </div>
       <div class="cost" id="qActual">本次实际消耗：—</div>
       <div class="refout" id="qOut" hidden><div class="streampre" id="qStream"></div></div>
-      <div class="row" id="qDoneRow" hidden style="margin-top:10px">
-        <a id="qGoStudio" class="btn2" style="background:#0a7a43;text-align:center;flex:1">进入工作台：修改 · 核验 · 加入你自己的东西 →</a>
-        <a id="qGoMap" class="btn2" style="text-align:center;flex:1;background:#f1f5f9">🗺 在项目导图中查看 →</a>
+
+      <!-- 成稿预览：生成完直接在这里看，不用先去修改工作台 -->
+      <div id="qFinal" hidden>
+        <div class="qfinal-h">
+          <b>📄 成稿预览</b>
+          <span class="hint" id="qFinalMeta"></span>
+          <span style="flex:1"></span>
+          <button class="btn2 btn-sm" id="qFinalMd">⤓ .md</button>
+          <button class="btn2 btn-sm" id="qFinalDoc">⤓ Word</button>
+        </div>
+        <div id="qFinalBody" class="qfinal-body paper"></div>
+        <div class="row" id="qDoneRow" hidden style="margin-top:10px">
+          <a id="qGoStudio" class="btn2" style="background:#0a7a43;text-align:center;flex:1">进入科研工作台：继续写 · 核验 · 加入你自己的东西 →</a>
+          <a id="qGoMap" class="btn2" style="text-align:center;flex:1;background:#f1f5f9">🗺 项目导图 →</a>
+        </div>
       </div>
       <p class="hint" id="qMsg"></p>
     </div>
@@ -134,10 +160,12 @@
 
 <footer class="site"><div class="container">
   <div class="disc">参考稿由 AI 生成，仅作学习与写作参考：引用全部来自 OpenAlex 真实检索结果，但 AI 仍可能配错 [n]，采用前请逐条核对；数据与图表为占位建议，须用你自己的数据替换。本平台不提供代写、不做检测规避；请遵守所在学校/期刊的 AI 使用规范。</div>
-  <div>© 2026 研墨 · 数据只存本机浏览器 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.3.0</span> 更新日志</a> · <a href="try.html">试用与测试</a> · 发现问题？<a href="mailto:info@yingcompute.com">邮件告诉我们</a></div>
+  <div>© 2026 研墨 · 数据只存本机浏览器 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.4.2</span> 更新日志</a> · <a href="try.html">试用与测试</a> · 发现问题？<a href="mailto:info@yingcompute.com">邮件告诉我们</a></div>
 </div></footer>
 
+<link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
 <script src="assets/version.js"></script>
+<script src="assets/vendor/katex/katex.min.js"></script>
 <script src="assets/paradigms.js"></script>
 <script src="assets/vendor/marked.min.js"></script>
 <script src="assets/vendor/purify.min.js"></script>
@@ -145,6 +173,8 @@
 <script src="assets/wq-core.js"></script>
 <script src="assets/wq-quick.js"></script>
 <script src="assets/ym-sync.js"></script>
+<script src="assets/ym-md.js"></script>
+<script src="assets/ym-icons.js"></script>
 <script>
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));

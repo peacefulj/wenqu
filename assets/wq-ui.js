@@ -93,9 +93,8 @@
     $("wbRefPane").innerHTML = paras.length
       ? paras.map((t, i) => `<div class="wbpara" data-pi="${i}">${mdInline(t)}
           <div class="pb">
-            <button class="pillbtn" data-adopt="${i}">✅ 采用</button>
-            <button class="pillbtn" data-rewrite="${i}">✒️ 改写后采用</button>
-            <button class="pillbtn" data-why="${i}">💬 追问依据</button>
+            <button class="pillbtn" data-rewrite="${i}">✒️ 按我的表达改写本节</button>
+            <button class="pillbtn" data-why="${i}">💬 追问依据（右侧显示）</button>
           </div></div>`).join("")
       : '<p class="hint">本节没有参考稿（可能是自起稿节）——直接在右侧写。</p>';
     bindRefButtons(sec, paras);
@@ -113,26 +112,87 @@
     renderWbDiff(sec, refText, mineBox.value);
   }
 
+  /* F14：采用前的差异概览——用段级对比给出「改了多少」，避免盲选覆盖 */
+  function adoptDiffLines(p, filled) {
+    const lines = [];
+    filled.slice(0, 6).forEach(x => {
+      const old = String((p.draft || {})[x.s] || "");
+      if (old === x.txt) { lines.push("「" + x.s + "」：与参考稿完全一致，覆盖不会带来变化"); return; }
+      const rows = WQCore.diff.paras(x.txt, old);
+      const cnt = { same: 0, mod: 0, add: 0, del: 0 };
+      rows.forEach(r => { cnt[r.type] = (cnt[r.type] || 0) + 1; });
+      lines.push("「" + x.s + "」：参考稿 " + x.txt.length + " 字 / 我的稿 " + old.length + " 字；未变 " + cnt.same + " 段，改写 " + cnt.mod + " 段，仅我的稿 " + cnt.add + " 段，仅参考稿 " + cnt.del + " 段");
+    });
+    lines.push(filled.length > 6
+      ? "…其余 " + (filled.length - 6) + " 节同理。覆盖前会自动存一版「采用前自动存档」，仍可在版本档案找回。"
+      : "覆盖前会自动为我的稿存一版「采用前自动存档」，仍可在版本档案找回。");
+    return lines;
+  }
+  /* 参考稿整节/全文采用：已有内容的节先看差异，再决定覆盖还是跳过；账本记为参考原样 */
+  async function adoptRefSections(secs) {
+    const p = P(); if (!p) { toast("先新建项目"); return; }
+    const order = (rest) => rest.filter(s => p.ref && p.ref.sections && p.ref.sections[s] && p.ref.sections[s].text);
+    const targets = order(secs).map(s => ({ s, txt: p.ref.sections[s].text }));
+    if (!targets.length) { toast("没有可采用的参考稿"); return; }
+    const filled = targets.filter(x => String((p.draft || {})[x.s] || "").trim());
+    let mode = "overwrite";
+    if (filled.length) {
+      const names = filled.slice(0, 4).map(x => "「" + x.s + "」").join("") + (filled.length > 4 ? " 等 " + filled.length + " 节" : "");
+      let act;
+      if (window.wqChoose) {
+        act = await window.wqChoose("已有内容的 " + filled.length + " 节", [names + "已有草稿，参考稿要覆盖还是跳过？", "建议先看差异：逐节显示参考稿与我的稿的段数、改动量，再决定。"], [
+          { label: "先看差异再决定", key: "diff", primary: true },
+          { label: "直接覆盖已有内容", key: "overwrite" },
+          { label: "跳过，只填空白节", key: "skip" }
+        ]);
+        if (act === "diff") {
+          act = await window.wqChoose("差异概览 · " + filled.length + " 节", adoptDiffLines(p, filled), [
+            { label: "覆盖已有内容", key: "overwrite", primary: true },
+            { label: "跳过，只填空白节", key: "skip" },
+            { label: "取消", key: "cancel" }
+          ]);
+        }
+      } else {
+        act = confirm(names + "已有草稿。确定=覆盖，取消=跳过") ? "overwrite" : "skip";
+      }
+      if (act === "cancel") return;
+      mode = act === "skip" ? "skip" : "overwrite";
+    }
+    let n = 0;
+    targets.forEach(x => {
+      const old = String((p.draft || {})[x.s] || "");
+      if (old.trim() && mode === "skip") return;
+      if (old.trim() && old !== x.txt && window.WQCore && WQCore.versionPush) {
+        WQCore.versionPush(p, { ts: WQCore.stamp(), kind: "采用前自动存档·" + x.s, content: old, field: "draft:" + x.s });
+      }
+      p.draft = p.draft || {};
+      p.draft[x.s] = x.txt;
+      if (p.draftRich) delete p.draftRich[x.s];
+      logLedger(p, x.s, "adopt", x.txt.length);
+      n++;
+    });
+    if (!n) { toast("没有可采用的节（已有内容的都跳过了）"); return; }
+    trailAdd(p, "act", secs.length === 1 ? "参考稿·整节采用" : "参考稿·全文采用", n + " 节 · 归属账本记为参考原样");
+    save();
+    renderWbPanes(true);
+    toast("已采用 " + n + " 节（可继续逐段改写）");
+  }
+
   function bindRefButtons(sec, paras) {
-    $("wbRefPane").querySelectorAll("[data-adopt]").forEach(b => b.addEventListener("click", () => {
-      const para = paras[+b.dataset.adopt]; if (!para) return;
-      const p = P(); if (!p) return;
-      setMineText(para, true);   /* v1.0.7：富文本/纯文本统一写入 */
-      logLedger(p, sec, "adopt", para.length);
-      saveDraft(sec, true);
-    }));
     $("wbRefPane").querySelectorAll("[data-rewrite]").forEach(b => b.addEventListener("click", () => withBusy(b, async () => {
-      const p0 = P(); const para = paras[+b.dataset.rewrite]; if (!p0 || !para) return;
+      const p0 = P(); if (!p0) return;
+      const refEnt = (p0.ref && p0.ref.sections && p0.ref.sections[sec]) || {};
+      const para = refEnt.text || paras[+b.dataset.rewrite] || "";
+      if (!para) return;
       const pid = p0.id;
-      if (!(await askAI("改写这段并采用？（按你的写作档案改成你的表达）", ["调用 AI 1 次，改写结果直接进入「我的稿」"], "改写并采用"))) return;
+      if (!(await askAI("按你的表达改写本节？", ["参考稿「" + sec + "」整节将按你的写作档案重写，并写入「我的稿」", "调用 AI 1 次；原稿仍可在版本档案找回"], "改写本节"))) return;
       $("wbProg").textContent = "改写中…";
       try {
-        /* v1.1.0：修正参数（原来把 3000 当成 opts 传，温度与上限都没生效） */
         const r = await WQCore.ai.stream(
-          "把下面这段学术文字改写成作者自己的表达：保持论点、引用编号[n]与术语不变；按写作档案调整句式、衔接与用词；不增删事实；不做规避检测处理，只做语言层面的重写。\n" + styleBlock() + "\n\n【原文】\n" + para, { max_tokens: 3000, temperature: 0.4 });
+          "把下面这一节学术论文文字改写成作者自己的表达：保持论点结构、引用编号[n]与术语不变；按写作档案调整句式、衔接与用词；不增删事实；不做规避检测处理，只做语言层面的重写。\n" + styleBlock() + "\n\n【本节原文】\n" + para, { max_tokens: 6000, temperature: 0.4 });
         if (!liveProj(pid)) return;
-        const here = applyAIToSection(pid, sec, r.text, "append", "rewrite", para.length);   /* 富文本/纯文本统一写入；已切节则写回原节 */
-        $("wbProg").textContent = (here ? "✓ 已改写并采用（" : "✓ 已改写并写入「" + sec + "」（") + r.usage.inTok + "+" + r.usage.outTok + " tok）";
+        const here = applyAIToSection(pid, sec, r.text, "replace", "rewrite", plainLen(para));
+        $("wbProg").textContent = (here ? "✓ 已按你的表达改写并写入（" : "✓ 已写回「" + sec + "」（") + r.usage.inTok + "+" + r.usage.outTok + " tok）";
       } catch (e) { $("wbProg").textContent = "失败：" + e.message; }
     })));
     $("wbRefPane").querySelectorAll("[data-why]").forEach(b => b.addEventListener("click", () => withBusy(b, async () => {
@@ -146,9 +206,9 @@
         const r = await WQCore.ai.call(
           "你是引用核查助手。下面一段文字带引用编号[n]，文献清单附后。逐条判断：每个被引编号是否真实支撑对应论断？输出：每行「[n] 支持/部分支持/不支持/清单外编号 —— 一句话理由」。最后给一行总评。禁止编造。\n\n【段落】\n" + para + "\n\n【文献清单】\n" +
           secRefs.map(f => "[" + (p0.papers.indexOf(f) + 1) + "] " + f.title + " — " + (f.abs || "（无摘要）").slice(0, 260)).join("\n"), 2000, { temperature: 0.1 });
-        const out = $("wOut"); out.hidden = false; setMD(out, r);
-        out.scrollIntoView({ behavior: "smooth", block: "start" });
-        $("wbProg").textContent = "✓ 核对完成（结果在上方写作区）";
+        const out = $("wbAskOut") || $("wOut"); out.hidden = false; setMD(out, r);
+        out.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        $("wbProg").textContent = "✓ 核对完成（结果在右侧「追问依据」区）";
         const p = liveProj(pid); if (p) { trailAdd(p, "ai", "追问依据·" + sec, String(para).slice(0, 60)); save(); }
       } catch (e) { $("wbProg").textContent = "失败：" + e.message; }
     })));
@@ -259,6 +319,14 @@
       renderWbPanes(true);
     });
     $("wbSaveDraft").addEventListener("click", () => saveDraft($("wbSec").value));
+    $("wbAdoptSec").addEventListener("click", () => withBusy($("wbAdoptSec"), async () => {
+      const p = P(); if (!p) return;
+      await adoptRefSections([$("wbSec").value]);
+    }));
+    $("wbAdoptAll").addEventListener("click", () => withBusy($("wbAdoptAll"), async () => {
+      const p = P(); if (!p) return;
+      await adoptRefSections(refSections(p));
+    }));
     $("wbMine").addEventListener("input", () => { /* 输入中不重渲染，防打断 */ });
     $("wbRecalc").addEventListener("click", () => { renderContrib(); toast("归属账本已重算"); });
     $("wbLedgerDl").addEventListener("click", () => {
@@ -490,7 +558,7 @@
       if (secs.length) {
         const noCite = secs.filter(s0 => !/\[\d+\]/.test(p.draft[s0] || ""));
         if (noCite.length && p.papers.length) { items.push("以下节没有任何引用标注：" + noCite.join("、")); problem++; }
-      } else { items.push("还没有「我的稿」内容：先在⑤修改工作台采用/写作"); problem++; }
+      } else { items.push("还没有「我的稿」内容：先在 ② 设计与写作采用/写作"); problem++; }
       pushCheck(p, "format", "格式规范检查", items, { problem });
       $("ckProg").textContent = problem ? "发现 " + problem + " 类问题（展开查看；题录缺失可点「补作者」批量修复）" : "✓ 格式检查通过";
       renderChecks();
@@ -605,7 +673,7 @@
       const pq = PQ(p);
       const secList = exportSecList(p, pq);
       const drafted = secList.filter(s => p.draft && p.draft[s]);
-      if (!drafted.length) { toast("还没有「我的稿」内容：先在④修改工作台采用/写作，再导出"); return; }
+      if (!drafted.length) { toast("还没有「我的稿」内容：先在 ② 设计与写作采用/写作，再导出"); return; }
       const esc2 = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const parts = secList.map(s => {
         const rich = (p.draftRich || {})[s];
@@ -738,7 +806,7 @@
         + (f.doi ? ' <a class="pillbtn" href="https://doi.org/' + esc(f.doi) + '" target="_blank" rel="noopener">DOI</a>' : "")
         + '</div>';
     }).join("");
-    return '<div class="refappendix"><b class="rahead">参考文献</b><span class="hint">（编号与正文 [n] 一致；✏️修改 会同步文献库与导出）</span>'
+    return '<div class="refappendix"><b class="rahead">参考文献</b><span class="hint" title="编号按文献库顺序，不是按正文首次引用排序；列表含文献库全部条目，包括正文尚未引用的">（编号＝文献库顺序 [1]…[' + p.papers.length + ']，非引文序；含全部 ' + p.papers.length + ' 条，未引用条目也会列出；GB/T 7714；✏️修改 会同步文献库与导出）</span>'
       + (srcId ? ' <button class="pillbtn" data-reback="' + esc(srcId) + '" title="回到刚才阅读的位置">↑ 返回正文</button>' : "")
       + '<div class="reflist">' + (rows || '<p class="hint">文献库为空</p>') + '</div></div>';
   }
@@ -806,20 +874,55 @@
     toast("[" + n + "] 题录已更新（引用编号不变）");
   }
 
-  /* 全局委托：正文 [n] 点击 → 滚动定位 + 高亮；明细行的编辑/保存/取消 */
+  /* 题录卡：正文 [n] 点击 → 浮层（打开原文 / 定位文末） */
+  function citeUrlOf(f) {
+    if (f && f.doi) return "https://doi.org/" + String(f.doi).replace(/^https?:\/\/doi\.org\//, "");
+    return "https://openalex.org/works?search=" + encodeURIComponent((f && f.title) || "");
+  }
+  function showCitePop(anchor, n, f) {
+    let pop = document.getElementById("citePop");
+    if (pop) pop.remove();
+    pop = document.createElement("div");
+    pop.id = "citePop"; pop.className = "citePop";
+    pop.innerHTML = '<div class="cp-n">[' + n + "]</div><b>" + esc(f.title || "（无题名）") + "</b>"
+      + '<div class="hint">' + esc([f.author, f.venue, f.year].filter(Boolean).join(" · ")) + "</div>"
+      + '<div class="cp-row"><a class="pillbtn" href="' + esc(citeUrlOf(f)) + '" target="_blank" rel="noopener">↗ 打开原文</a>'
+      + '<button class="pillbtn" data-goto="' + n + '">↓ 定位文末</button>'
+      + '<button class="pillbtn" data-popx="1">✕</button></div>';
+    document.body.appendChild(pop);
+    const r = anchor.getBoundingClientRect();
+    pop.style.left = Math.min(window.innerWidth - 342, Math.max(8, r.left + window.scrollX - 40)) + "px";
+    pop.style.top = (r.bottom + window.scrollY + 8) + "px";
+  }
+  /* 全局委托：正文 [n] 点击 → 题录卡；明细行的编辑/保存/取消 */
   document.addEventListener("click", function (e) {
     const cl = e.target.closest(".citelink");
     if (cl) {
-      const n = cl.dataset.n;
+      const n = cl.dataset.n, p0 = P(), f = p0 && p0.papers[parseInt(n, 10) - 1];
+      if (!f) {
+        toast("[" + n + "] 暂无对应文献（正文引用与文献库不一致，建议跑一次「引用存在性核验」）");
+        return;
+      }
+      showCitePop(cl, n, f);
+      return;
+    }
+    const gt = e.target.closest("[data-goto]");
+    if (gt) {
+      const n = gt.dataset.goto;
       const row = document.querySelector('.refappendix .refrow[data-rn="' + CSS.escape(n) + '"]');
+      const pop = document.getElementById("citePop"); if (pop) pop.remove();
       if (row) {
+        const det = row.closest("details"); if (det) det.open = true;
         row.scrollIntoView({ behavior: "smooth", block: "center" });
         row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash");
       } else {
-        toast("[" + n + "] 暂无对应文献（正文引用与文献库不一致，建议跑一次「引用存在性核验」）");
+        toast("文末参考文献区还没展开或为空");
       }
       return;
     }
+    if (e.target.closest("[data-popx]")) { const pop = document.getElementById("citePop"); if (pop) pop.remove(); return; }
+    const pop0 = document.getElementById("citePop");
+    if (pop0 && !e.target.closest("#citePop")) pop0.remove();
     const ed = e.target.closest("[data-redit]");
     if (ed) { startRefEdit(ed.closest(".refrow")); return; }
     const sv = e.target.closest("[data-resave]");
@@ -1167,7 +1270,7 @@
     const p0 = P(); if (!p0) return toast("先新建项目");
     const pid = p0.id;
     const secs = Object.keys(p0.draft || {}).filter(k => (p0.draft[k] || "").length > 60);
-    if (!secs.length && !p0.outline) { toast("先在④写草稿或⑤采用参考稿，再生成 PPT"); return; }
+    if (!secs.length && !p0.outline) { toast("先在 ② 写草稿或采用参考稿，再生成 PPT"); return; }
     if (!(await askAI("生成答辩 PPT（.pptx 文件）？", ["AI 拆页 1 次 + 本地组装（约 10-14 页）", "同时下载「演讲稿.md」"], "开始生成"))) return;
     const prog = $("vProg"); prog.textContent = "AI 拆页中…";
     try {

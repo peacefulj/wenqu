@@ -5,7 +5,7 @@
  *       版本一变缓存名就变：新 SW 安装时重新下载全部资源，激活后清理旧缓存，页面上会提示「刷新」。
  */
 "use strict";
-const VERSION = "1.3.0";
+const VERSION = "1.4.2";
 const CACHE = "yanmo-v" + VERSION;
 const OWN = /^(wenqu|yanmo)-v/;   // 只清理研墨自己的旧缓存：github.io 同源下可能还有别的项目
 const SHELL = [
@@ -37,8 +37,33 @@ const SHELL = [
   "assets/ym-pdf.js",
   "assets/ym-export.js",
   "assets/ym-sync.js",
+  "assets/ym-md.js",
+  "assets/ym-emp.js",
+  "assets/ym-icons.js",
   "assets/ym-selftest.js",
   "assets/ym-try.js",
+  "assets/vendor/katex/katex.min.css",
+  "assets/vendor/katex/katex.min.js",
+  "assets/vendor/katex/fonts/KaTeX_AMS-Regular.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Caligraphic-Bold.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Caligraphic-Regular.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Fraktur-Bold.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Fraktur-Regular.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Main-Bold.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Main-BoldItalic.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Main-Italic.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Main-Regular.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Math-BoldItalic.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Math-Italic.woff2",
+  "assets/vendor/katex/fonts/KaTeX_SansSerif-Bold.woff2",
+  "assets/vendor/katex/fonts/KaTeX_SansSerif-Italic.woff2",
+  "assets/vendor/katex/fonts/KaTeX_SansSerif-Regular.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Script-Regular.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Size1-Regular.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Size2-Regular.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Size3-Regular.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Size4-Regular.woff2",
+  "assets/vendor/katex/fonts/KaTeX_Typewriter-Regular.woff2",
   "assets/demo/sample.bib",
   "assets/demo/sample.ris",
   "assets/demo/sample-csl.json",

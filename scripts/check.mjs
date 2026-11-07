@@ -108,6 +108,69 @@ const samples = {};
 check(Object.keys(samples).length === 3, "示例文件 assets/demo/sample.bib / sample.ris / sample-csl.json 都在");
 const AI = require(join(ROOT, "assets/ym-ai.js"));
 for (const r of require(join(ROOT, "assets/ym-selftest.js")).run(Bib, X, samples, AI)) check(r.ok, r.name, r.detail);
+/* ---------------- 4b 版本档案 / 结构图 / 实证工具（v1.4 新增） ---------------- */
+section("4b. 版本档案、结构图与实证工具（v1.4）");
+function loadIIFE(file) {
+  const noop = () => {};
+  const ctx = {
+    console, setTimeout, clearTimeout, setInterval, clearInterval, Promise, Date, JSON, Math,
+    Object, Array, String, Number, RegExp, Error, Uint8Array, Uint32Array, DataView, ArrayBuffer, TextEncoder, atob,
+    encodeURIComponent, decodeURIComponent,
+    fetch: () => Promise.reject(new Error("no-network")), URL, Blob, alert: noop,
+    localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+    sessionStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+    document: {
+      readyState: "complete", addEventListener: noop, removeEventListener: noop,
+      getElementById: () => null, querySelectorAll: () => [], querySelector: () => null,
+      createElement: () => ({ style: {}, dataset: {}, classList: { add: noop, remove: noop, toggle: noop }, setAttribute: noop, appendChild: noop, removeChild: noop, addEventListener: noop }),
+      body: { appendChild: noop }, createTreeWalker: () => ({ nextNode: () => false })
+    }
+  };
+  ctx.window = ctx;
+  vm.runInNewContext(read(file), ctx, { filename: file });
+  return ctx;
+}
+const ts0 = () => { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()); };
+try {
+  const WQC = loadIIFE("assets/wq-core.js").WQCore;
+  const vp = { id: "pv", versions: [] };
+  WQC.versionPush(vp, { ts: ts0(), kind: "更新", content: "A", field: "draft:引言" });
+  WQC.versionPush(vp, { ts: ts0(), kind: "更新", content: "B", field: "draft:引言" });
+  check(vp.versions.length === 1 && vp.versions[0].merged === 1, "同一节 5 分钟内连续保存合并为一版");
+  WQC.versionPush(vp, { ts: ts0(), kind: "更新", content: "B", field: "draft:引言" });
+  check(vp.versions.length === 1, "与最新一版内容相同不重复记版本");
+  for (let i = 0; i < 205; i++) WQC.versionPush(vp, { ts: ts0(), kind: "更新", content: "C" + i, field: "f" + i });
+  check(vp.versions.length === 200 && (vp.versionsOld || []).length >= 5, "版本上限 200 条，超出的旧版转入归档（不删除）");
+  let n1 = 0;
+  const vp2 = { id: "pv-notice", versions: [] };
+  WQC.versionNotice(vp2, "x", () => n1++); WQC.versionNotice(vp2, "x", () => n1++);
+  check(n1 === 1, "版本提示每个项目每次打开最多弹一次");
+} catch (e) { check(false, "版本档案规则", e.message); }
+try {
+  const YM = loadIIFE("assets/ym-md.js").YMMd;
+  const g1 = YM.flowParse('{"title":"理论框架","nodes":[{"id":"a","text":"数字金融"},{"id":"b","text":"农户创业"}],"edges":[{"from":"a","to":"b","label":"促进"}]}');
+  const g2 = YM.flowParse("A[数字金融] -> B[农户创业]: 促进");
+  check(g1 && g1.nodes.length === 2 && g1.edges.length === 1 && g2 && g2.nodes.length === 2, "ymflow 支持 JSON 与简单语法");
+  check(/<svg/.test(YM.flowSVG('{"nodes":["A","B"],"edges":[{"from":"A","to":"B"}]}')), "ymflow 生成 SVG 结构图");
+  const bar = YM.chartSVG('{"type":"bar","title":"描述统计","labels":["A","B"],"series":[{"name":"均值","values":[1,2]}]}');
+  const demo = YM.chartSVG('{"type":"bar","demo":true,"labels":["A"],"series":[{"values":[1]}]}');
+  check(/<svg/.test(bar) && /示意数据/.test(demo), "ymchart 生成 SVG，示意数据带水印");
+  check(/ymfig/.test(YM.mdToHTML("```ymflow\nA -> B\n```")), "Markdown 渲染器接住 ymflow 代码块");
+  const u8 = loadIIFE("assets/ym-md.js").YMZip.build({ "a.tex": "hello", "yanmo-images/img1.png": new Uint8Array([137, 80, 78, 71]) });
+  const head = String.fromCharCode.apply(null, Array.from(u8.slice(0, 2)));
+  const asText = Buffer.from(u8).toString("latin1");
+  check(head === "PK" && asText.indexOf("yanmo-images/img1.png") >= 0 && asText.indexOf("a.tex") >= 0, "LaTeX 图片包是合法 ZIP（含 .tex 与图片目录）");
+  const bytes = YM.dataUrlBytes("data:image/png;base64,iVBORw0KGgo=");
+  check(bytes.length === 8 && bytes[0] === 137 && bytes[1] === 80, "dataURL 能还原为二进制图片");
+} catch (e) { check(false, "结构图 / 图表渲染", e.message); }
+try {
+  const E = loadIIFE("assets/ym-emp.js").YMEmp;
+  const r = E.parseEsttab("VARIABLES  (1)  (2)\nx  0.123***  0.456**\n  (0.05)  (0.06)\nObservations  100  200");
+  check(/^\| 变量/m.test(r.markdown) && /观测值/.test(r.markdown), "esttab 输出转 Markdown 三线表");
+  const t = E.templates({ method: "did", y: "Y", x: "treat", ctrl: "size lev", data: "x.dta" });
+  check(/reghdfe/.test(t.stata) && /feols/.test(t.r) && /PanelOLS/.test(t.python), "实证代码模板覆盖 Stata / R / Python");
+} catch (e) { check(false, "实证代码与三线表", e.message); }
+
 const demoPdf = existsSync(join(ROOT, "assets/demo/demo-paper.pdf")) ? readFileSync(join(ROOT, "assets/demo/demo-paper.pdf")) : null;
 check(!!demoPdf && demoPdf.subarray(0, 5).toString("latin1") === "%PDF-" && /\/Count 2\b/.test(demoPdf.toString("latin1")), "示例 PDF assets/demo/demo-paper.pdf 有效（2 页）");
 
