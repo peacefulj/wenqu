@@ -87,7 +87,7 @@ check(shell.length > 10 && !missingShell.length, "SW 预缓存清单 " + shell.l
 const refs = new Set(), orderBad = [];
 for (const h of htmls) {
   const t = read(h), scripts = [];
-  for (const m of t.matchAll(/<(script|link)\b[^>]*?\b(?:src|href)="([^"#?]+)"/g)) {
+  for (const m of t.matchAll(/<(script|link)\b[^>]*?\b(?:src|href)="([^"#?]+)(?:\?[^"]*)?"/g)) {
     const u = m[2];
     if (/^(https?:|mailto:|data:|\/\/)/.test(u) || !/\.(js|css|webmanifest|png)$/.test(u)) continue;
     refs.add(u);

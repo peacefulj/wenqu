@@ -91,7 +91,12 @@ plan("package.json", (s) => s.replace(/("version"\s*:\s*)"[^"]+"/, '$1"' + next 
 plan("README.md", (s) => s.replace(/(当前版本：\*\*v)[^*]+(\*\*)/, "$1" + next + "$2"), "「当前版本：**v…**」");
 for (const h of readdirSync(ROOT).filter(f => f.endsWith(".html"))) {
   const t = read(h);
-  if (/data-ym-version>/.test(t)) plan(h, (s) => s.replace(/(data-ym-version>)v[^<]*(<)/g, "$1v" + next + "$2"), "页脚版本号");
+  if (!/data-ym-version>/.test(t) && !/assets\/version\.js/.test(t)) continue;
+  /* 页脚版本号 + version.js 的 ?v= 缓存参数一起改：SW 是 cache-first，
+     不带参数的话旧缓存会一直把页脚刷回老版本号（v1.5.2 那次就是这样） */
+  plan(h, (s) => s
+    .replace(/(data-ym-version>)v[^<]*(<)/g, "$1v" + next + "$2")
+    .replace(/assets\/version\.js(\?[^"']*)?/g, "assets/version.js?v=" + next), "页脚版本号 / version.js 缓存参数");
 }
 
 console.log((DRY ? "（演练，不写文件）" : "") + "研墨 v" + prev + " → v" + next + "（" + date + "）");

@@ -5,7 +5,7 @@
  *       版本一变缓存名就变：新 SW 安装时重新下载全部资源，激活后清理旧缓存，页面上会提示「刷新」。
  */
 "use strict";
-const VERSION = "1.5.5";
+const VERSION = "1.5.6";
 const CACHE = "yanmo-v" + VERSION;
 const OWN = /^(wenqu|yanmo)-v/;   // 只清理研墨自己的旧缓存：github.io 同源下可能还有别的项目
 const SHELL = [
@@ -102,6 +102,20 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;             // 官方 API / AI 中转一律直连
   if (url.pathname.endsWith("/sw.js")) return;            // SW 自身永远走网络
+
+  /* 版本号文件永远网络优先：页脚版本由此绘制，缓存旧了就永远显示老版本 */
+  if (url.pathname.endsWith("/assets/version.js")) {
+    e.respondWith(
+      fetch(req).then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => null);
+        }
+        return res;
+      }).catch(() => caches.match(req))
+    );
+    return;
+  }
 
   // 页面导航：网络优先，失败回退缓存（离线可用）
   if (req.mode === "navigate") {

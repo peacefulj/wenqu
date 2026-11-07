@@ -4,6 +4,13 @@
 
 ## [未发布]
 
+## [1.5.6] - 2026-11-08
+
+- **修页脚版本号停在旧版**：`assets/version.js` 被 Service Worker 按 cache-first 缓存，页面更新后仍用旧文件重绘页脚（表现为已是 v1.5.5、页脚却显示 v1.5.2）。现在：
+  - 发版脚本给 `version.js` 自动加 `?v=<版本>` 缓存参数，旧缓存自然失效；
+  - Service Worker 对 `version.js` 改为网络优先，离线时才回落缓存。
+  - 自检脚本支持带 `?v=` 的脚本引用（原来会让「加载顺序」检查误报）。
+
 ## [1.5.5] - 2026-11-08
 
 - **默认服务商回到研墨**：新建或升级后，AI 设置默认是「研墨（yingcompute）」+ `glm-5.3-flash`，不再默认走 TokenHub。
@@ -221,7 +228,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.5...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.6...HEAD
+[1.5.6]: https://github.com/peacefulj/wenqu/compare/v1.5.5...v1.5.6
 [1.5.5]: https://github.com/peacefulj/wenqu/compare/v1.5.4...v1.5.5
 [1.5.4]: https://github.com/peacefulj/wenqu/compare/v1.5.3...v1.5.4
 [1.5.3]: https://github.com/peacefulj/wenqu/compare/v1.5.2...v1.5.3
