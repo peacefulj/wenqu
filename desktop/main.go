@@ -97,12 +97,15 @@ func main() {
 		select {}
 	}
 
-	// 已有实例：直接把窗口再打开一次
-	if port, ok := runningInstance(); ok {
-		if err := openDefault(fmt.Sprintf("http://127.0.0.1:%d/index.html", port)); err != nil {
-			messageBox("研墨", "研墨已经在运行，但没能打开窗口：\n"+err.Error())
+	// 已有同版本实例：直接把窗口再打开一次
+	// 版本不同（例如旧版 exe 还开着）则不复用——否则双击新版 exe 看到的还是旧版页面
+	if port, ver, ok := runningInstance(); ok {
+		if ver == appVersion {
+			if err := openDefault(fmt.Sprintf("http://127.0.0.1:%d/index.html", port)); err != nil {
+				messageBox("研墨", "研墨已经在运行，但没能打开窗口：\n"+err.Error())
+			}
+			return
 		}
-		return
 	}
 
 	srv, url, err := startServer()
@@ -150,7 +153,7 @@ func startServer() (*http.Server, string, error) {
 	return srv, fmt.Sprintf("http://127.0.0.1:%d/index.html", port), nil
 }
 
-func runningInstance() (int, bool) {
+func runningInstance() (int, string, bool) {
 	client := &http.Client{Timeout: 600 * time.Millisecond}
 	for p := basePort; p < basePort+20; p++ {
 		res, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/__health", p))
@@ -162,10 +165,10 @@ func runningInstance() (int, bool) {
 		_ = dec.Decode(&m)
 		res.Body.Close()
 		if m["app"] == appTag {
-			return p, true
+			return p, m["version"], true
 		}
 	}
-	return 0, false
+	return 0, "", false
 }
 
 func handler() http.Handler {

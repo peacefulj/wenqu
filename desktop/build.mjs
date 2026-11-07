@@ -39,7 +39,9 @@ for (const f of pages.filter((x) => x.endsWith(".html"))) {
   const p = join(WEB, f);
   const s = readFileSync(p, "utf8")
     .replace(/navigator\.serviceWorker\.register\((?:'sw\.js'|"sw\.js")\)\.catch\(\(\) => \{\}\)/g,
-      "navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister()})}).catch(function(){})");
+      "navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister()})}).catch(function(){})")
+    /* 窗口标题带上版本号：一眼就能确认自己开的是不是新版 */
+    .replace(/<title>([^<]*)<\/title>/i, (m, t) => `<title>${t} · v${version}</title>`);
   writeFileSync(p, s);
 }
 

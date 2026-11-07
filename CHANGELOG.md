@@ -4,6 +4,9 @@
 
 ## [未发布]
 
+## [1.5.8] - 2026-11-08
+
+- **修桌面版“换了新 exe 还是旧版本”**：旧版 exe 还开着时，新版启动会复用它（原先只认程序标识、不认版本），于是窗口里仍是旧页面。现在版本不一致就另起一个服务并打开新版；窗口标题也带上版本号（如「科研工作台 · v1.5.8」），一眼可辨。
 - **新增 Cloudflare Worker 中转**（`relay/`）：腾讯 TokenHub 的 `OPTIONS` 返回 405，网页版带 Key 的请求会被浏览器预检拦下（`Failed to fetch`）。Worker 代为回答预检并转发到上游，支持流式（SSE）、来源白名单与可选口令；桌面版 exe 内置本机中转，不需要它。部署与接线步骤见 [relay/README.md](relay/README.md)。
 
 ## [1.5.7] - 2026-11-08
@@ -235,7 +238,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.7...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.8...HEAD
+[1.5.8]: https://github.com/peacefulj/wenqu/compare/v1.5.7...v1.5.8
 [1.5.7]: https://github.com/peacefulj/wenqu/compare/v1.5.6...v1.5.7
 [1.5.6]: https://github.com/peacefulj/wenqu/compare/v1.5.5...v1.5.6
 [1.5.5]: https://github.com/peacefulj/wenqu/compare/v1.5.4...v1.5.5
