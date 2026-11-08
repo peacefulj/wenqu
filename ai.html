@@ -4,22 +4,55 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI 设置 — 研墨</title>
-<meta name="description" content="研墨统一的 AI 配置：服务商、模型、API Key 只在这里填一次，参考稿与科研工作台共用。">
+<meta name="description" content="研墨统一的 AI 模型配置：一个模型填一次，参考稿与科研工作台共用。">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#2456e6">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 <style>
-  .aigrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-  .aiStatusCard{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 18px;border:1px solid var(--line);border-radius:12px;background:#fbfcfe;padding:12px 14px;font-size:13.5px}
-  .aiStatusCard > div{display:flex;flex-direction:column;gap:2px;min-width:0}
-  .aiStatusCard code{font-size:12px;color:#475569;word-break:break-all}
-  .aiStatusCard b{font-weight:600}
-  #aiStatus{margin-bottom:14px}
-  .aiactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
-  #aiTestMsg{min-height:20px}
-  details.aiadv{margin-top:14px;border-top:1px dashed var(--line);padding-top:10px}
-  details.aiadv summary{cursor:pointer;user-select:none;color:var(--muted);font-size:13px}
+  .modellist{display:flex;flex-direction:column;gap:10px}
+  .mcard{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;background:#fff;padding:12px 14px}
+  .mcard.on{border-color:#2456e6;box-shadow:0 0 0 1px #2456e6 inset}
+  .mcard .mi{flex:1;min-width:0}
+  .mcard .mn{font-weight:600;font-size:14.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;word-break:break-all}
+  .mcard .mm{font-size:12px;color:var(--muted);margin-top:3px;word-break:break-all}
+  .mcard .mb{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .badge-cur{background:#e8f0ff;color:#2456e6;border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:600}
+  .badge-key{background:#f1f5f9;color:#475569;border-radius:999px;padding:1px 9px;font-size:11.5px}
+  .badge-nokey{background:#fff4e5;color:#b45309;border-radius:999px;padding:1px 9px;font-size:11.5px}
+  .aiCurrent{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 18px;border:1px solid var(--line);border-radius:12px;background:#fbfcfe;padding:12px 14px;font-size:13.5px;margin-bottom:16px}
+  .aiCurrent > div{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .aiCurrent code{font-size:12px;color:#475569;word-break:break-all}
+  #aiTestMsg{min-height:20px;font-size:13px}
+  dialog#modelDlg{border:none;border-radius:14px;padding:0;width:min(680px,94vw);max-height:88vh;box-shadow:0 24px 60px rgba(15,23,42,.28)}
+  dialog#modelDlg::backdrop{background:rgba(15,23,42,.42)}
+  .dlg-h{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px;border-bottom:1px solid var(--line)}
+  .dlg-h b{font-size:16px}
+  .dlg-x{border:none;background:none;font-size:20px;line-height:1;color:#64748b;cursor:pointer;padding:2px 6px}
+  .dlg-b{padding:14px 20px;overflow:auto;max-height:64vh}
+  .dlg-f{display:flex;gap:8px;align-items:center;padding:12px 20px;border-top:1px solid var(--line);background:#fbfcfe;border-radius:0 0 14px 14px}
+  .fld{margin-bottom:14px}
+  .fld > label{display:block;font-size:13px;font-weight:600;margin-bottom:5px}
+  .fld .req{color:#c62828;margin-right:2px}
+  .fld input[type=text],.fld input[type=password],.fld input[type=number],.fld select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font-size:13.5px;font-family:inherit;background:#fff}
+  .fld .sub{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.55}
+  .rowline{display:flex;gap:10px;align-items:center}
+  .rowline .grow{flex:1;min-width:0}
+  .switch{position:relative;display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap}
+  .switch input{appearance:none;width:38px;height:21px;border-radius:999px;background:#cbd5e1;position:relative;cursor:pointer;transition:background .15s;margin:0}
+  .switch input:checked{background:#2456e6}
+  .switch input::after{content:"";position:absolute;top:2.5px;left:2.5px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+  .switch input:checked::after{left:19.5px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 11px;font-size:12px;cursor:pointer;color:#475569}
+  .chip:hover{border-color:#2456e6;color:#2456e6}
+  .eyebtn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:9px 11px;cursor:pointer;font-size:13px}
+  .adv{border-top:1px dashed var(--line);margin-top:6px;padding-top:12px}
+  .adv summary{cursor:pointer;user-select:none;font-size:13px;color:#475569;font-weight:600}
+  .adv .body{padding-top:12px}
+  .subtitle{font-size:12.5px;font-weight:600;color:#334155;margin:14px 0 8px}
+  .hintline{font-size:12px;color:var(--muted);line-height:1.6}
+  @media(max-width:640px){.mcard{flex-wrap:wrap}.mcard .mb{width:100%;justify-content:flex-start}}
 </style>
 </head>
 <body>
@@ -31,69 +64,156 @@
 
 <main class="container page">
   <h1 class="title">AI 设置 <span class="beta">全站只填一次</span></h1>
-  <p class="meta">参考稿、科研工作台、试用页共用这一份配置与 Key<span class="dot">·</span>只存在你自己的浏览器里，不上传任何服务器</p>
+  <p class="meta">参考稿、科研工作台、试用页共用「当前使用」的模型<span class="dot">·</span>Key 只存在你自己的浏览器里</p>
   <p class="hint" id="aiEnvNote" style="margin:-2px 0 12px"></p>
 
-  <div id="aiStatus" class="aiStatusCard" aria-live="polite"></div>
+  <div id="aiCurrent" class="aiCurrent" aria-live="polite"></div>
 
   <section class="block" style="margin-top:0">
-    <div class="aigrid">
-      <div><label for="aiProvider">服务商（选一个，地址与常用模型自动带出）</label><select id="aiProvider" aria-label="AI 服务商"></select></div>
-      <div><label for="aiModel">模型（可从下拉选，也可直接输入）</label>
-        <input id="aiModel" type="text" list="aiModelList" placeholder="glm-5.3-flash" autocomplete="off">
-        <datalist id="aiModelList"></datalist>
-      </div>
-      <div><label for="aiKey">API Key（只存本浏览器）</label><input id="aiKey" type="password" placeholder="sk-…" autocomplete="off"></div>
-      <div style="align-self:end"></div>
-    </div>
-    <p class="hint" id="aiProvHint" style="margin:6px 0 0"></p>
-
-    <div class="aiactions">
-      <button class="btn2 ghost" id="aiTest" type="button">测试连接</button>
+    <h2>模型列表<small>可以添加多个模型，点「设为当前」切换</small></h2>
+    <div id="modelList" class="modellist"></div>
+    <div class="row" style="margin-top:10px;align-items:center">
+      <button class="btn2" id="addModel" type="button">＋ 添加模型</button>
+      <button class="btn2 ghost" id="aiTest" type="button">测试当前模型</button>
       <button class="btn2 ghost" id="aiTestChat" type="button" title="发一条很短的请求（约几十 token），验证能不能真的生成">测试一次对话</button>
-      <button class="btn2" id="aiSave" type="button">保存设置</button>
-      <button class="btn2 ghost" id="aiClearKey" type="button">清除本机 Key</button>
       <a class="btn2 ghost" href="try.html#ai-debug">🐞 AI 调试</a>
     </div>
     <p class="hint" id="aiTestMsg" aria-live="polite"></p>
-
-    <details class="aiadv" id="aiAdv">
-      <summary>高级设置（API 地址 / 接口格式 / 上下文 / 价格 / 邮箱 / GROBID）</summary>
-      <div class="aigrid" style="margin-top:12px">
-        <div><label for="aiBase">API 地址（一般不用改）</label><input id="aiBase" type="text" placeholder="https://api.yingcompute.com/api/v1"></div>
-        <div><label for="aiFormat">接口格式（一般选「自动」）</label><select id="aiFormat" aria-label="接口格式"></select></div>
-        <div><label for="aiCtx">模型上下文上限（千 token，选填）</label><input id="aiCtx" type="text" inputmode="numeric" placeholder="留空自动（一般按 128）" aria-label="模型上下文上限，千 token"></div>
-        <div class="hint" id="aiFmtHint" style="align-self:end;line-height:1.6"></div>
-      </div>
-      <div class="aigrid" style="margin-top:12px">
-        <div><label for="aiPriceIn">单价·输入（元/百万token，选填）</label><input id="aiPriceIn" type="text" placeholder="如 2" aria-label="输入单价，元每百万token"></div>
-        <div><label for="aiPriceOut">单价·输出（元/百万token，选填）</label><input id="aiPriceOut" type="text" placeholder="如 8" aria-label="输出单价，元每百万token"></div>
-        <div><label for="upEmail">邮箱（Unpaywall 用，选填）</label><input id="upEmail" type="text" placeholder="your@mail.com"></div>
-        <div><label for="grobidUrl">GROBID 服务地址（选填）</label><input id="grobidUrl" type="text" placeholder="http://localhost:8070" aria-label="GROBID 服务地址"></div>
-      </div>
-      <div class="aiactions">
-        <label class="hint" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="aiConfirmChk"> AI 操作前弹「确认/取消」</label>
-        <label class="hint" style="display:flex;align-items:center;gap:6px" title="Key 存在 sessionStorage，关掉浏览器就清除；公共电脑建议勾选"><input type="checkbox" id="aiKeySession"> Key 只在本次会话有效</label>
-        <label class="hint" style="display:flex;align-items:center;gap:6px" title="允许模型先思考再回答：更慢、更费 token"><input type="checkbox" id="aiThinking"> 思考模式（默认关）</label>
-      </div>
-      <div id="aiBaseWarn" class="callout c-warn" style="margin:10px 0 0;padding:8px 12px;font-size:13px" hidden></div>
-    </details>
-
-    <div class="hint" style="margin-top:14px;line-height:1.8">
+    <p class="hint" style="margin-top:8px;line-height:1.8">
       💰 <b>还没有 Key？</b><a href="https://www.yingcompute.com/" target="_blank" rel="noopener">注册研墨领新人礼包</a>（按 token 计费、无套餐）；
       有兑换码的在 <a href="https://www.yingcompute.com/" target="_blank" rel="noopener">研墨控制台</a> → 令牌 → 兑换。
       <span id="usageBox" style="display:block;margin-top:4px"></span>
-    </div>
+    </p>
   </section>
+
+  <dialog id="modelDlg" aria-labelledby="dlgTitle">
+    <form id="modelForm" method="dialog" autocomplete="off">
+      <div class="dlg-h"><b id="dlgTitle">编辑模型</b><button class="dlg-x" type="button" id="dlgClose" aria-label="关闭">×</button></div>
+      <div class="dlg-b">
+        <div class="fld">
+          <label for="mPreset">常用服务商（选一个自动填地址 / 格式 / 模型）</label>
+          <select id="mPreset"><option value="">不填，手动配置</option></select>
+        </div>
+
+        <div class="fld">
+          <label for="mFormat"><span class="req">*</span>API 格式</label>
+          <select id="mFormat" required></select>
+        </div>
+
+        <div class="fld">
+          <label for="mBase"><span class="req">*</span>自定义请求地址</label>
+          <div class="rowline">
+            <div class="grow"><input id="mBase" type="text" required placeholder="https://tokenhub.tencentmaas.com/v1"></div>
+            <label class="switch" title="开启后不再自动补 /chat/completions，直接请求你填写的完整地址"><input type="checkbox" id="mFullUrl"> 完整 URL</label>
+          </div>
+          <div class="sub">请填写兼容所选格式的服务端点地址，不要以斜杠结尾。<code id="mPathHint">/chat/completions</code> 将会被补充到你填写的地址末尾。</div>
+        </div>
+
+        <div class="fld">
+          <label for="mModel"><span class="req">*</span>模型 ID</label>
+          <input id="mModel" type="text" required placeholder="deepseek/deepseek-flash">
+        </div>
+
+        <div class="fld">
+          <label for="mName">模型展示名称</label>
+          <div class="rowline">
+            <div class="grow"><input id="mName" type="text" maxlength="64" placeholder="留空则显示模型 ID"></div>
+            <span class="hint" id="mNameCount" style="white-space:nowrap">0/64</span>
+          </div>
+          <div class="sub">在模型列表中展示的名称，未设置时默认显示模型 ID。</div>
+        </div>
+
+        <div class="fld">
+          <label for="mKey"><span class="req">*</span>API 密钥</label>
+          <div class="rowline">
+            <div class="grow"><input id="mKey" type="password" placeholder="sk-…"></div>
+            <button class="eyebtn" type="button" id="mKeyEye" aria-label="显示或隐藏密钥">👁</button>
+          </div>
+          <div class="sub">只保存在本机浏览器；测试与生成时直接发往你填写的服务商。</div>
+        </div>
+
+        <details class="adv" id="mAdv">
+          <summary>高级配置</summary>
+          <div class="body">
+            <div class="subtitle">上下文窗口（Token）</div>
+            <div class="fld">
+              <label for="mCtxIn">输入</label>
+              <input id="mCtxIn" type="number" min="1000" step="1000" placeholder="128000">
+              <div class="chips" data-for="mCtxIn">
+                <button class="chip" type="button" data-v="128000">128k</button>
+                <button class="chip" type="button" data-v="256000">256k</button>
+                <button class="chip" type="button" data-v="512000">512k</button>
+                <button class="chip" type="button" data-v="1000000">1M</button>
+              </div>
+            </div>
+            <div class="fld">
+              <label for="mCtxOut">输出</label>
+              <input id="mCtxOut" type="number" min="256" step="256" placeholder="8192">
+              <div class="chips" data-for="mCtxOut">
+                <button class="chip" type="button" data-v="4096">4k</button>
+                <button class="chip" type="button" data-v="16000">16k</button>
+                <button class="chip" type="button" data-v="32000">32k</button>
+                <button class="chip" type="button" data-v="128000">128k</button>
+              </div>
+              <div class="sub">留空表示不限制；填了会作为单次生成的上限。</div>
+            </div>
+
+            <div class="subtitle">思考模式</div>
+            <div class="fld">
+              <label class="switch" style="font-weight:600;color:#334155"><input type="checkbox" id="mThinking"> 允许模型先思考再回答</label>
+              <div class="sub">更慢、更费 token；关闭时按「API 格式」发送对应的关闭参数。</div>
+            </div>
+            <div class="fld">
+              <label for="mThinkParam">参数名</label>
+              <input id="mThinkParam" type="text" placeholder="reasoning_effort">
+              <div class="sub">按模型 API 文档填写思考强度参数，例如 <code>reasoning_effort</code>；嵌套字段用点号分隔。留空则由接口格式决定。</div>
+            </div>
+            <div class="fld">
+              <label for="mThinkValues">可选值列表</label>
+              <input id="mThinkValues" type="text" placeholder="如 low, medium, high（英文逗号分隔）">
+              <div class="chips">
+                <button class="chip" type="button" data-tv="low,medium,high">low / medium / high</button>
+                <button class="chip" type="button" data-tv="minimal,low">minimal / low</button>
+                <button class="chip" type="button" data-tv="">清空</button>
+              </div>
+            </div>
+
+            <div class="subtitle">采样参数</div>
+            <div class="fld">
+              <label for="mTemp">Temperature</label>
+              <input id="mTemp" type="number" min="0" max="2" step="0.1" placeholder="留空使用最佳配置，或输入 0～2 之间的数值">
+            </div>
+            <div class="fld">
+              <label for="mTopP">Top P</label>
+              <input id="mTopP" type="number" min="0" max="1" step="0.05" placeholder="留空使用最佳配置，或输入 0～1 之间的数值">
+            </div>
+            <div class="fld">
+              <label for="mTopK">Top K</label>
+              <input id="mTopK" type="number" min="1" max="100" step="1" placeholder="留空使用最佳配置，或输入 1～100 之间的数值">
+              <div class="sub">Top K 仅 Anthropic 格式会发送，其余服务商一般不支持，留空即可。</div>
+            </div>
+          </div>
+        </details>
+        <div id="mTestMsg" class="hint" aria-live="polite" style="margin-top:10px"></div>
+      </div>
+      <div class="dlg-f">
+        <button class="btn2 ghost" type="button" id="mTest">测试连接</button>
+        <button class="btn2 ghost" type="button" id="mDelete" hidden>删除</button>
+        <span style="flex:1"></span>
+        <button class="btn2 ghost" type="button" id="mCancel">取消</button>
+        <button class="btn2" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
 </main>
 
 <footer class="site"><div class="container">
   <div class="links"><a href="index.html">首页</a> · <a href="studio.html">科研工作台</a> · <a href="quick.html">参考稿</a> · <a href="map.html">项目导图</a> · <a href="try.html">试用与测试</a> · <a href="https://github.com/peacefulj/wenqu" target="_blank" rel="noopener">GitHub 开源</a></div>
   <div class="disc">AI 相关功能由你配置的模型服务提供；Key 只保存在本机浏览器，调用时直接发往你填写的服务商。</div>
-  <div>© 2026 研墨 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.5.9</span> 更新日志</a></div>
+  <div>© 2026 研墨 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.6.0</span> 更新日志</a></div>
 </div></footer>
 
-<script src="assets/version.js?v=1.5.9"></script>
+<script src="assets/version.js?v=1.6.0"></script>
 <script src="assets/ym-ai.js"></script>
 <script src="assets/wq-core.js"></script>
 <script src="assets/ym-ai-setup.js"></script>

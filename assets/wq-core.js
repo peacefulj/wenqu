@@ -483,7 +483,7 @@
     var c = conf(), X = AIX();
     base = String(base || c.base || "").replace(/\/+$/, "");
     var fmt = X.resolve({ base: base, format: c.format });   /* v1.3.0：Anthropic 格式用 x-api-key 读 /v1/models */
-    var r = await fetch(X.endpoint(fmt, base, "models"), { headers: X.headers(fmt, key, false) });
+    var r = await fetch(X.endpoint(fmt, base, "models", !!c.fullUrl), { headers: X.headers(fmt, key, false) });
     if (!r.ok) throw new Error("HTTP " + r.status + (r.status === 404 ? "（这个接口不提供模型列表，可以直接试一次 AI 功能）" : ""));
     var j = await r.json();
     var ids = (j.data || []).map(function (m) { return m.id; });
@@ -540,7 +540,7 @@
      网络错误原样抛出（由调用方映射成人话）。返回 {res, fmt, model, url, fit, log} */
   async function aiFetch(c, req) {
     var X = AIX(), fmt = X.resolve(c), model = req.model || c.model || AI_DEF.model;
-    var url = X.endpoint(fmt, c.base || AI_DEF.base, "chat"), win = X.ctxWindow(c, model);
+    var url = X.endpoint(fmt, c.base || AI_DEF.base, "chat", !!c.fullUrl), win = X.ctxWindow(c, model);
     var log = debugStart(c, fmt, model, url, req);
     for (var attempt = 0; ; attempt++) {
       var fit = X.fit(req.messages, req.max_tokens, win);

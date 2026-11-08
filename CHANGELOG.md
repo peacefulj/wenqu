@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+## [1.6.0] - 2026-11-08
+
+- **AI 设置改为 Trae 式模型管理**：每个模型一份完整配置（API 格式、自定义请求地址 + 完整 URL 开关、模型 ID、展示名称、密钥、上下文输入 / 输出、思考参数、Temperature / Top P / Top K），可以添加多个模型并「设为当前」；参考稿与工作台共用当前模型。旧的单模型配置与按服务商分存的 Key 首次打开会自动迁移成模型记录。
+- **模型级参数真正生效**：输出上限作为单次生成的上限；「完整 URL」不再自动补 `/chat/completions`；Temperature / Top P / Top K 与自定义思考参数随请求发送。
+
 ## [1.5.9] - 2026-11-08
 
 - **AI 配置统一到一页**：新增 [ai.html](ai.html)，入口在页头「⚙️ AI 设置」（项目导图右侧）。参考稿页不再单独填地址 / Key，工作台原设置面板也改为跳转该页；三处共用同一份配置，按服务商分存的 Key 一次生效。设置页新增「测试一次对话」，可直接验证 Key 能否真正生成。
@@ -242,7 +247,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.9...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/peacefulj/wenqu/compare/v1.5.9...v1.6.0
 [1.5.9]: https://github.com/peacefulj/wenqu/compare/v1.5.8...v1.5.9
 [1.5.8]: https://github.com/peacefulj/wenqu/compare/v1.5.7...v1.5.8
 [1.5.7]: https://github.com/peacefulj/wenqu/compare/v1.5.6...v1.5.7

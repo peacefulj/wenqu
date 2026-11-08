@@ -41,8 +41,13 @@
     if (isDeepSeek(c.base)) return "thinking";
     return "openai";
   }
-  function endpoint(fmt, base, kind) {
+  function endpoint(fmt, base, kind, full) {
     var b = trimBase(base);
+    /* 「完整 URL」模式：地址就是端点，不再自动补 /chat/completions */
+    if (full) {
+      if (kind === "models") return b.replace(/\/(chat\/completions|messages|responses)$/i, "") + "/models";
+      return b;
+    }
     if (fmt === "anthropic" && !/\/v1$/i.test(b)) b += "/v1";
     return b + (kind === "models" ? "/models" : fmt === "anthropic" ? "/messages" : "/chat/completions");
   }
@@ -61,7 +66,12 @@
   /* b：OpenAI 风格的 {model, messages, max_tokens, temperature, stream}；c.thinking：是否允许模型先思考再回答 */
   function body(fmt, c, b) {
     c = c || {};
+    var toNum = function (v) { var n = parseFloat(v); return isFinite(n) ? n : null; };
     var think = !!c.thinking, mt = b.max_tokens || 4096, temp = b.temperature == null ? 0.3 : b.temperature;
+    /* 模型级参数（AI 设置 → 编辑模型）：采样、输出上限 */
+    var tSet = toNum(c.temperature), pSet = toNum(c.topP), kSet = toNum(c.topK), cap = toNum(c.ctxOut);
+    if (tSet != null) temp = tSet;
+    if (cap && cap > 0 && cap < mt) mt = cap;
     if (fmt === "anthropic") {
       var sys = [], list = [];
       (b.messages || []).forEach(function (m) {
@@ -81,6 +91,8 @@
       } else {
         a.thinking = { type: "disabled" };
         a.temperature = temp;
+        if (pSet != null) a.top_p = pSet;
+        if (kSet != null) a.top_k = kSet;
       }
       if (b.stream) a.stream = true;
       return a;
@@ -93,11 +105,16 @@
     } else {
       o.temperature = temp;
       o.max_tokens = mt;
+      if (pSet != null) o.top_p = pSet;
       if (fmt === "thinking") o.thinking = { type: think ? "enabled" : "disabled" };
       else if (fmt === "enable_thinking") o.enable_thinking = think;
       /* DeepSeek 的思考 token 计入 max_tokens（上限 393216）：开思考时多留 16K，免得正文被挤掉 */
       if (think && fmt === "thinking" && isDeepSeek(c.base)) o.max_tokens = mt + 16384;
     }
+    /* 自定义思考参数（如 reasoning_effort）：用「编辑模型」里填的参数名与第一个可选值 */
+    var tp = String(c.thinkParam || "").trim();
+    var tv = String((c.thinkValues || [])[0] || "").trim();
+    if (think && tp && tv && !(tp in o)) o[tp] = tv === "true" ? true : tv === "false" ? false : (/^-?\d+(\.\d+)?$/.test(tv) ? +tv : tv);
     if (b.stream) { o.stream = true; o.stream_options = { include_usage: true }; }
     return o;
   }
