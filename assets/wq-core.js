@@ -1239,31 +1239,55 @@
      hint 本节范式要求 / wordsTarget 字数目标 / en 英文模式 / citeRule 可用与禁用编号
      tplText 模板说明 / designText 设计审查 / outlineBlock 大纲与矩阵 / refsBlock 本节重点文献
      prevTail 上一节结尾 / material 用户已有材料 / formula 是否加公式规范 */
+  /* v1.9.0：分节模板正文可改（高级）。可编辑的是「怎么写」的结构；引用纪律 / 禁编造 /
+     图表与公式规范 / 输出格式由代码锁定，不进入可编辑正文，也删不掉。 */
+  var K_SEC_VARS = ["范式", "层级要求", "本节", "范式要求", "题目", "方法", "类型", "字数目标", "模板说明", "设计审查", "写作档案", "项目写作规范", "阶段补充要求", "本节补充要求", "本节文献", "大纲", "上一节衔接", "用户材料"];
+  var K_SEC_BODY = "你是学术写作助手（{{范式}}）。请基于大纲与文献矩阵，起草论文的「{{本节}}」一节{{层级要求}}。{{范式要求}}\n题目：{{题目}}\n研究方法：{{方法}}\n论文类型：{{类型}}\n{{字数目标}}\n{{模板说明}}\n{{设计审查}}\n{{写作档案}}\n{{项目写作规范}}\n{{阶段补充要求}}\n{{本节补充要求}}\n{{本节文献}}\n{{大纲}}\n{{上一节衔接}}\n{{用户材料}}";
+  function pBodyGet(kind) {
+    try { var o = JSON.parse(localStorage.getItem("wenqu_prompts") || "{}"); return String((o.body || {})[kind] || "").trim(); } catch (e) { return ""; }
+  }
+  function pBodyCheck(kind, text) {
+    var vars = kind === "section" ? K_SEC_VARS : [];
+    var t = String(text || ""), unknown = [], m, re = /\{\{([^{}]+)\}\}/g;
+    while ((m = re.exec(t))) { if (vars.indexOf(m[1].trim()) < 0) unknown.push(m[1].trim()); }
+    return { ok: !unknown.length, unknown: unknown, vars: vars };
+  }
+  function pRenderTpl(tpl, vars) {
+    return String(tpl || "").split("\n").map(function (line) {
+      var s = line.replace(/\{\{([^{}]+)\}\}/g, function (_, k) { var v = vars[k.trim()]; return v == null ? "" : v; });
+      return s.trim() ? s : "";
+    }).filter(Boolean).join("\n\n");
+  }
   function pSection(o) {
     o = o || {};
     var pq = o.pq || {}, lv = o.lv || {}, p = o.proj || {};
+    var vars = {
+      "范式": pq.name || "通用",
+      "层级要求": lv.length ? "：" + lv.length : "",
+      "本节": o.sec,
+      "范式要求": o.hint || "",
+      "题目": p.topic || "（未定）",
+      "方法": p.methods && p.methods.length ? p.methods.join("、") : (p.method || "（未指定）"),
+      "类型": p.type || "（未指定）",
+      "字数目标": o.wordsTarget ? "本节字数目标：约 " + o.wordsTarget + " 字（不要低于一半、不要超过 " + Math.round(o.wordsTarget * 1.4) + " 字）。" : "",
+      "模板说明": o.tplText || "",
+      "设计审查": o.designText || "",
+      "写作档案": o.noCustom ? "" : pStyleBlock(p),
+      "项目写作规范": o.noCustom ? "" : pGuideBlock(p),
+      "阶段补充要求": o.noCustom ? "" : pStageText("section", p),
+      "本节补充要求": o.noCustom ? "" : pNoteBlock(p, o.sec),
+      "本节文献": o.refsBlock || "",
+      "大纲": o.outlineBlock || "",
+      "上一节衔接": o.prevTail ? "上一节（" + (o.prevName || "上一节") + "）结尾：「…" + o.prevTail + "」，自然衔接，不要重复。" : "",
+      "用户材料": o.material ? "用户已有材料（尽量沿用其结构思路）：" + o.material : ""
+    };
     var out = [];
-    out.push("你是学术写作助手（" + (pq.name || "通用") + "范式）。请基于大纲与文献矩阵，起草论文的「" + o.sec + "」一节" + (lv.length ? "：" + lv.length : "") + "。" + (o.hint || ""));
-    out.push("题目：" + (p.topic || "（未定）"));
-    out.push("研究方法：" + (p.methods && p.methods.length ? p.methods.join("、") : (p.method || "（未指定）")));
-    out.push("论文类型：" + (p.type || "（未指定）"));
-    out.push("论述中在对应位置标注引用编号[n]（编号只能取自文献矩阵且禁止虚构；标注「禁止引用」的编号一律不得使用）。需要数据处用〔待补：xxx〕占位，不要虚构数值。" + (o.citeRule || ""));
-    if (o.wordsTarget) out.push("本节字数目标：约 " + o.wordsTarget + " 字（不要低于一半、不要超过 " + Math.round(o.wordsTarget * 1.4) + " 字）。");
+    out.push(pRenderTpl(pBodyGet("section") || K_SEC_BODY, vars));
+    /* ===== 以下为锁定段（L0）：不进入可编辑正文，始终追加 ===== */
+    out.push("【必须遵守·引用纪律】论述中在对应位置标注引用编号[n]（编号只能取自文献矩阵且禁止虚构；标注「禁止引用」的编号一律不得使用）。需要数据处用〔待补：xxx〕占位，不要虚构数值。" + (o.citeRule || ""));
     out.push(K_CHART);
     if (o.formula !== false) out.push(K_FORMULA);
     out.push("语言要求：" + (o.en ? K_LANG_EN : K_LANG_ZH));
-    if (o.tplText) out.push(o.tplText);
-    if (o.designText) out.push(o.designText);
-    if (!o.noCustom) {
-      out.push(pStyleBlock(p));
-      out.push(pGuideBlock(p));
-      out.push(pStageText("section", p));
-      out.push(pNoteBlock(p, o.sec));
-    }
-    if (o.refsBlock) out.push(o.refsBlock);
-    if (o.outlineBlock) out.push(o.outlineBlock);
-    if (o.prevTail) out.push("上一节（" + (o.prevName || "上一节") + "）结尾：「…" + o.prevTail + "」，自然衔接，不要重复。");
-    if (o.material) out.push("用户已有材料（尽量沿用其结构思路）：" + o.material);
     out.push("直接输出本节正文（Markdown，可用 #### 小标题），不要输出任何说明文字。");
     return out.filter(Boolean).join("\n\n");
   }
@@ -1324,7 +1348,8 @@
       noteBlock: pNoteBlock,
       risks: pRisks,
       stage: pStageText,
-      labels: function () { return K_STAGE_LABEL; }
+      labels: function () { return K_STAGE_LABEL; },
+      body: { get: pBodyGet, check: pBodyCheck, vars: function (k) { return k === "section" ? K_SEC_VARS.slice() : []; }, def: function (k) { return k === "section" ? K_SEC_BODY : ""; } }
     }
   };
   window.WQStore = WQStore;

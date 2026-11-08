@@ -76,6 +76,19 @@
         <span class="hint" id="psProjMsg"></span>
       </div>
 
+      <details id="psBodyBox" style="margin-top:14px" hidden>
+        <summary style="cursor:pointer;font-size:13px;font-weight:600">🔧 模板正文（高级）：改结构，不碰引用纪律</summary>
+        <p class="hint" style="margin:6px 0">正文里的 <code>{{变量}}</code> 在生成时替换为当前项目内容；下面的锁定区由系统追加，删不掉，也不需要写进正文。</p>
+        <div class="lock" id="psBodyLock"></div>
+        <div class="psrow" id="psVars" style="margin:6px 0"></div>
+        <textarea id="psBody" style="min-height:230px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px"></textarea>
+        <div class="psrow">
+          <button class="btn2" id="psBodySave" type="button">保存模板正文</button>
+          <button class="btn2 ghost" id="psBodyReset" type="button">恢复默认正文</button>
+          <span class="hint" id="psBodyMsg"></span>
+        </div>
+      </details>
+
       <div class="psrow" style="margin-top:14px">
         <button class="btn2 ghost" id="psPreview" type="button">👁 预览追加内容</button>
         <span class="hint" id="psPrevMsg"></span>
@@ -103,10 +116,10 @@
 <footer class="site"><div class="container">
   <div class="links"><a href="index.html">首页</a> · <a href="studio.html">科研工作台</a> · <a href="quick.html">参考稿</a> · <a href="map.html">项目导图</a> · <a href="ai.html">AI 设置</a> · <a href="https://github.com/peacefulj/wenqu" target="_blank" rel="noopener">GitHub 开源</a></div>
   <div class="disc">提示词只影响「怎么写 / 怎么审」，不改变引用纪律与诚信底线；数据只存本机浏览器。</div>
-  <div>© 2026 研墨 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.8.0</span> 更新日志</a></div>
+  <div>© 2026 研墨 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.9.0</span> 更新日志</a></div>
 </div></footer>
 
-<script src="assets/version.js?v=1.8.0"></script>
+<script src="assets/version.js?v=1.9.0"></script>
 <script src="assets/ym-ai.js"></script>
 <script src="assets/wq-core.js"></script>
 <script>
@@ -153,10 +166,25 @@
     var html = "", lastGroup = "";
     KINDS.forEach(function (k) {
       if (k.group !== lastGroup) { html += '<div class="psgroup">' + k.group + '</div>'; lastGroup = k.group; }
-      var has = !!String(cfgGlobal(k.id, cfg)).trim();
+      var has = !!String(cfgGlobal(k.id, cfg)).trim() || !!String(((cfg.body || {})[k.id]) || "").trim();
       html += '<button class="psitem' + (k.id === state.cur ? " on" : "") + (has ? " custom" : "") + '" data-k="' + k.id + '"><span>' + k.name + '</span><span class="dot" title="' + (has ? "已自定义" : "未自定义") + '"></span></button>';
     });
     $("psList").innerHTML = html;
+  }
+  var SEC_LOCK = "【必须遵守·引用纪律】论述中在对应位置标注引用编号[n]（编号只能取自文献矩阵且禁止虚构；标注「禁止引用」的编号一律不得使用）。需要数据处用〔待补：xxx〕占位，不要虚构数值。\n图表规范：Markdown 表格 / ymflow / ymchart；缺真实数据写〔待补〕，禁止编造数值。\n公式规范：行内 $...$，独立 $$...$$。\n语言要求：中文（或英文模式）。\n输出格式：直接输出本节正文（Markdown），不要输出任何说明文字。";
+  function renderBody(k) {
+    var box = $("psBodyBox");
+    var can = k.id === "section" && window.WQCore && WQCore.prompt && WQCore.prompt.body;
+    box.hidden = !can;
+    if (!can) return;
+    $("psBodyLock").textContent = SEC_LOCK;
+    var vars = WQCore.prompt.body.vars("section");
+    $("psVars").innerHTML = vars.map(function (v) {
+      return '<code style="background:#eef2f7;border-radius:6px;padding:1px 6px;font-size:11.5px">{{' + v + '}}</code>';
+    }).join(" ");
+    var cfg = loadCfg();
+    $("psBody").value = ((cfg.body || {}).section || "").trim() || WQCore.prompt.body.def("section");
+    msg("psBodyMsg", "");
   }
   function renderEditor() {
     var k = KINDS.filter(function (x) { return x.id === state.cur; })[0];
@@ -170,6 +198,7 @@
     msg("psGlobalMsg", ""); msg("psProjMsg", ""); msg("psPrevMsg", "");
     $("psPrev").hidden = true;
     renderProj();
+    renderBody(k);
     renderHist();
   }
   function renderProj() {
@@ -187,13 +216,20 @@
     var arr = (cfg.hist || []).filter(function (h) { return h.kind === state.cur; }).slice(0, 8);
     $("psHist").hidden = !arr.length;
     $("psHistList").innerHTML = arr.map(function (h, i) {
-      return '<div class="h"><span>' + h.ts + " · " + (h.scope === "global" ? "全局" : "项目") + " · " + String(h.text || "").replace(/\s+/g, " ").slice(0, 40) + '</span><button data-restore="' + i + '">恢复</button></div>';
+      return '<div class="h"><span>' + h.ts + " · " + (h.scope === "global" ? "全局" : h.scope === "body" ? "模板正文" : "项目") + " · " + String(h.text || "").replace(/\s+/g, " ").slice(0, 40) + '</span><button data-restore="' + i + '">恢复</button></div>';
     }).join("");
   }
   function restore(i) {
     var cfg = loadCfg();
     var arr = (cfg.hist || []).filter(function (h) { return h.kind === state.cur; });
     var h = arr[i]; if (!h) return;
+    if (h.scope === "body") {
+      cfg.body = cfg.body || {};
+      if (String(h.text || "").trim()) cfg.body.section = h.text; else delete cfg.body.section;
+      saveCfg(cfg); renderList(); renderEditor();
+      msg("psBodyMsg", "已回滚模板正文到 " + h.ts);
+      return;
+    }
     if (h.scope === "global") {
       cfg.global = cfg.global || {}; cfg.global[state.cur] = h.text || "";
       saveCfg(cfg); renderList(); renderEditor();
@@ -243,6 +279,27 @@
     if (!confirm("清空当前项目在这一项的补充要求？")) return;
     $("psProj").value = ""; $("psSaveProj").click();
   });
+  $("psBodySave").addEventListener("click", function () {
+    if (!(window.WQCore && WQCore.prompt && WQCore.prompt.body)) return;
+    var t = $("psBody").value;
+    var chk = WQCore.prompt.body.check("section", t);
+    if (!chk.ok) { msg("psBodyMsg", "未知变量：" + chk.unknown.join("、") + "（可用变量见上方；写错会导致该段为空）", true); return; }
+    if (!guard(t, "模板正文")) { msg("psBodyMsg", "未保存（与引用纪律冲突）", true); return; }
+    var cfg = loadCfg(); cfg.body = cfg.body || {};
+    var isDefault = t.trim() === WQCore.prompt.body.def("section").trim();
+    if (isDefault) delete cfg.body.section; else cfg.body.section = t;
+    histPush(cfg, "section", "body", t);
+    saveCfg(cfg); renderList(); renderHist();
+    msg("psBodyMsg", isDefault ? "与默认一致，已恢复默认" : "已保存：下一次分节写作使用你的模板正文");
+  });
+  $("psBodyReset").addEventListener("click", function () {
+    if (!confirm("恢复默认模板正文？你改的结构会丢失（历史里仍可找回）。")) return;
+    var cfg = loadCfg(); cfg.body = cfg.body || {}; delete cfg.body.section;
+    histPush(cfg, "section", "body", "");
+    saveCfg(cfg); renderList();
+    $("psBody").value = WQCore.prompt.body.def("section");
+    msg("psBodyMsg", "已恢复默认正文");
+  });
   $("psPreview").addEventListener("click", function () {
     var p = curProj();
     var b = (window.WQCore && WQCore.prompt) ? WQCore.prompt.stage(state.cur, p) : "";
@@ -273,6 +330,7 @@
         var g = o.global || (o.v ? o.global : null);
         if (!g || typeof g !== "object") throw new Error("不是有效的提示词配置");
         cfg.global = Object.assign({}, cfg.global || {}, g);
+        if (o.body && typeof o.body === "object") cfg.body = Object.assign({}, cfg.body || {}, o.body);
         if (Array.isArray(o.hist)) cfg.hist = (o.hist || []).concat(cfg.hist || []).slice(0, 60);
         if (!saveCfg(cfg)) throw new Error("保存失败（存储空间已满）");
         renderList(); renderEditor();
