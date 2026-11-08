@@ -291,10 +291,15 @@
             <div class="wstep">
               <div class="wstep-h"><b>第 3 步 · 按大纲逐节写</b><span class="hint">已写过的节带 ✓；「生成文末参考文献表」只生成文末条目、不写入正文；一键全文可中断续写</span></div>
               <div class="tmpl" id="secBtns" style="width:100%"></div>
+              <div class="row" id="refImportRow" hidden style="margin-top:6px;align-items:center">
+                <span class="hint" id="refImportHint" style="flex:0 1 auto"></span>
+                <button id="btnAdoptRef" class="btn2" type="button" style="background:#6d28d9">📥 参考稿导入为我的草稿</button>
+              </div>
               <div class="row" style="margin-top:6px">
                 <button id="btnGoLit" class="btn2 ghost" type="button">📚 文献库</button>
                 <button id="btnRefsSec" class="btn2" title="用文献库生成文末参考文献表；不会写入各节正文">📚 生成文末参考文献表</button>
                 <button id="btnWriteAll" data-ai class="btn2" style="background:#0a7a43">⚡ 按大纲一键写全文</button>
+                <button id="btnGapAdvice" data-ai class="btn2" style="background:#b45309" title="指出还必须补的数据 / 文献 / 内容，并给院士级与博导级建议">🎓 缺口诊断（院士 / 博导视角）</button>
                 <button id="btnStopAll" class="btn2 gray" hidden>停止</button>
                 <span class="hint" id="wAllProg"></span>
               </div>
@@ -332,7 +337,6 @@
               </label>
               <span class="hint">预设只排版不代写；具体以学校/期刊最新模板为准。</span>
             </div>
-            <div class="tmpl" id="secBtns" style="width:100%"></div>
             <details class="fold" style="margin:10px 0">
               <summary>✍️ 个人写作档案（跨项目共用，只存本机浏览器；AI 按你的风格起草）</summary>
               <div class="body">
@@ -744,7 +748,7 @@
 <footer class="site"><div class="container">
   <div class="links"><a href="index.html">首页</a> · <a href="quick.html">参考稿</a> · <a href="try.html">试用与测试</a> · 发现问题？<a href="mailto:info@yingcompute.com">邮件告诉我们</a> · <a href="https://github.com/peacefulj/wenqu/issues" target="_blank" rel="noopener">GitHub Issues</a></div>
   <div class="disc">本平台检索与 OA 链接来自 OpenAlex / Crossref / Unpaywall 官方公开接口，仅指向来源方标注的合法开放版本；不提供文献代下、代写服务。AI 产出（速读、审稿、综述草稿、引用匹配）均可能出错，使用前请人工核对；学术润色仅做语言表达优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器；上传的 PDF 也只存在本机。</div>
-  <div>© 2026 研墨工作台 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.7.2</span> 更新日志</a> · 数据接口礼貌限速</div>
+  <div>© 2026 研墨工作台 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.7.3</span> 更新日志</a> · 数据接口礼貌限速</div>
 </div></footer>
 
 <aside id="verDrawer">
@@ -822,7 +826,7 @@ document.addEventListener("click", e => {
 });
 </script>
 <link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
-<script src="assets/version.js?v=1.7.2"></script>
+<script src="assets/version.js?v=1.7.3"></script>
 <script src="assets/vendor/katex/katex.min.js"></script>
 <script src="assets/ym-ai.js"></script>
 <script src="assets/wq-core.js"></script>

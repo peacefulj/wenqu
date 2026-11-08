@@ -780,9 +780,15 @@ function outlineParse(p) {
     list = m[1].split(/[\n|｜;；]/).map(s => s.replace(/^[\s\d.、,，\-*※]+/, "").replace(/[（(].*?[)）]/g, "").trim()).filter(Boolean);
     if (list.length) source = "outline";
   }
+  /* quick.html 生成的项目：outline 是「1. **引言** — 要点」这种摘要式提纲，真实节名在 ref.order 里 */
+  if (!list.length && p && p.ref && Array.isArray(p.ref.order) && p.ref.order.length) {
+    list = p.ref.order.slice(); source = "ref";
+  }
   if (!list.length) {
     list = (txt.match(/^\s*(?:\d+[.、)]|第[一二三四五六七八九十]+[章节])\s*([^\n：:]{2,30})/gm) || [])
-      .map(s => s.replace(/^\s*(?:\d+[.、)]|第[一二三四五六七八九十]+[章节])\s*/, "").trim());
+      .map(s => s.replace(/^\s*(?:\d+[.、)]|第[一二三四五六七八九十]+[章节])\s*/, "")
+        .replace(/\*\*/g, "").split(/[—–|｜：:]/)[0].trim())
+      .filter(Boolean);
     if (list.length) source = "numbered";
   }
   if (!list.length) {
@@ -938,6 +944,24 @@ function renderW4() {
   }
   renderSecBtns();
 }
+/* 参考稿节（quick.html 生成的 p.ref.sections）——工作台草稿是 p.draft，两者原本互不相通 */
+function refSecsOf(p) {
+  const r = p && p.ref;
+  if (!r || !r.sections) return [];
+  const order = (r.order && r.order.length ? r.order : Object.keys(r.sections));
+  return order.filter(n => r.sections[n] && String(r.sections[n].text || "").trim());
+}
+/* ② 的导入条：有参考稿且草稿还没导入时出现 */
+function renderRefImport() {
+  const row = $("refImportRow"); if (!row) return;
+  const p = cur();
+  const refs = refSecsOf(p);
+  const draft = (p && p.draft) || {};
+  const todo = refs.filter(n => !String(draft[n] || "").trim());
+  if (!refs.length || !todo.length) { row.hidden = true; return; }
+  row.hidden = false;
+  $("refImportHint").textContent = "项目里有参考稿（" + refs.length + " 节，已采用 " + (refs.length - todo.length) + " 节）：导入后就能在 ② 里逐节修改、内审、导出。";
+}
 /* 分节按钮：章节来自大纲（【章节清单】）；已写过的节带 ✓ */
 function renderSecBtns() {
   const p = cur(); if (!p) { $("secBtns").innerHTML = '<p class="hint">先新建项目</p>'; return; }
@@ -949,7 +973,30 @@ function renderSecBtns() {
     : "";
   $("secBtns").innerHTML = warn + info.list.map(s =>
     `<button class="btn2 sec${(p.draft || {})[s] ? " done" : ""}" data-sec="${esc(s)}" ${dis}>${(p.draft || {})[s] ? "✓ " : ""}写：${esc(s)}</button>`).join("");
+  renderRefImport();
 }
+/* 参考稿 → 我的草稿：只填空节，已有内容的节不覆盖（覆盖走「🛠 参考稿修改」的整节采用，那里有 diff） */
+$("btnAdoptRef").addEventListener("click", async () => {
+  const p0 = cur(); if (!p0) return;
+  const pid = p0.id;
+  const refs = refSecsOf(p0);
+  const todo = refs.filter(n => !String((p0.draft || {})[n] || "").trim());
+  if (!todo.length) return toast("参考稿已全部导入");
+  if (!(await askAI("把参考稿导入为我的草稿？", [
+    "将写入 " + todo.length + " 节：" + todo.join("、"),
+    "只填空节，已有内容不覆盖；导入后可在 ② 逐节修改、内审、导出",
+    "归属账本记为「参考原样」，导出时附归属统计"
+  ], "导入"))) { return; }
+  const p = liveProj(pid); if (!p) return;
+  p.draft = p.draft || {};
+  let n = 0;
+  todo.forEach(sec => { p.draft[sec] = String(p.ref.sections[sec].text || "").trim(); n++; });
+  trailAdd(p, "act", "参考稿导入为草稿", n + " 节 · 归属账本记为参考原样");
+  save();
+  try { renderSecBtns(); renderProjects(); renderVerCount(); renderStageCards(); } catch (e) {}
+  toast("已导入 " + n + " 节到「我的稿」，可继续修改与导出");
+  $("wProg").textContent = "已导入 " + n + " 节参考稿——点任意「写：…」可在原稿上继续改，或直接导出。";
+});
 $("secBtns").addEventListener("click", (e) => {
   const b = e.target.closest("[data-sec]"); if (!b) return;
   withBusy(b, () => draftSection(b.dataset.sec, b));
@@ -1128,6 +1175,64 @@ $("btnWriteAll").addEventListener("click", () => withBusy($("btnWriteAll"), asyn
   $("wAllProg").textContent = `完成 ${ok}/${todo.length}` + (bad.length ? "；未写入：" + bad.join("、") : "") + (wAllStop ? "（已停止，可再次点一键续写）" : "");
   renderSecBtns(); renderStageBadges();
 }));
+
+/* 缺口诊断：把「还差什么」说清楚，并给院士级（领域判断）与博导级（可执行）两套建议 */
+$("btnGapAdvice").addEventListener("click", () => withBusy($("btnGapAdvice"), async () => {
+  const p0 = cur(); if (!p0) return wqNotice("先新建项目");
+  const pid = p0.id, out = $("wOut"), prog = $("wProg");
+  const body = draftAllText(p0);
+  if (!body.trim()) { prog.textContent = "还没有正文可诊断：先写一节、或「📥 参考稿导入为我的草稿」"; return; }
+  if (!(await askAI("做一次缺口诊断？", [
+    "基于现有正文与文献库，列出必须补的数据 / 文献 / 内容",
+    "并给院士级（领域贡献）与博导级（可执行）两套建议",
+    "调用 AI 1 次，约 40-70 秒"
+  ], "开始诊断"))) { prog.textContent = "已取消"; return; }
+  prog.textContent = "诊断中：逐条核对证据、文献与论证缺口…";
+  try {
+    const pq = PQ(p0), lv = LV(p0);
+    const nPaper = (p0.papers || []).length, nAbs = (p0.papers || []).filter(f => f.abs).length;
+    const todoN = (body.match(/〔待补[^〕]*〕/g) || []).length;
+    const citeN = Object.keys(WQCore.citeSet(body)).length;
+    const cites = Object.keys(WQCore.citeSet(body)).map(Number);
+    const outRange = cites.filter(k => k < 1 || k > nPaper);
+    const secList = Object.keys(p0.draft || {}).filter(k => String(p0.draft[k] || "").trim());
+    const txt = await callAI(`你是资深学术评审，同时具备两个视角：中国科学院/工程院院士（判断领域贡献与长期价值）与博士生导师（判断可执行性与审稿人追问）。请对下面这篇稿件做「缺口诊断」并给建议。
+
+稿件信息
+- 题目：${p0.topic || p0.name || "（未定）"}
+- 学科范式：${pq.name}；层级：${lv.name}；类型：${p0.type || "（未定）"}；方法：${p0.method || "（未指定）"}
+- 已有章节：${secList.join("、") || "（无）"}
+- 文献库：${nPaper} 篇（其中 ${nAbs} 篇有摘要）；文献矩阵：${p0.matrix ? "已生成" : "未生成"}
+- 正文引用编号：${citeN} 个（${cites.slice(0, 20).join(",") || "无"}）${outRange.length ? "；⚠ 越界编号 " + outRange.join(",") : ""}
+- 未填占位〔待补〕：${todoN} 处
+
+正文（节选，按节给全）：
+${secList.map(s => "## " + s + "\n" + String(p0.draft[s]).slice(0, 2200)).join("\n\n").slice(0, 12000)}
+
+请严格按下面六部分输出（中文，Markdown，表格用于清单）：
+一、必须补的数据（表格列：数据项 / 支撑哪节哪个论点 / 获取途径 / 没有它的后果 / 拿不到时的替代方案）
+二、必须补的文献（缺口类型 + 可直接粘贴的检索式，标明数据库；**不要编造具体论文题名**，除你高度确定的经典文献外一律写「待检索核实」）
+三、必须补的内容与论证（指出跳步、循环论证、结论超出证据的地方，逐条给出补法）
+四、院士级建议（3-5 条，只谈：这项工作在全领域的定位、真正的原创点是否成立、五年后是否还值得引用、可以冲什么层次的期刊/奖项；指出"看起来像增量"的风险）
+五、博导级建议（5-8 条，可执行：本周能做什么、每个表/图怎么补、审稿人最可能追问的 3 个问题及应答准备、写作与投稿顺序）
+六、优先级清单（P0 必须补否则无法投/答辩；P1 显著提升；P2 锦上添花），每条一句话可勾选
+
+硬性要求：不得编造数据、文献题名、期刊指标；所有数值建议必须标明是「示例/待核实」。`, 6000);
+    setMD(out, txt); out.hidden = false; $("btnWCopy").hidden = false;
+    const p = liveProj(pid); if (p) {
+      p.outs = p.outs || {}; p.outs.gaps = withMeta(txt, "现有正文 + 文献库");
+      p.showW = "gaps"; p.showV = "gaps";     // 刷新后 ② 与 ③ 都还能看到诊断结果
+      addVersion(p, "缺口诊断（院士/博导视角）", p.outs.gaps, "outs.gaps");
+      trailAdd(p, "ai", "缺口诊断（院士 / 博导视角）", secList.length + " 节 · " + nPaper + " 篇文献");
+      save();
+    }
+    prog.textContent = "完成 ✓ 已存入项目（工具台可回看），按 P0 → P1 顺序补";
+    try { renderVerCount(); renderProjects(); } catch (e) {}
+  } catch (e) { prog.textContent = "失败：" + e.message; }
+}));
+function draftAllText(p) {
+  return Object.keys(p.draft || {}).map(k => String(p.draft[k] || "")).filter(Boolean).join("\n\n");
+}
 
 /* S1：②分节写作的建议态预览（与导图共用 commit 管线；X2/诚信#1 的写入口收紧） */
 function openSuggest4(o) {

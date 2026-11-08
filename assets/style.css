@@ -423,25 +423,6 @@ ol.tsteps .go a{background:#fff}
   #wbSec{flex:1 1 100%!important}
 }
 
-/* ===== v1.4.1 新手路径：把 6 个并列入口收成一条推荐线 ===== */
-.firstrun{display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 18px;margin:18px 0 6px;box-shadow:var(--shadow-1)}
-.fr-lead{display:flex;flex-direction:column;min-width:150px}
-.fr-lead b{font-size:15px}
-.fr-lead span{font-size:12.5px;color:var(--muted)}
-.fr-steps{display:flex;gap:10px;list-style:none;margin:0;padding:0;flex-wrap:wrap}
-.fr-steps a{display:flex;gap:9px;align-items:flex-start;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:11px;padding:8px 12px;min-width:190px;flex:1}
-.fr-steps a:hover{border-color:var(--accent);background:var(--accent-weak)}
-.fr-steps b{flex:0 0 22px;height:22px;border-radius:50%;background:var(--accent-weak);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px}
-.fr-steps span{font-size:13px;font-weight:600;line-height:1.4}
-.fr-steps small{display:block;font-size:11.5px;color:var(--muted);font-weight:400;margin-top:2px}
-.fr-go{white-space:nowrap}
-@media(max-width:860px){
-  .firstrun{grid-template-columns:1fr;gap:10px}
-  .fr-steps{flex-direction:column}
-  .fr-steps a{min-width:0}
-  .fr-go{text-align:center}
-}
-
 /* 参考稿页：窄屏 Key 设置区单列，价格输入允许换行 */
 @media(max-width:640px){
   #nokey .grid4{grid-template-columns:1fr!important}

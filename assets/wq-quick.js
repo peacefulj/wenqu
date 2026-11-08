@@ -385,7 +385,7 @@
         $("qMsg").textContent = "提纲已生成（" + (proj.refDraft.outline.sections || []).length + " 节" + (proj._form.secs !== (proj.refDraft.outline.sections || []).length ? "，你设了 " + proj._form.secs + " 节" : "") + "）——请在上方确认/编辑后点「🚀 确认提纲，开始写正文」";
         $("qGo").textContent = "▶ 续跑（从断点继续）";
       } else {
-        $("qMsg").textContent = "完成 ✓ 成稿已生成（共 " + (proj.ref.order || []).length + " 节 / " + (proj.papers || []).length + " 篇文献）——右侧可直接预览、导 .md / Word，或进工作台继续写";
+        $("qMsg").textContent = "完成 ✓ 成稿已生成（共 " + (proj.ref.order || []).length + " 节 / " + (proj.papers || []).length + " 篇文献）——右侧可直接预览、导 .md / Word；进工作台点「📥 参考稿导入为我的草稿」就能逐节继续改、内审、导出";
         renderFinal(proj, proj.ref.fullText || "", (proj.refDraft && proj.refDraft.refs) || []);
         $("qGoStudio").href = "studio.html?p=" + proj.id + "&stage=4";
         var goMap = document.getElementById("qGoMap");
