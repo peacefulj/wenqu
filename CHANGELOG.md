@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+## [1.7.2] - 2026-11-08
+
+- **找不到浏览器时不再退出**：桌面版拉不起 Edge/Chrome 时会提示「手动访问 http://127.0.0.1:17823」，随后却直接退出，那个地址根本打不开。现在提示之后继续常驻提供服务，手动访问可用；关闭提示窗口也不影响。
+- **类型即骨架**：以前「论文类型」只出现在提示词里，选「文献综述 / 开题报告 / 案例报告」仍按原创论文骨架（摘要—方法—结果）出章节，综述照样写成实证论文。现在切换类型会自动套用对应模板（综述型 / 开题报告 / 案例研究）；手选模板后不再被类型覆盖，换回其他类型会自动收回自动套用的模板。
+
 ## [1.7.1] - 2026-11-08
 
 - **修桌面版 TokenHub 经本机中转时仍开思考**：`/__ai/v1` 这种同源中转地址原来没被识别为 DeepSeek 系，关闭思考时不会发 `thinking: disabled`，研究设计审查等长输出会被思考占满（实测只存下「# 研究」四个字）。现在中转地址也识别；输出被截断时会直接报错，不再把半截内容存进项目。
@@ -263,7 +268,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.7.1...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.7.2...HEAD
+[1.7.2]: https://github.com/peacefulj/wenqu/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/peacefulj/wenqu/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/peacefulj/wenqu/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/peacefulj/wenqu/compare/v1.5.9...v1.6.0

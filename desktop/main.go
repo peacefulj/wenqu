@@ -118,8 +118,9 @@ func main() {
 	if err != nil {
 		// 找不到 Edge / Chrome：退回默认浏览器
 		if err2 := openDefault(url); err2 != nil {
-			messageBox("研墨", "没能打开浏览器。\n\n请先安装 Microsoft Edge，或手动访问：\n"+url)
-			return
+			/* 打不开任何浏览器也不能退出：提示里给的地址必须真能访问（无 Edge 的 Windows / Linux 冒烟测试） */
+			messageBox("研墨", "没能打开浏览器。\n\n请先安装 Microsoft Edge，或手动访问：\n"+url+"\n\n（此窗口关闭前服务会一直运行）")
+			select {}
 		}
 		messageBox("研墨", "已用默认浏览器打开研墨。\n\n注意：请保持「"+exeName()+"」运行，关闭后页面将无法再加载。")
 		select {}

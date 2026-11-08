@@ -65,6 +65,28 @@ const TPL = (p) => {
     || (window.WQ_PAPER_TEMPLATES || []).find(x => x.id === id) || null;
 };
 const SECS = (p) => { const t = TPL(p); return ((t ? t.sections : PQ(p).sections) || []).slice(); };
+/* v1.7.2：类型即骨架——选了文献综述 / 开题报告 / 案例报告时，若尚未手选模板，自动套用对应模板；
+   否则「类型」只是提示词里的一句话，章节仍是原创论文骨架（综述写成摘要-方法-结果）。 */
+const TYPE_TPL = { "文献综述": ["paper-review", "lit-review"], "开题报告": ["thesis-proposal"], "案例报告": ["paper-case"] };
+function applyTypeTemplate(p) {
+  const want = (p && TYPE_TPL[p.type]) || null;
+  if (!want) {
+    /* 换回不映射的类型时，只回收「自动套上的」模板，用户手选的不动 */
+    if (p && p.tplAuto) { p.template = ""; p.tplAuto = false; return true; }
+    return false;
+  }
+  if (p.template && !p.tplAuto) return false;
+  const opt = tplOptions(p);
+  const hit = want.find(id => opt.some(t => t.id === id));
+  if (!hit) {
+    /* 当前场景没有对应模板（如科研模式下的「开题报告」）→ 回收自动模板，回到范式骨架 */
+    if (p.tplAuto) { p.template = ""; p.tplAuto = false; return true; }
+    return false;
+  }
+  const changed = p.template !== hit;
+  p.template = hit; p.tplAuto = true;
+  return changed;
+}
 /* 场景 + 范式 → 可选模板（应用型不按范式过滤；科研论文按范式过滤） */
 function tplOptions(p) {
   p = p || {};
@@ -355,7 +377,7 @@ function fillCfgTpl(p) {
   const opt = tplOptions(p);
   const cur0 = p.template || "";
   const keep = cur0 && opt.some(t => t.id === cur0);
-  if (!keep && cur0) { p.template = ""; save(); renderSecBtns(); }
+  if (!keep && cur0) { p.template = ""; p.tplAuto = false; save(); renderSecBtns(); }
   $("cfgTpl").innerHTML = (p.applied ? "" : '<option value="">（按范式默认骨架，不套模板）</option>')
     + opt.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("");
   $("cfgTpl").value = p.template || "";
@@ -363,7 +385,7 @@ function fillCfgTpl(p) {
 $("cfgScene").addEventListener("change", () => {
   const p = cur(); if (!p) return;
   p.applied = $("cfgScene").value === "applied";
-  p.template = "";                                    // 换场景后旧模板不通用，回到该场景默认骨架
+  p.template = ""; p.tplAuto = false;                 // 换场景后旧模板不通用，回到该场景默认骨架
   fillCfgTpl(p);
   save(); renderProjects(); renderSecBtns(); renderStageCards(); syncScene(p);
   toast(p.applied ? "已切换应用型文书：" + (TPL(p) ? TPL(p).name : "未选模板") : "已切换科研论文模式：" + (TPL(p) ? TPL(p).name : "范式默认骨架"));
@@ -371,6 +393,7 @@ $("cfgScene").addEventListener("change", () => {
 $("cfgTpl").addEventListener("change", () => {
   const p = cur(); if (!p) return;
   p.template = $("cfgTpl").value || "";
+  p.tplAuto = false;                                   // 用户手选后不再被「类型」自动改
   save(); renderSecBtns(); renderStageCards(); syncScene(p);
   toast(p.template ? "已切换模板：" + (TPL(p) ? TPL(p).name : "") : "已改回范式默认骨架");
 });
@@ -905,7 +928,12 @@ function renderW4() {
     $("wType").addEventListener("change", () => {
       if ($("wType").value === "__custom") { wCustomOpen("类型："); return; }
       const pp = cur(); if (!pp) return;
-      pp.type = $("wType").value; save();
+      pp.type = $("wType").value;
+      if (applyTypeTemplate(pp)) {
+        fillCfgTpl(pp); renderSecBtns();
+        toast(TPL(pp) ? "已按类型套用「" + TPL(pp).name + "」章节；可在项目配置里改回范式默认" : "该类型在当前场景无对应模板，已用范式默认骨架");
+      }
+      save();
     });
   }
   renderSecBtns();
