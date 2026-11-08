@@ -1376,6 +1376,17 @@
         ST.cy.fit(undefined, 50);
       });
     }
+    /* 兜底：布局计算时容器尺寸为 0 / 切项目后视口停在上一个项目的位置，
+       都会让画布看起来是空的——300ms 后检查内容是否落在视口内，不在就重新自适应 */
+    setTimeout(function () {
+      if (!ST.cy) return;
+      var nodes = ST.cy.nodes().filter(function (n) { return n.visible(); });
+      if (!nodes.length) return;
+      var bb = nodes.boundingBox({ includeLabels: false, includeOverlays: false });
+      var vp = ST.cy.extent();
+      var inside = bb.x1 >= vp.x1 - 20 && bb.x2 <= vp.x2 + 20 && bb.y1 >= vp.y1 - 20 && bb.y2 <= vp.y2 + 20;
+      if (!inside) ST.cy.fit(nodes, 50);
+    }, 700);
   }
   var posTimer = null;
   function schedulePosSave() {
@@ -1522,6 +1533,8 @@
     });
     sel.addEventListener("change", function () {
       ST.pid = sel.value; ST.selId = null;
+      /* 换项目时把节点当“新节点飞入”会让它们先在锚点堆叠（动画不跑时就是一团）——重置基线 */
+      ST.prevIds = null;
       ST.db.cur = ST.pid; saveDB();
       rebuild(false);
     });
