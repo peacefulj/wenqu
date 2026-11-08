@@ -198,7 +198,8 @@ func handler() http.Handler {
 		case p == "/" || strings.HasSuffix(p, ".html"):
 			w.Header().Set("Cache-Control", "no-store")
 		case strings.HasSuffix(p, ".js"), strings.HasSuffix(p, ".css"), strings.HasSuffix(p, ".webmanifest"):
-			w.Header().Set("Cache-Control", "no-cache")
+			/* 本地单机应用：更新 exe 后必须立刻用新脚本，不能命中浏览器启发式缓存 */
+			w.Header().Set("Cache-Control", "no-store")
 		}
 		files.ServeHTTP(w, r)
 	})

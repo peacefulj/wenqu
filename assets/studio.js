@@ -609,7 +609,7 @@ async function fillAbs(fid) {
     const p = liveProj(pid); if (!p) return;
     const f = p.papers.find(x => x.id === fid); if (!f) return;
     if (!f.abs) throw new Error("OpenAlex 与 Crossref 均未收录该文献摘要（部分订阅刊如此，中文文献尤其常见）。请在摘要框手工粘贴。");
-    save(); renderPapers();
+    save(); renderPapers(); renderStageCards();
   } catch (e) { wqNotice("补摘要失败：" + e.message); }
 }
 
@@ -654,6 +654,18 @@ function drawMatrix(rows) {
 }
 
 /* ---------- 写作上下文：全库统一编号（矩阵/校验/参考文献三处同源） ---------- */
+/* 明确告诉模型：哪些编号已提炼可用、哪些禁止引用——否则模型容易全用「文献簇」占位 */
+function citeRule(p) {
+  const rows = (p?.matrix || "").split("\n====\n").filter(Boolean);
+  const map = {};
+  rows.forEach(r => { const t = (r.split("||")[0] || "").trim(); if (t) map[t] = 1; });
+  const ok = [], bad = [];
+  (p?.papers || []).forEach((f, i) => { (map[String(f.title || "").trim()] ? ok : bad).push(i + 1); });
+  if (!ok.length) return bad.length ? "\n可用引用编号：无（文献矩阵尚未生成）——需要引用处用〔待补：文献〕占位，禁止编造编号。" : "";
+  return "\n可直接引用编号：" + ok.map(n => "[" + n + "]").join("、") + "（已在文献矩阵中提炼）" +
+    (bad.length ? "；禁止引用编号：" + bad.map(n => "[" + n + "]").join("、") : "") +
+    "。凡论点有对应文献，必须标注这些编号；不要用「文献簇」占位替代可引用的文献。";
+}
 function outlineCtx(p) {
   const rows = (p?.matrix || "").split("\n====\n").filter(Boolean);
   const map = {};
@@ -663,7 +675,7 @@ function outlineCtx(p) {
     const note = mx ? mx.replace(/\n/g, " ").slice(0, 110) : (f.abs ? "（矩阵未生成；仅题录，谨慎引用）" : "（⚠仅题录，内容未提供——禁止引用）");
     return `[${i + 1}] ${f.title} — ${note}`;
   }).join("\n");
-  return `选题主题：${p?.topic || "（未定）"}\n选题报告要点：${(p?.selection || "（未做评估，可回阶段1）").slice(0, 1200)}\n\n文献矩阵（编号=文献库顺序，正文引用 [n] 必须与此编号一致；未生成矩阵的条目仅有题录信息，引用时须谨慎）：\n${lines || "（文献库为空）"}`;
+  return `选题主题：${p?.topic || "（未定）"}\n选题报告要点：${(p?.selection || "（未做评估，可回阶段1）").slice(0, 1200)}\n\n文献矩阵（编号=文献库顺序，正文引用 [n] 必须与此编号一致；未生成矩阵的条目仅有题录信息，引用时须谨慎）：\n${lines || "（文献库为空）"}${citeRule(p)}`;
 }
 
 $("btnOutline").addEventListener("click", () => withBusy($("btnOutline"), async () => {
@@ -932,7 +944,7 @@ function sectionPrompt(p0, sec) {
 题目：${p0.topic || "（未定）"}
 研究方法：${p0.method || "（未指定）"}
 论文类型：${p0.type || "（未指定）"}
-论述中在对应位置标注引用编号[n]（编号只能取自文献矩阵且禁止虚构；标注「禁止引用」的编号一律不得使用）。需要数据处用〔待补：xxx〕占位，不要虚构数值。${useDesign ? "\n本节涉及研究设计/方法，须严格按下方审查报告的方案撰写。" : ""}${sec === "引言" ? "\n引言末尾补一段 Contribution Statement（相对文献矩阵的三点边际贡献）。" : ""}
+论述中在对应位置标注引用编号[n]（编号只能取自文献矩阵且禁止虚构；标注「禁止引用」的编号一律不得使用）。需要数据处用〔待补：xxx〕占位，不要虚构数值。${citeRule(p0)}${useDesign ? "\n本节涉及研究设计/方法，须严格按下方审查报告的方案撰写。" : ""}${sec === "引言" ? "\n引言末尾补一段 Contribution Statement（相对文献矩阵的三点边际贡献）。" : ""}
 图表规范：需要表格时输出 Markdown 表格（表上方单起一行「表n 标题」）；变量定义、描述性统计骨架、文献对比、稳健性检验等，能用表格就用表格；缺真实数据的格子写〔待补〕。需要结构图/框架图/技术路线图时，输出 \`\`\`ymflow 代码块（JSON：title/nodes/edges）。需要数据图（柱状/折线/散点/系数图/事件研究图）时，输出 \`\`\`ymchart 代码块（JSON：type/title/labels/series 或 data），并设 "demo": true —— 禁止编造真实数值，渲染时自动带「示意数据·待替换」水印，导出前须用你的真实数据替换。摘要节不放图表。
 语言要求：${langSpec}${styleBlock()}
 
@@ -980,6 +992,7 @@ async function draftSection(sec, btn) {
     const gate = base0.trim() ? WQCore.citeDiff(base0, txt)
       : { lost: [], gained: Object.keys(WQCore.citeSet(txt)).filter(k => +k < 1 || +k > nPapers), fresh: true, n: nPapers };
     openSuggest4({ pid, sec, txt, gate, prog, out, model: r.model, cost: r.cost, baseText: base0 });
+    prog.textContent = "已生成建议稿——请在弹窗里「采纳并写入草稿」或「放弃」";
   } catch (e) { prog.textContent = "失败：" + e.message; }
 }
 /* 引用部分：不调用 AI，用文献库生成 GB/T 7714 参考文献表，并标出正文未引用的条目 */
@@ -1078,6 +1091,7 @@ $("btnWriteAll").addEventListener("click", () => withBusy($("btnWriteAll"), asyn
       if (!r.txt.trim() || looksUnfinished(r.txt)) { bad.push(sec + "（未成稿）"); continue; }
       if (badCites.length) { bad.push(sec + "（引用越界 " + badCites.join(",") + "）"); continue; }
       WQCore.commit(p, { field: "draft:" + sec, content: withMeta(r.txt, "文献矩阵 + 大纲"), kind: "草稿·" + sec, actor: "ai", model: r.model, cost: r.cost, note: "一键全文，经用户发起" });
+      try { renderSecBtns(); renderVerCount(); } catch (e) {}
       save(); ok++;
     } catch (e) { bad.push(sec + "（" + e.message + "）"); }
     await sleep(250);
@@ -1103,9 +1117,12 @@ function openSuggest4(o) {
   if (!html) html = '<div class="dsame">与当前稿段落级一致</div>';
   const gated = o.gate.lost.length || o.gate.gained.length;
   const lockWhy = o.gate.fresh ? "引用编号超出文献库范围" : "引用编号有变化";
+  const citedN = (window.WQCore && WQCore.citeSet) ? Object.keys(WQCore.citeSet(o.txt)).length : -1;
   const gateLine = o.gate.fresh
     ? (gated ? `<span class="bad">⚠ 引用编号超出文献库范围：[${o.gate.gained.join("][")}]（文献库共 ${o.gate.n} 篇）—— 可能是虚构引用，已锁定直接采纳</span>`
-      : `<span class="ok">✓ 新写的一节：引用编号都在文献库范围内${o.gate.n ? "（1–" + o.gate.n + "）" : ""}</span>`)
+      : citedN === 0
+        ? `<span class="bad">○ 本节没有标注任何引用编号——需要引用处仍是〔待补〕，建议采纳前人工补上文献矩阵里的编号</span>`
+        : `<span class="ok">✓ 新写的一节：引用编号都在文献库范围内${o.gate.n ? "（1–" + o.gate.n + "）" : ""}</span>`)
     : gated
       ? `<span class="bad">⚠ 引用编号有变化${o.gate.lost.length ? "：丢失 [" + o.gate.lost.join("][") + "]" : ""}${o.gate.gained.length ? (o.gate.lost.length ? "，" : "：新增 [") + o.gate.gained.join("][") + "]" : ""} —— 可能丢引/错引，已锁定直接采纳</span>`
       : '<span class="ok">✓ 引用编号与当前稿一致</span>';
@@ -1140,8 +1157,9 @@ function openSuggest4(o) {
     closeM();
     o.out.hidden = false; setMD(o.out, o.txt); $("btnWCopy").hidden = false;
     const citeWarn = checkCites(o.txt, p.papers.length);
-    o.prog.textContent = `「${o.sec}」已采纳写入 ✓` + (res.migrated ? `（迁移 ${res.migrated} 处数字绑定，已标待复核）` : "") + (citeWarn ? " ⚠ " + citeWarn : "（引用编号已过校验）");
-    renderStageBadges();
+    o.prog.textContent = `「${o.sec}」已采纳写入 ✓` + (res.migrated ? `（迁移 ${res.migrated} 处数字绑定，已标待复核）` : "") + (citeWarn ? " ⚠ " + citeWarn : (citedN ? "（引用编号已过校验）" : "（本节未标注引用编号，导出前请人工补引）"));
+    /* 采纳后同步分节按钮 ✓、版本徽标与项目列表，避免“写完了看起来没写” */
+    try { renderStageBadges(); renderSecBtns(); renderProjects(); renderVerCount(); } catch (e) {}
   });
 }
 
@@ -1351,7 +1369,13 @@ $("defenseBtns").addEventListener("click", (e) => {
       const txt = await callAI((prompts[b.dataset.def] || "生成答辩材料。") + "\n\n" + base, 6000);
       const p = liveProj(pid); if (!p) return;
       out.hidden = false; setMD(out, txt);
-      prog.textContent = `完成 ✓「${b.dataset.def}」`;
+      /* 答辩材料也要落盘：换页/刷新后还能找回，并进版本档案 */
+      p.outs = p.outs || {}; p.outs.defense = p.outs.defense || {};
+      p.outs.defense[b.dataset.def] = withMeta(txt, "大纲 + 文献矩阵");
+      p.showV = "defense:" + b.dataset.def;
+      addVersion(p, b.dataset.def, p.outs.defense[b.dataset.def], "outs.defense." + b.dataset.def);
+      save(); renderVerCount();
+      prog.textContent = `完成 ✓「${b.dataset.def}」（已存入项目）`;
     } catch (e) { prog.textContent = "失败：" + e.message; }
   });
 });

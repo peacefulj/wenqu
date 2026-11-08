@@ -714,8 +714,11 @@
       }
       var j = await sent.res.json().catch(function (e) { if (e && e.name === "AbortError") throw e; return null; });
       var p = AIX().parse(sent.fmt, j);
-      if (!p.text) {
-        var em2 = emptyMsg(p);
+      /* 结束原因是 length 且正文只有几个字：多半是思考把输出额度吃光了，别把半截内容当结果存进项目 */
+      if (!p.text || (p.finish === "length" && String(p.text).length < 40)) {
+        var em2 = p.text
+          ? "模型输出被截断（只返回 " + String(p.text).length + " 个字符）——多半是思考占满了输出额度，请在「AI 设置」里关闭思考或调大输出上限后重试"
+          : emptyMsg(p);
         debugDone(sent.log, { err: em2, finish: p.finish, rsn: p.reasoning.length });
         throw new Error(em2);
       }

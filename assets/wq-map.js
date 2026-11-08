@@ -1367,7 +1367,15 @@
     if (ST.selId && ST.cy.getElementById(ST.selId).nonempty()) { ST.cy.getElementById(ST.selId).select(); }
     else { ST.selId = null; document.getElementById("card").classList.remove("open"); }
     if (view) { ST.cy.zoom(view.z); ST.cy.pan({ x: view.x, y: view.y }); }
-    else ST.cy.fit(undefined, 50);
+    else {
+      /* 首帧容器可能还没有尺寸，fit 会把节点挤在中间：下一帧再量一次并自适应 */
+      ST.cy.fit(undefined, 50);
+      requestAnimationFrame(function () {
+        if (!ST.cy) return;
+        ST.cy.resize();
+        ST.cy.fit(undefined, 50);
+      });
+    }
   }
   var posTimer = null;
   function schedulePosSave() {
