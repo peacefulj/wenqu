@@ -322,7 +322,7 @@
         id: "p" + Date.now(), name: f.title.slice(0, 40), topic: f.title, status: "参考稿生成中",
         createdAt: new Date().toISOString().slice(0, 10), mode: "quick",
         selection: "", trend: null, papers: [], matrix: "", outline: "", design: "", draft: {},
-        paradigm: f.paradigm, level: f.level,
+        paradigm: f.paradigm, level: f.level, type: f.type,
         ref: { generatedAt: "", type: f.type, words: f.words, sections: {}, order: [] },
         refDraft: {}, versions: [], trail: [], outs: {}
       };
@@ -485,6 +485,7 @@
         "层级要求：" + (lv.innovation || "") + "；文献规模：" + (lv.lit || "") + "。\n" +
         (pqObj(c.proj.paradigm).sections ? "可参考该范式推荐章节：" + pqObj(c.proj.paradigm).sections.join(" / ") + "（按题型调整）\n" : "") +
         (c.proj._form.material ? "用户已有材料/提纲（沿用其结构与思路，可优化）：" + c.proj._form.material.slice(0, 1500) + "\n" : "") +
+        (WQCore.prompt && WQCore.prompt.guideBlock(c.proj) ? WQCore.prompt.guideBlock(c.proj) + "\n" : "") +
         "\n文献列表（编号必须从这里取，禁止编造）：\n" + refList.slice(0, 4500) + "\n\n" +
         "只输出 JSON：{\"sections\":[{\"name\":\"章节名\",\"points\":[\"要点1\",\"要点2\",\"要点3\"],\"refs\":[编号数组]}]}，refs 为该节最应引用的文献编号（每节 3-8 个）。";
       var txt = await WQCore.ai.call(prompt, 3000, { temperature: 0.3, signal: ctl.signal });
@@ -527,18 +528,19 @@
         }
         var prevName = i > 0 ? outline[i - 1].name : "";
         var prevTail = prevName && c.proj.refDraft.sections[prevName] ? String(c.proj.refDraft.sections[prevName].text).slice(-350) : "";
-        var prompt = "你是学术写作助手。这是给「" + lv.name + "」用的【" + tp.name + "】参考稿（学习参考用途）。现在只写「" + sec.name + "」这一节。\n" +
-          "本节要点：\n- " + (sec.points || []).join("\n- ") + "\n" +
-          "本节字数目标：约 " + perWords + " 字（不要低于一半、不要超过 " + Math.round(perWords * 1.4) + " 字）。\n" +
-          "引用规范：在对应位置标注 [n]；编号只能取自文献列表；本节优先引用：" + secRefs.map(function (r0) { return r0.n; }).join("、") + "。禁止编造文献编号。\n" +
-          "图表规范：需要表格时输出 Markdown 表格（表上方单起一行「表n 标题」），变量定义、描述性统计骨架、文献对比等能用表格就用表格；缺真实数据的格子写〔待补〕，禁止编造具体数值。需要理论框架/机制路径/技术路线图时，输出 ```ymflow 代码块（JSON：title/nodes/edges）。需要数据图时输出 ```ymchart 代码块（JSON：type/title/labels/series 或 data）并设 \"demo\": true（会自动加「示意数据·待替换」水印）。摘要节不放图表。\n" +
-          "公式规范：行内公式用 $...$，独立公式用 $$...$$（LaTeX 语法）。\n" +
-          (prevTail ? "上一节（" + prevName + "）结尾：「…" + prevTail + "」，自然衔接，不要重复。\n" : "") +
-          (c.proj._form.material && i === 0 ? "用户已有材料（尽量沿用其结构思路）：" + c.proj._form.material.slice(0, 800) + "\n" : "") +
-          styleBlock() + "\n" +
-          "本节重点文献（含摘要）：\n" + secRefs.map(function (r0) { return "[" + r0.n + "] " + r0.title + " (" + r0.year + "). " + r0.venue + "\n摘要：" + (r0.abs || "（无摘要，仅题录，谨慎引用）").slice(0, 420); }).join("\n\n") + "\n\n" +
-          "全局文献列表（如需跨节引用）：\n" + refListShort.slice(0, 2500) + "\n\n" +
-          "直接输出本节正文（Markdown，可用 #### 小标题），不要输出任何说明文字。";
+        var prompt = WQCore.prompt.section({
+          proj: Object.assign({}, c.proj, { type: c.proj.type || c.proj._form.type }),
+          sec: sec.name, pq: pqObj(c.proj._form.paradigm), lv: lv,
+          hint: (pqObj(c.proj._form.paradigm).secHint || {})[sec.name] ? "本节范式要求：" + pqObj(c.proj._form.paradigm).secHint[sec.name] : "",
+          wordsTarget: perWords,
+          citeRule: "本节优先引用：" + secRefs.map(function (r0) { return r0.n; }).join("、") + "。",
+          tplText: "参考稿层级：" + lv.name + "；类型：" + tp.name + "（学习参考用途）。",
+          refsBlock: "本节重点文献（含摘要）：\n" + secRefs.map(function (r0) { return "[" + r0.n + "] " + r0.title + " (" + r0.year + "). " + r0.venue + "\n摘要：" + (r0.abs || "（无摘要，仅题录，谨慎引用）").slice(0, 420); }).join("\n\n") + "\n\n" +
+            "全局文献列表（如需跨节引用）：\n" + refListShort.slice(0, 2500),
+          outlineBlock: "本节要点：\n- " + (sec.points || []).join("\n- "),
+          prevTail: prevTail, prevName: prevName,
+          material: (c.proj._form.material && i === 0) ? c.proj._form.material.slice(0, 800) : ""
+        });
         var acc = "";
         try {
           var r0 = await WQCore.ai.stream(prompt, { max_tokens: Math.min(8000, perWords * 3 + 1200), temperature: 0.4, signal: ctl.signal }, function (delta, full) {

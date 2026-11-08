@@ -69,6 +69,12 @@
     p.outs = asObj(p.outs);
     ["selection", "matrix", "outline", "design"].forEach(function (k) { if (p[k] != null && typeof p[k] !== "string") p[k] = asStr(p[k]); });
     if (p.trend != null) p.trend = Array.isArray(p.trend) ? p.trend.filter(function (g) { return g && typeof g.key === "string"; }) : null;
+    /* v1.7.4 提示词定制：项目写作规范 / 本节补充要求（用户文本，只影响「怎么写」） */
+    if (p.styleGuide != null && typeof p.styleGuide !== "string") p.styleGuide = asStr(p.styleGuide);
+    if (p.secNotes != null) {
+      p.secNotes = asObj(p.secNotes);
+      Object.keys(p.secNotes).forEach(function (k) { p.secNotes[k] = asStr(p.secNotes[k]); });
+    }
     if (p.ref != null && (typeof p.ref !== "object" || Array.isArray(p.ref))) delete p.ref;
     if (p.ref) { p.ref.sections = asObj(p.ref.sections); if (!Array.isArray(p.ref.order)) p.ref.order = Object.keys(p.ref.sections); }
     if (p.refDraft != null) p.refDraft = asObj(p.refDraft);
@@ -1185,6 +1191,76 @@
     return res;
   }
 
+  /* ================= v1.7.4 共用提示词装配 =================
+   * 参考稿页（wq-quick）与工作台（studio）原本各写一份分节提示词，口径不同。
+   * 这里只放「两边都必须一致」的部分：不变量（引用纪律/禁编造/待补）、图表公式规范、
+   * 作者写作档案、项目写作规范、本节补充要求。页面各自提供的上下文用参数传入。
+   * 用户在 L2/L3 写的内容永远不会覆盖 L0（引用纪律由代码拼在前面且只读）。 */
+  var K_CHART = "图表规范：需要表格时输出 Markdown 表格（表上方单起一行「表n 标题」）；变量定义、描述性统计骨架、文献对比、稳健性检验等，能用表格就用表格；缺真实数据的格子写〔待补〕。需要结构图/框架图/技术路线图时，输出 ```ymflow 代码块（JSON：title/nodes/edges）。需要数据图（柱状/折线/散点/系数图/事件研究图）时，输出 ```ymchart 代码块（JSON：type/title/labels/series 或 data），并设 \"demo\": true —— 禁止编造真实数值，渲染时自动带「示意数据·待替换」水印，导出前须用你的真实数据替换。摘要节不放图表。";
+  var K_FORMULA = "公式规范：行内公式用 $...$，独立公式用 $$...$$（LaTeX 语法）。";
+  var K_LANG_ZH = "用学术简体中文撰写，术语首现括注英文原文。";
+  var K_LANG_EN = "Write in polished academic English suitable for the target journal. Keep citation markers like [n] as-is.";
+
+  function pStyleBlock(p) {
+    var s = {}; try { s = JSON.parse(localStorage.getItem("wenqu_style") || "{}"); } catch (e) {}
+    var parts = [s.profileText, s.prefs].filter(Boolean);
+    try {
+      var roleId = p && p.role;
+      var role = roleId ? (window.WQ_ROLE_PRESETS || []).filter(function (r) { return r.id === roleId; })[0] : null;
+      if (role && role.tips) parts.push("角色预设（" + role.name + "）：" + role.tips);
+    } catch (e2) {}
+    return parts.length ? "【作者写作档案——起草风格必须贴近此档案，这是「辅助写作」而非代写】\n" + parts.join("\n") : "";
+  }
+  function pGuideBlock(p) {
+    var g = p && String(p.styleGuide || "").trim();
+    return g ? "【本项目写作规范（作者设定，须优先遵守；与引用纪律冲突时以引用纪律为准）】\n" + g : "";
+  }
+  function pNoteBlock(p, sec) {
+    var n = p && p.secNotes && String(p.secNotes[sec] || "").trim();
+    return n ? "【本节补充要求（作者设定）】\n" + n : "";
+  }
+  /* 冲突检测：作者要求与 L0 引用纪律冲突时提示（不禁止保存，但要让作者看见风险） */
+  var K_PROMPT_RISK = [
+    [/(不要|无需|不必|不用|禁止|别)\s*(再)?\s*(标注|加|写|列出)?\s*(引用|参考文献|文献编号|编号\s*\[n\])/, "要求不标引用编号"],
+    [/(可以|允许|适当|随意|自由)\s*(编造|虚构|伪造)|编造(数据|文献|数值|结果)|虚构(数据|文献|结果)/, "允许编造数据或文献"],
+    [/(忽略|不看|不用|绕开|跳过)\s*(文献库|文献矩阵|参考文献|文献列表)/, "要求绕开文献库"],
+    [/(降|规避|绕过|通过|骗过)\s*(AI|AIGC|查重|检测|查重率)/, "要求规避检测"]
+  ];
+  function pRisks(text) {
+    var t = String(text || ""), hit = [];
+    K_PROMPT_RISK.forEach(function (r) { if (r[0].test(t)) hit.push(r[1]); });
+    return hit;
+  }
+  /* 分节写作提示词（唯一实现）。o 需给：proj / sec / pq / lv；其余可选：
+     hint 本节范式要求 / wordsTarget 字数目标 / en 英文模式 / citeRule 可用与禁用编号
+     tplText 模板说明 / designText 设计审查 / outlineBlock 大纲与矩阵 / refsBlock 本节重点文献
+     prevTail 上一节结尾 / material 用户已有材料 / formula 是否加公式规范 */
+  function pSection(o) {
+    o = o || {};
+    var pq = o.pq || {}, lv = o.lv || {}, p = o.proj || {};
+    var out = [];
+    out.push("你是学术写作助手（" + (pq.name || "通用") + "范式）。请基于大纲与文献矩阵，起草论文的「" + o.sec + "」一节" + (lv.length ? "：" + lv.length : "") + "。" + (o.hint || ""));
+    out.push("题目：" + (p.topic || "（未定）"));
+    out.push("研究方法：" + (p.methods && p.methods.length ? p.methods.join("、") : (p.method || "（未指定）")));
+    out.push("论文类型：" + (p.type || "（未指定）"));
+    out.push("论述中在对应位置标注引用编号[n]（编号只能取自文献矩阵且禁止虚构；标注「禁止引用」的编号一律不得使用）。需要数据处用〔待补：xxx〕占位，不要虚构数值。" + (o.citeRule || ""));
+    if (o.wordsTarget) out.push("本节字数目标：约 " + o.wordsTarget + " 字（不要低于一半、不要超过 " + Math.round(o.wordsTarget * 1.4) + " 字）。");
+    out.push(K_CHART);
+    if (o.formula !== false) out.push(K_FORMULA);
+    out.push("语言要求：" + (o.en ? K_LANG_EN : K_LANG_ZH));
+    if (o.tplText) out.push(o.tplText);
+    if (o.designText) out.push(o.designText);
+    out.push(pStyleBlock(p));
+    out.push(pGuideBlock(p));
+    out.push(pNoteBlock(p, o.sec));
+    if (o.refsBlock) out.push(o.refsBlock);
+    if (o.outlineBlock) out.push(o.outlineBlock);
+    if (o.prevTail) out.push("上一节（" + (o.prevName || "上一节") + "）结尾：「…" + o.prevTail + "」，自然衔接，不要重复。");
+    if (o.material) out.push("用户已有材料（尽量沿用其结构思路）：" + o.material);
+    out.push("直接输出本节正文（Markdown，可用 #### 小标题），不要输出任何说明文字。");
+    return out.filter(Boolean).join("\n\n");
+  }
+
   /* ================= 导出到 window ================= */
   window.WQCore = {
     version: APP_VERSION,
@@ -1220,7 +1296,14 @@
     nummapRemap: nummapRemap,
     journalAppend: journalAppend,
     journalVerify: journalVerify,
-    commit: commit
+    commit: commit,
+    prompt: {
+      section: pSection,
+      styleBlock: pStyleBlock,
+      guideBlock: pGuideBlock,
+      noteBlock: pNoteBlock,
+      risks: pRisks
+    }
   };
   window.WQStore = WQStore;
 })();

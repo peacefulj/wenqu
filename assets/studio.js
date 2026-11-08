@@ -122,16 +122,21 @@ function withMeta(txt, source) {
   const c = aiConf();
   return txt + "\n\n〔生成：" + (c.model || "未知名") + " · " + new Date().toISOString().slice(0, 10) + " · 依据：" + source + "〕";
 }
+/* v1.7.4：写作档案 + 角色预设统一由 WQCore.prompt 拼装（参考稿页与工作台同一份口径） */
 function styleBlock() {
+  if (window.WQCore && WQCore.prompt) {
+    const b = WQCore.prompt.styleBlock(cur());
+    return b ? "\n\n" + b : "";
+  }
   const s = getStyle();
   const parts = [s.profileText, s.prefs].filter(Boolean);
-  /* v1.5.0：角色预设的写作提示（只影响提示词，不改作者档案） */
-  try {
-    const p = cur();
-    const role = (window.WQ_ROLE_PRESETS || []).find(r => r.id === (p && p.role));
-    if (role && role.tips) parts.push("角色预设（" + role.name + "）：" + role.tips);
-  } catch (e) {}
-  return parts.length ? "\n\n【作者写作档案——起草风格必须贴近此档案，这是「辅助写作」而非代写】\n" + parts.join("\n") : "";
+  return parts.length ? "\n\n【作者写作档案】\n" + parts.join("\n") : "";
+}
+/* 项目级写作规范（p.styleGuide）：大纲与分节都生效 */
+function guideBlock(p) {
+  if (!(window.WQCore && WQCore.prompt)) return "";
+  const b = WQCore.prompt.guideBlock(p);
+  return b ? "\n\n" + b : "";
 }
 
 /* ---------- AI ---------- */
@@ -718,7 +723,7 @@ $("btnOutline").addEventListener("click", () => withBusy($("btnOutline"), async 
 3. 单独给出「创新点陈述」（2-3条）与「预计投稿/答辩方向」（1-2类）
 4. 最后单独输出一行章节清单，格式严格为：【章节清单】摘要|引言|文献综述|研究假设|数据与研究设计|实证结果|稳健性检验|结论与讨论（按实际章节替换，用竖线分隔）
 创新标尺（${lv.name}）：${lv.innovation}
-${styleBlock()}
+${styleBlock()}${guideBlock(p0)}
 
 ${outlineCtx(p0)}`, 4096);
     const p = liveProj(pid); if (!p) { prog.textContent = "项目已被删除，结果丢弃"; return; }
@@ -962,6 +967,79 @@ function renderRefImport() {
   row.hidden = false;
   $("refImportHint").textContent = "项目里有参考稿（" + refs.length + " 节，已采用 " + (refs.length - todo.length) + " 节）：导入后就能在 ② 里逐节修改、内审、导出。";
 }
+/* ===== v1.7.4 提示词定制（P0）：项目写作规范 / 本节指令 / 查看最终提示词 =====
+ * 可改的是「怎么写」（L2/L3）；引用纪律等 L0 不变量在 wq-core 里由代码拼装，用户文本覆盖不了。 */
+function renderPromptPanel() {
+  const p = cur(); if (!p || !$("pStyleGuide")) return;
+  if (document.activeElement !== $("pStyleGuide")) $("pStyleGuide").value = p.styleGuide || "";
+  const sel = $("promptSec"); if (!sel) return;
+  const list = outlineParse(p).list;
+  const prev = sel.value;
+  sel.innerHTML = list.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
+  sel.value = list.includes(prev) ? prev : (list[0] || "");
+  const note = $("pSecNote");
+  if (note && document.activeElement !== note) note.value = ((p.secNotes || {})[sel.value] || "");
+}
+async function savePromptText(kind, text) {
+  const p0 = cur(); if (!p0) return false;
+  const val = String(text || "").trim();
+  const risks = (window.WQCore && WQCore.prompt) ? WQCore.prompt.risks(val) : [];
+  if (risks.length) {
+    const ok = await askAI("这段要求与引用纪律冲突", [
+      "检测到：" + risks.join("；"),
+      "保存后模型可能不标 [n]，或编造数据/文献——这样的稿子不能用",
+      "仍要保存吗？建议改写成「可以怎么引」而不是「不要引」"
+    ], "仍然保存");
+    if (!ok) return false;
+  }
+  const pid = p0.id;
+  const p = liveProj(pid); if (!p) return false;
+  if (kind === "guide") {
+    p.styleGuide = val;
+    trailAdd(p, "act", "修改项目写作规范", val ? val.slice(0, 60) : "已清空");
+  } else {
+    const sec = $("promptSec").value || "";
+    p.secNotes = p.secNotes || {};
+    if (val) p.secNotes[sec] = val; else delete p.secNotes[sec];
+    trailAdd(p, "act", "修改本节指令", sec + " · " + (val ? val.slice(0, 40) : "已清空"));
+  }
+  save();
+  return true;
+}
+$("btnGuideSave").addEventListener("click", async () => {
+  if (!(await savePromptText("guide", $("pStyleGuide").value))) { $("guideMsg").textContent = "未保存"; return; }
+  $("guideMsg").textContent = "已保存：本项目的大纲与各节都会带上";
+  toast("项目写作规范已保存");
+});
+$("btnGuideClear").addEventListener("click", () => {
+  $("pStyleGuide").value = "";
+  $("guideMsg").textContent = "已清空输入框，点「保存规范」生效";
+});
+$("btnNoteSave").addEventListener("click", async () => {
+  if (!(await savePromptText("note", $("pSecNote").value))) { $("noteMsg").textContent = "未保存"; return; }
+  $("noteMsg").textContent = "已保存：只对「" + $("promptSec").value + "」生效";
+  toast("本节指令已保存");
+});
+$("promptSec").addEventListener("change", () => {
+  const p = cur(); if (!p) return;
+  $("pSecNote").value = ((p.secNotes || {})[$("promptSec").value] || "");
+  $("noteMsg").textContent = "";
+});
+$("btnPromptView").addEventListener("click", () => {
+  const p = cur(); if (!p) return;
+  const sec = $("promptSec").value;
+  if (!sec) { toast("先有章节（生成大纲后即可）"); return; }
+  const box = $("promptPreview");
+  box.hidden = false;
+  box.textContent = sectionPrompt(p, sec);
+  $("btnPromptCopy").hidden = false;
+  $("noteMsg").textContent = "这就是本节实际发送的提示词（含系统锁定的引用纪律）";
+});
+$("btnPromptCopy").addEventListener("click", async () => {
+  const txt = $("promptPreview").textContent || "";
+  try { await navigator.clipboard.writeText(txt); toast("提示词已复制"); }
+  catch (e) { toast("复制失败：浏览器未授权剪贴板，请手动选中复制"); }
+});
 /* 分节按钮：章节来自大纲（【章节清单】）；已写过的节带 ✓ */
 function renderSecBtns() {
   const p = cur(); if (!p) { $("secBtns").innerHTML = '<p class="hint">先新建项目</p>'; return; }
@@ -974,6 +1052,7 @@ function renderSecBtns() {
   $("secBtns").innerHTML = warn + info.list.map(s =>
     `<button class="btn2 sec${(p.draft || {})[s] ? " done" : ""}" data-sec="${esc(s)}" ${dis}>${(p.draft || {})[s] ? "✓ " : ""}写：${esc(s)}</button>`).join("");
   renderRefImport();
+  renderPromptPanel();
 }
 /* 参考稿 → 我的草稿：只填空节，已有内容的节不覆盖（覆盖走「🛠 参考稿修改」的整节采用，那里有 diff） */
 $("btnAdoptRef").addEventListener("click", async () => {
@@ -1001,30 +1080,31 @@ $("secBtns").addEventListener("click", (e) => {
   const b = e.target.closest("[data-sec]"); if (!b) return;
   withBusy(b, () => draftSection(b.dataset.sec, b));
 });
+/* v1.7.4：与参考稿页共用 WQCore.prompt.section（唯一实现），避免两套口径 */
 function sectionPrompt(p0, sec) {
   const pq = PQ(p0), lv = LV(p0);
   const en = $("enMode") && $("enMode").checked;
-  const langSpec = en
-    ? "Write in polished academic English suitable for the target journal. Keep citation markers like [n] as-is."
-    : "用学术简体中文撰写，术语首现括注英文原文。";
-  const designCtx = p0.design ? `\n\n研究设计审查报告（方法/实验设计以此为准）：\n${p0.design.slice(0, 2000)}` : "";
-  const hint = pq.secHint[sec] ? `\n本节范式要求：${pq.secHint[sec]}` : "";
-  const tplCtx = TPL(p0)
+  const designCtx = p0.design ? `研究设计审查报告（方法/实验设计以此为准）：\n${p0.design.slice(0, 2000)}` : "";
+  const hint = pq.secHint[sec] ? `本节范式要求：${pq.secHint[sec]}` : "";
+  const tpl = TPL(p0);
+  const tplCtx = tpl
     ? (p0.applied
-      ? `\n\n文书模板：${TPL(p0).name}——${TPL(p0).note}\n本节「${sec}」按该模板的写法组织；不要引入科研论文特有的假设/显著性表述，除非确实需要。`
-      : `\n\n论文模板：${TPL(p0).name}——${TPL(p0).note}\n本节「${sec}」按该模板的写法组织，仍须遵守${pq.name}范式的方法论要求。`)
+      ? `文书模板：${tpl.name}——${tpl.note}\n本节「${sec}」按该模板的写法组织；不要引入科研论文特有的假设/显著性表述，除非确实需要。`
+      : `论文模板：${tpl.name}——${tpl.note}\n本节「${sec}」按该模板的写法组织，仍须遵守${pq.name}范式的方法论要求。`)
     : "";
   const useDesign = p0.design && /设计|方法|对象|数据/.test(sec);
-  return `你是学术写作助手（${pq.name}范式）。请基于大纲与文献矩阵，起草论文的「${sec}」一节：${lv.length}。${hint}
-题目：${p0.topic || "（未定）"}
-研究方法：${p0.method || "（未指定）"}
-论文类型：${p0.type || "（未指定）"}
-论述中在对应位置标注引用编号[n]（编号只能取自文献矩阵且禁止虚构；标注「禁止引用」的编号一律不得使用）。需要数据处用〔待补：xxx〕占位，不要虚构数值。${citeRule(p0)}${useDesign ? "\n本节涉及研究设计/方法，须严格按下方审查报告的方案撰写。" : ""}${sec === "引言" ? "\n引言末尾补一段 Contribution Statement（相对文献矩阵的三点边际贡献）。" : ""}
-图表规范：需要表格时输出 Markdown 表格（表上方单起一行「表n 标题」）；变量定义、描述性统计骨架、文献对比、稳健性检验等，能用表格就用表格；缺真实数据的格子写〔待补〕。需要结构图/框架图/技术路线图时，输出 \`\`\`ymflow 代码块（JSON：title/nodes/edges）。需要数据图（柱状/折线/散点/系数图/事件研究图）时，输出 \`\`\`ymchart 代码块（JSON：type/title/labels/series 或 data），并设 "demo": true —— 禁止编造真实数值，渲染时自动带「示意数据·待替换」水印，导出前须用你的真实数据替换。摘要节不放图表。
-语言要求：${langSpec}${styleBlock()}
-
-大纲：${(p0.outline || "（未生成大纲，建议先点「生成大纲」按钮）").slice(0, 2000)}
-${outlineCtx(p0)}${designCtx}${tplCtx}`;
+  const extra = (useDesign ? "本节涉及研究设计/方法，须严格按下方审查报告的方案撰写。" : "")
+    + (sec === "引言" ? "\n引言末尾补一段 Contribution Statement（相对文献矩阵的三点边际贡献）。" : "");
+  const outlineBlock = "大纲：" + (p0.outline || "（未生成大纲，建议先点「生成大纲」按钮）").slice(0, 2000) + "\n" + outlineCtx(p0);
+  if (window.WQCore && WQCore.prompt) {
+    return WQCore.prompt.section({
+      proj: p0, sec, pq, lv, en,
+      hint, citeRule: citeRule(p0),
+      tplText: tplCtx, designText: useDesign ? designCtx : "",
+      outlineBlock: outlineBlock + (extra ? "\n" + extra : "")
+    });
+  }
+  return outlineBlock;   // 理论上不会走到：wq-core 必加载
 }
 async function generateSectionText(p0, sec, out, prog) {
   const prompt = sectionPrompt(p0, sec);
