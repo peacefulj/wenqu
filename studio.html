@@ -59,7 +59,7 @@
 
 <header class="site"><div class="container bar">
   <a class="brand" href="index.html">研墨<small>工作台</small></a>
-  <nav class="main"><a class="on" href="studio.html">科研工作台</a><a href="quick.html">参考稿</a><a href="map.html">🗺 项目导图</a><a href="ai.html">⚙️ AI 设置</a></nav>
+  <nav class="main"><a class="on" href="studio.html">科研工作台</a><a href="quick.html">参考稿</a><a href="map.html">🗺 项目导图</a><a href="prompts.html">🧩 提示词</a><a href="ai.html">⚙️ AI 设置</a></nav>
 </div></header>
 
 <main class="container page">
@@ -291,7 +291,7 @@
             <details class="fold" id="promptFold" style="margin:10px 0">
               <summary>🧩 提示词定制（项目写作规范 · 本节指令 · 查看最终提示词）</summary>
               <div class="body">
-                <p class="hint" style="margin:0 0 8px">只改「怎么写」，不改「能不能编」：引用编号只能来自文献库、禁止编造数据与文献、缺数据用〔待补〕——这三条由系统锁死。</p>
+                <p class="hint" style="margin:0 0 8px">只改「怎么写」，不改「能不能编」：引用编号只能来自文献库、禁止编造数据与文献、缺数据用〔待补〕——这三条由系统锁死。<a href="prompts.html">🧩 更多模板（① 选题 / ③ 质检与投稿）→</a></p>
                 <label class="hint" style="font-weight:700">项目写作规范<small>（本项目的大纲与所有节都生效）</small></label>
                 <textarea id="pStyleGuide" rows="3" placeholder="例：文献综述按流派组织，不按文献清单；讨论节先讲局限再讲贡献；目标期刊《管理世界》，不要用「综上所述」；方法节必须写清识别策略与样本区间。"></textarea>
                 <div class="row" style="margin-top:4px">
@@ -325,6 +325,7 @@
                 <button id="btnRefsSec" class="btn2" title="用文献库生成文末参考文献表；不会写入各节正文">📚 生成文末参考文献表</button>
                 <button id="btnWriteAll" data-ai class="btn2" style="background:#0a7a43">⚡ 按大纲一键写全文</button>
                 <button id="btnGapAdvice" data-ai class="btn2" style="background:#b45309" title="指出还必须补的数据 / 文献 / 内容，并给院士级与博导级建议">🎓 缺口诊断（院士 / 博导视角）</button>
+                <button id="btnAB" data-ai class="btn2" style="background:#0f766e" title="同一节跑两遍：带你的自定义要求 vs 不带，逐段看差别再决定采纳哪版">⚖️ A/B 试跑本节</button>
                 <button id="btnStopAll" class="btn2 gray" hidden>停止</button>
                 <span class="hint" id="wAllProg"></span>
               </div>
@@ -773,7 +774,7 @@
 <footer class="site"><div class="container">
   <div class="links"><a href="index.html">首页</a> · <a href="quick.html">参考稿</a> · <a href="try.html">试用与测试</a> · 发现问题？<a href="mailto:info@yingcompute.com">邮件告诉我们</a> · <a href="https://github.com/peacefulj/wenqu/issues" target="_blank" rel="noopener">GitHub Issues</a></div>
   <div class="disc">本平台检索与 OA 链接来自 OpenAlex / Crossref / Unpaywall 官方公开接口，仅指向来源方标注的合法开放版本；不提供文献代下、代写服务。AI 产出（速读、审稿、综述草稿、引用匹配）均可能出错，使用前请人工核对；学术润色仅做语言表达优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器；上传的 PDF 也只存在本机。</div>
-  <div>© 2026 研墨工作台 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.7.4</span> 更新日志</a> · 数据接口礼貌限速</div>
+  <div>© 2026 研墨工作台 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.8.0</span> 更新日志</a> · 数据接口礼貌限速</div>
 </div></footer>
 
 <aside id="verDrawer">
@@ -851,7 +852,7 @@ document.addEventListener("click", e => {
 });
 </script>
 <link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
-<script src="assets/version.js?v=1.7.4"></script>
+<script src="assets/version.js?v=1.8.0"></script>
 <script src="assets/vendor/katex/katex.min.js"></script>
 <script src="assets/ym-ai.js"></script>
 <script src="assets/wq-core.js"></script>

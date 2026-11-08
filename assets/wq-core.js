@@ -75,6 +75,10 @@
       p.secNotes = asObj(p.secNotes);
       Object.keys(p.secNotes).forEach(function (k) { p.secNotes[k] = asStr(p.secNotes[k]); });
     }
+    if (p.stageNotes != null) {
+      p.stageNotes = asObj(p.stageNotes);
+      Object.keys(p.stageNotes).forEach(function (k) { p.stageNotes[k] = asStr(p.stageNotes[k]); });
+    }
     if (p.ref != null && (typeof p.ref !== "object" || Array.isArray(p.ref))) delete p.ref;
     if (p.ref) { p.ref.sections = asObj(p.ref.sections); if (!Array.isArray(p.ref.order)) p.ref.order = Object.keys(p.ref.sections); }
     if (p.refDraft != null) p.refDraft = asObj(p.refDraft);
@@ -1250,15 +1254,31 @@
     out.push("语言要求：" + (o.en ? K_LANG_EN : K_LANG_ZH));
     if (o.tplText) out.push(o.tplText);
     if (o.designText) out.push(o.designText);
-    out.push(pStyleBlock(p));
-    out.push(pGuideBlock(p));
-    out.push(pNoteBlock(p, o.sec));
+    if (!o.noCustom) {
+      out.push(pStyleBlock(p));
+      out.push(pGuideBlock(p));
+      out.push(pStageText("section", p));
+      out.push(pNoteBlock(p, o.sec));
+    }
     if (o.refsBlock) out.push(o.refsBlock);
     if (o.outlineBlock) out.push(o.outlineBlock);
     if (o.prevTail) out.push("上一节（" + (o.prevName || "上一节") + "）结尾：「…" + o.prevTail + "」，自然衔接，不要重复。");
     if (o.material) out.push("用户已有材料（尽量沿用其结构思路）：" + o.material);
     out.push("直接输出本节正文（Markdown，可用 #### 小标题），不要输出任何说明文字。");
     return out.filter(Boolean).join("\n\n");
+  }
+
+  /* ===== v1.8.0 阶段级补充要求：①选题 / ②审查·诊断 / ③质检·投稿 都可自定义 =====
+   * 存储：全局 wenqu_prompts.global[kind] + 项目 p.stageNotes[kind]
+   * 只补「怎么写 / 怎么审」，不覆盖引用纪律（L0）。 */
+  var K_STAGE_LABEL = { topic: "选题评估", outline: "生成大纲", design: "研究设计审查", section: "分节写作", gaps: "缺口诊断", review: "评审团", consistency: "一致性检查", strategy: "投稿策略", cover: "Cover Letter", rebuttal: "审稿回复", defense: "答辩材料" };
+  function pStageText(kind, proj) {
+    var g = "";
+    try { var o = JSON.parse(localStorage.getItem("wenqu_prompts") || "{}"); g = (o.global || {})[kind] || ""; } catch (e) {}
+    var n = (proj && proj.stageNotes && proj.stageNotes[kind]) || "";
+    g = String(g).trim(); n = String(n).trim();
+    if (!g && !n) return "";
+    return "【作者补充要求·" + (K_STAGE_LABEL[kind] || kind) + "（只补充写法与口径；与引用纪律冲突时以引用纪律为准）】\n" + [g, n].filter(Boolean).join("\n");
   }
 
   /* ================= 导出到 window ================= */
@@ -1302,7 +1322,9 @@
       styleBlock: pStyleBlock,
       guideBlock: pGuideBlock,
       noteBlock: pNoteBlock,
-      risks: pRisks
+      risks: pRisks,
+      stage: pStageText,
+      labels: function () { return K_STAGE_LABEL; }
     }
   };
   window.WQStore = WQStore;

@@ -486,6 +486,7 @@
         (pqObj(c.proj.paradigm).sections ? "可参考该范式推荐章节：" + pqObj(c.proj.paradigm).sections.join(" / ") + "（按题型调整）\n" : "") +
         (c.proj._form.material ? "用户已有材料/提纲（沿用其结构与思路，可优化）：" + c.proj._form.material.slice(0, 1500) + "\n" : "") +
         (WQCore.prompt && WQCore.prompt.guideBlock(c.proj) ? WQCore.prompt.guideBlock(c.proj) + "\n" : "") +
+        (WQCore.prompt && WQCore.prompt.stage("outline", c.proj) ? WQCore.prompt.stage("outline", c.proj) + "\n" : "") +
         "\n文献列表（编号必须从这里取，禁止编造）：\n" + refList.slice(0, 4500) + "\n\n" +
         "只输出 JSON：{\"sections\":[{\"name\":\"章节名\",\"points\":[\"要点1\",\"要点2\",\"要点3\"],\"refs\":[编号数组]}]}，refs 为该节最应引用的文献编号（每节 3-8 个）。";
       var txt = await WQCore.ai.call(prompt, 3000, { temperature: 0.3, signal: ctl.signal });

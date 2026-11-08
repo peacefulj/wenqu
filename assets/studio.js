@@ -138,6 +138,12 @@ function guideBlock(p) {
   const b = WQCore.prompt.guideBlock(p);
   return b ? "\n\n" + b : "";
 }
+/* 阶段级补充要求（全局 wenqu_prompts + 本项目 p.stageNotes） */
+function stageBlock(kind, p) {
+  if (!(window.WQCore && WQCore.prompt)) return "";
+  const b = WQCore.prompt.stage(kind, p);
+  return b ? "\n\n" + b : "";
+}
 
 /* ---------- AI ---------- */
 const AI_DEF = { base: "https://api.yingcompute.com/api/v1", model: "glm-5.3-flash" };
@@ -489,7 +495,7 @@ ${pq.evalFocus}
 一、三个候选题目（每题一句话说明研究角度与创新点，编号1-3）
 二、每个题目打分：新颖性(1-10)、可行性(1-10)、数据/材料可得性(1-10)，各一句理由
 三、数据与文献可得性清单：这个题目需要什么数据或材料、核心文献大概在哪些库
-四、主要风险与规避建议（2-3条）
+四、主要风险与规避建议（2-3条）${stageBlock("topic", p0)}
 用简体中文，条理清晰，可直接作为选题报告使用。`, 6000);
     const p = liveProj(pid); if (!p) { prog.textContent = "项目已被删除，结果丢弃"; return; }
     p.topic = topic; p.selection = withMeta(txt, "OpenAlex 趋势 + 摘要级证据"); addVersion(p, "选题评估", p.selection, "selection"); save();
@@ -723,7 +729,7 @@ $("btnOutline").addEventListener("click", () => withBusy($("btnOutline"), async 
 3. 单独给出「创新点陈述」（2-3条）与「预计投稿/答辩方向」（1-2类）
 4. 最后单独输出一行章节清单，格式严格为：【章节清单】摘要|引言|文献综述|研究假设|数据与研究设计|实证结果|稳健性检验|结论与讨论（按实际章节替换，用竖线分隔）
 创新标尺（${lv.name}）：${lv.innovation}
-${styleBlock()}${guideBlock(p0)}
+${styleBlock()}${guideBlock(p0)}${stageBlock("outline", p0)}
 
 ${outlineCtx(p0)}`, 4096);
     const p = liveProj(pid); if (!p) { prog.textContent = "项目已被删除，结果丢弃"; return; }
@@ -751,7 +757,7 @@ $("btnDesign").addEventListener("click", () => withBusy($("btnDesign"), async ()
 选题主题：${p0.topic || "未定"}
 选题报告：${(p0.selection || "（未做评估）").slice(0, 1200)}
 文献矩阵：
-${(p0.matrix || "（未生成）").slice(0, 2500)}`, 6000);
+${(p0.matrix || "（未生成）").slice(0, 2500)}${stageBlock("design", p0)}`, 6000);
     const p = liveProj(pid); if (!p) { prog.textContent = "项目已被删除，结果丢弃"; return; }
     p.design = withMeta(txt, "文献矩阵");
     p.outs = p.outs || {}; p.outs.design = p.design; p.showW = "design"; addVersion(p, PQ(p).design.title, p.design, "design"); save();
@@ -1081,7 +1087,7 @@ $("secBtns").addEventListener("click", (e) => {
   withBusy(b, () => draftSection(b.dataset.sec, b));
 });
 /* v1.7.4：与参考稿页共用 WQCore.prompt.section（唯一实现），避免两套口径 */
-function sectionPrompt(p0, sec) {
+function sectionPrompt(p0, sec, opts) {
   const pq = PQ(p0), lv = LV(p0);
   const en = $("enMode") && $("enMode").checked;
   const designCtx = p0.design ? `研究设计审查报告（方法/实验设计以此为准）：\n${p0.design.slice(0, 2000)}` : "";
@@ -1101,13 +1107,14 @@ function sectionPrompt(p0, sec) {
       proj: p0, sec, pq, lv, en,
       hint, citeRule: citeRule(p0),
       tplText: tplCtx, designText: useDesign ? designCtx : "",
-      outlineBlock: outlineBlock + (extra ? "\n" + extra : "")
+      outlineBlock: outlineBlock + (extra ? "\n" + extra : ""),
+      noCustom: !!(opts && opts.noCustom)
     });
   }
   return outlineBlock;   // 理论上不会走到：wq-core 必加载
 }
-async function generateSectionText(p0, sec, out, prog) {
-  const prompt = sectionPrompt(p0, sec);
+async function generateSectionText(p0, sec, out, prog, opts) {
+  const prompt = sectionPrompt(p0, sec, opts);
   let txt = "", usage = null;
   if (window.WQCore && WQCore.ai.stream) {
     if (out) out.hidden = false;
@@ -1150,6 +1157,61 @@ async function draftSection(sec, btn) {
     prog.textContent = "已生成建议稿——请在弹窗里「采纳并写入草稿」或「放弃」";
   } catch (e) { prog.textContent = "失败：" + e.message; }
 }
+/* ⚖️ A/B 试跑：同一节跑两遍（带自定义 / 不带），逐段对比后只采纳一版 */
+function abStats(t) {
+  const s = String(t || "");
+  return { len: s.replace(/\s+/g, "").length, cites: Object.keys(WQCore.citeSet(s)).length, todo: (s.match(/〔待补[^〕]*〕/g) || []).length, heads: (s.match(/^#{2,4}\s/gm) || []).length };
+}
+function abAdopt(pid, sec, txt, model, label) {
+  const p = liveProj(pid); if (!p) return;
+  WQCore.commit(p, { field: "draft:" + sec, content: withMeta(txt, "A/B 试跑 · " + label), kind: "草稿·" + sec, actor: "ai", model: model, note: "A/B 试跑采纳（" + label + "），经用户发起" });
+  save();
+  try { renderSecBtns(); renderVerCount(); renderProjects(); } catch (e) {}
+  toast("已采纳「" + label + "」写入「" + sec + "」");
+}
+$("btnAB").addEventListener("click", () => withBusy($("btnAB"), async () => {
+  const p0 = cur(); if (!p0) return wqNotice("先新建项目");
+  const pid = p0.id;
+  const sec = $("promptSec").value;
+  if (!sec) { toast("先在「🧩 提示词定制」里选择要试跑的节"); return; }
+  let gSec = ""; try { gSec = (JSON.parse(localStorage.getItem("wenqu_prompts") || "{}").global || {}).section || ""; } catch (e) {}
+  const hasCustom = !!(p0.styleGuide || (p0.secNotes || {})[sec] || (p0.stageNotes || {}).section || gSec);
+  if (!hasCustom) { toast("这一节还没有任何自定义要求，A/B 两版会完全一样——先在「🧩 提示词定制」里写点要求"); return; }
+  if (!(await askAI("A/B 试跑「" + sec + "」？", ["调用 AI 2 次（带自定义 / 不带自定义），约 1-2 分钟", "只做对比，采纳哪一版由你决定"], "开始试跑"))) return;
+  const out = $("wOut"), prog = $("wProg");
+  out.hidden = false; out.textContent = "A/B 试跑中：正在生成 A（当前设置）…"; prog.textContent = "A/B 试跑中（A：当前设置）…";
+  try {
+    const A = await generateSectionText(p0, sec, null, prog, {});
+    prog.textContent = "A/B 试跑中（B：不带自定义）…"; out.textContent = "A/B 试跑中：正在生成 B（不带自定义）…";
+    const B = await generateSectionText(p0, sec, null, prog, { noCustom: true });
+    const sa = abStats(A.txt), sb = abStats(B.txt);
+    const rows = WQCore.diff.paras(B.txt, A.txt);
+    let mod = 0, add = 0, del = 0;
+    rows.forEach(r => { if (r.type === "mod") mod++; else if (r.type === "add") add++; else if (r.type === "del") del++; });
+    const samples = rows.filter(r => r.type !== "same").slice(0, 6).map(r => {
+      const t = r.type === "del" ? r.ai : r.mine;
+      return `<li>${r.type === "add" ? "＋ 仅 A 有" : r.type === "del" ? "－ 仅 B 有" : "✎ 改写"}：${esc(String(t).slice(0, 110))}</li>`;
+    }).join("");
+    out.innerHTML = `<div class="callout c-info" style="margin:0 0 8px"><b>⚖️ A/B 对比「${esc(sec)}」</b>：A = 当前自定义设置，B = 不带自定义。段落差异：改写 ${mod}、仅 A ${add}、仅 B ${del}。</div>
+      <table class="tb"><tr><th></th><th>A · 当前设置</th><th>B · 无自定义</th></tr>
+      <tr><td>字数（去空白）</td><td>${sa.len}</td><td>${sb.len}</td></tr>
+      <tr><td>引用编号个数</td><td>${sa.cites}</td><td>${sb.cites}</td></tr>
+      <tr><td>〔待补〕处</td><td>${sa.todo}</td><td>${sb.todo}</td></tr>
+      <tr><td>小标题数</td><td>${sa.heads}</td><td>${sb.heads}</td></tr></table>
+      <p class="hint" style="margin:6px 0">差异样例（最多 6 条）：</p><ul style="font-size:12.5px;line-height:1.6">${samples || "<li>两版段落级一致</li>"}</ul>
+      <div class="row"><button class="btn2" data-ab="a">✅ 采纳 A（当前设置）</button><button class="btn2 ghost" data-ab="b">采纳 B（无自定义）</button></div>
+      <div id="abPreview" class="aiout" hidden style="margin-top:8px"></div>`;
+    out.querySelectorAll("[data-ab]").forEach(b => b.addEventListener("click", () => {
+      const pick = b.dataset.ab, r = pick === "a" ? A : B;
+      abAdopt(pid, sec, r.txt, r.model, pick === "a" ? "A · 当前设置" : "B · 无自定义");
+      const prev = out.querySelector("#abPreview");
+      if (prev) { prev.hidden = false; setMD(prev, r.txt); }
+      prog.textContent = "已采纳 " + (pick === "a" ? "A" : "B") + " 到「" + sec + "」；另一版未保存";
+    }));
+    prog.textContent = "A/B 完成 ✓ 先看差异，再点「采纳」写入草稿（只保存你选的那一版）";
+  } catch (e) { prog.textContent = "A/B 失败：" + e.message; }
+}));
+
 /* 引用部分：不调用 AI，用文献库生成 GB/T 7714 参考文献表，并标出正文未引用的条目 */
 $("btnRefsSec").addEventListener("click", () => {
   const p = cur(); if (!p) return wqNotice("先新建项目");
@@ -1297,7 +1359,7 @@ ${secList.map(s => "## " + s + "\n" + String(p0.draft[s]).slice(0, 2200)).join("
 五、博导级建议（5-8 条，可执行：本周能做什么、每个表/图怎么补、审稿人最可能追问的 3 个问题及应答准备、写作与投稿顺序）
 六、优先级清单（P0 必须补否则无法投/答辩；P1 显著提升；P2 锦上添花），每条一句话可勾选
 
-硬性要求：不得编造数据、文献题名、期刊指标；所有数值建议必须标明是「示例/待核实」。`, 6000);
+硬性要求：不得编造数据、文献题名、期刊指标；所有数值建议必须标明是「示例/待核实」。${stageBlock("gaps", p0)}`, 6000);
     setMD(out, txt); out.hidden = false; $("btnWCopy").hidden = false;
     const p = liveProj(pid); if (p) {
       p.outs = p.outs || {}; p.outs.gaps = withMeta(txt, "现有正文 + 文献库");
@@ -1406,7 +1468,7 @@ $("btnInternal").addEventListener("click", () => withBusy($("btnInternal"), asyn
 【专家C · ${reviewerC}】关注：结构是否完整流畅、摘要与结论是否呼应、${lv.innovation}；给 1 个最优先修改建议。
 
 每位专家输出：总体评价（1句）+ 3-5 条具体意见（标注严重度：🔴必须改/🟡建议改/🟢可选）+ Overall 判断（如 Major Revision / Minor Revision）。最后由召集人汇总一页「修改清单」（按优先级排序）。用简体中文。
-（注：三专家为同一模型分角色自审，仅作改稿脚手架，不能替代真实评审。）
+（注：三专家为同一模型分角色自审，仅作改稿脚手架，不能替代真实评审。）${stageBlock("review", p0)}
 
 选题主题：${p0.topic || "未定"}
 创新标尺：${lv.innovation}
@@ -1437,7 +1499,7 @@ $("btnConsistency").addEventListener("click", () => withBusy($("btnConsistency")
 2. 变量/符号/指标名称与定义
 3. 数字与数据（样本量、年份区间、系数是否前后一致）
 4. 引用编号与文献库的对应
-5. 章节衔接（前后节承诺-兑现关系）
+5. 章节衔接（前后节承诺-兑现关系）${stageBlock("consistency", p0)}
 
 文献库题录（编号对照）：
 ${p0.papers.map((f, i) => `[${i + 1}] ${f.title}`).join("\n").slice(0, 1500)}
@@ -1515,7 +1577,7 @@ $("btnStrategy").addEventListener("click", () => withBusy($("btnStrategy"), asyn
   try {
     const venues = $("venueOut").textContent.split("\n").filter(l => l.trim()).slice(0, 12).join("; ");
     const txt = await callAI(`你是投稿顾问。研究主题：「${p0.topic || "未定"}」（${PQ(p0).name}范式）。文献库期刊分布：${venues || "未分析"}。选题报告：${(p0.selection || "").slice(0, 800)}
-请给出投稿策略：冲(1-2刊)/稳(2-3刊)/保底(1-2刊)三档期刊建议——每刊一句话理由（匹配度、周期特点、口碑），并给投稿顺序建议与拒稿后的调整动作（改投/改写）。中文输出，注明「期刊指标请自行到官网核对」。`, 3000);
+请给出投稿策略：冲(1-2刊)/稳(2-3刊)/保底(1-2刊)三档期刊建议——每刊一句话理由（匹配度、周期特点、口碑），并给投稿顺序建议与拒稿后的调整动作（改投/改写）。中文输出，注明「期刊指标请自行到官网核对」。${stageBlock("strategy", p0)}`, 3000);
     setMD($("vOut"), txt);
     (function () { const p = liveProj(pid); if (p) { p.outs = p.outs || {}; p.outs.strategy = withMeta(txt, "文献库期刊分布"); p.showV = "strategy"; addVersion(p, "投稿策略", p.outs.strategy, "outs.strategy"); save(); } })();
   } catch (e) { $("vProg").textContent = "失败：" + e.message; }
@@ -1527,7 +1589,7 @@ $("btnCover").addEventListener("click", () => withBusy($("btnCover"), async () =
   if (!(await askAI("生成 Cover Letter？", ["调用 AI 1 次"], "生成"))) { $("vProg").textContent = "已取消"; return; }
   $("vProg").textContent = "生成 Cover Letter…";
   try {
-    const txt = await callAI(`Write a concise journal cover letter (English, <250 words) based on: Title topic: ${p0.topic || "____"}; Key contribution: ${(p0.selection || "").slice(0, 500) || "____"}. Include: significance, fit to journal (placeholder [Journal Name]), no simultaneous submission, no conflicts of interest, all authors approved. Provide placeholders like [Your Name] where personal info is required. Also append a 中文版.`, 2000);
+    const txt = await callAI(`Write a concise journal cover letter (English, <250 words) based on: Title topic: ${p0.topic || "____"}; Key contribution: ${(p0.selection || "").slice(0, 500) || "____"}. Include: significance, fit to journal (placeholder [Journal Name]), no simultaneous submission, no conflicts of interest, all authors approved. Provide placeholders like [Your Name] where personal info is required. Also append a 中文版.${stageBlock("cover", p0)}`, 2000);
     setMD($("vOut"), txt);
     (function () { const p = liveProj(pid); if (p) { p.outs = p.outs || {}; p.outs.cover = txt; p.showV = "cover"; addVersion(p, "Cover Letter", txt, "outs.cover"); save(); } })();
   } catch (e) { $("vProg").textContent = "失败：" + e.message; }
@@ -1545,7 +1607,7 @@ $("btnRebuttal").addEventListener("click", () => withBusy($("btnRebuttal"), asyn
   try {
     const drafts = Object.entries(p0.draft || {}).map(([k, v]) => `【${k}】${v.slice(0, 400)}`).join("\n").slice(0, 2000);
     const txt = await callAI(`你是学术写作教练。请把下面的审稿意见逐条拆解并起草回复：
-要求：1) 每条意见编号并归类（方法/数据/写作/图表）；2) 每条给出回复策略（补实验/补数据/文字修改/礼貌反驳）与一段可直接粘贴的英文回复草稿（Response to Reviewer 风格，标明需要改动处用〔待补〕）；3) 结尾给「修改说明清单」（Change List 骨架）。
+要求：1) 每条意见编号并归类（方法/数据/写作/图表）；2) 每条给出回复策略（补实验/补数据/文字修改/礼貌反驳）与一段可直接粘贴的英文回复草稿（Response to Reviewer 风格，标明需要改动处用〔待补〕）；3) 结尾给「修改说明清单」（Change List 骨架）。${stageBlock("rebuttal", p0)}
 论文草稿节选（供回复时对齐内容）：
 ${drafts || "（无草稿）"}
 审稿意见如下：
@@ -1579,7 +1641,7 @@ $("defenseBtns").addEventListener("click", (e) => {
         "答辩PPT大纲": `请基于以下材料生成${lv.name}答辩 PPT 大纲（10-12页）：每页给出页标题+3条要点+一句讲解词提示；首页与致谢页含占位。`,
         "答辩问题预演": `请基于以下材料，模拟答辩委员/盲审专家最可能提出的 8-10 个问题（按「选题价值/方法与数据/创新点/局限与改进」分组），每个问题给 2-3 句作答要点与答题策略。直白、不留情面。`
       };
-      const txt = await callAI((prompts[b.dataset.def] || "生成答辩材料。") + "\n\n" + base, 6000);
+      const txt = await callAI((prompts[b.dataset.def] || "生成答辩材料。") + stageBlock("defense", p0) + "\n\n" + base, 6000);
       const p = liveProj(pid); if (!p) return;
       out.hidden = false; setMD(out, txt);
       /* 答辩材料也要落盘：换页/刷新后还能找回，并进版本档案 */
