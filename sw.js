@@ -5,7 +5,7 @@
  *       版本一变缓存名就变：新 SW 安装时重新下载全部资源，激活后清理旧缓存，页面上会提示「刷新」。
  */
 "use strict";
-const VERSION = "1.5.8";
+const VERSION = "1.5.9";
 const CACHE = "yanmo-v" + VERSION;
 const OWN = /^(wenqu|yanmo)-v/;   // 只清理研墨自己的旧缓存：github.io 同源下可能还有别的项目
 const SHELL = [
@@ -17,6 +17,7 @@ const SHELL = [
   "workbench.html",
   "map.html",
   "try.html",
+  "ai.html",
   "manifest.webmanifest",
   "assets/version.js",
   "assets/style.css",
@@ -43,6 +44,7 @@ const SHELL = [
   "assets/ym-icons.js",
   "assets/ym-selftest.js",
   "assets/ym-try.js",
+  "assets/ym-ai-setup.js",
   "assets/vendor/katex/katex.min.css",
   "assets/vendor/katex/katex.min.js",
   "assets/vendor/katex/fonts/KaTeX_AMS-Regular.woff2",

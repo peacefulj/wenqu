@@ -256,216 +256,16 @@ function rlogRender() {
   if (cl) cl.addEventListener("click", async function () { if (await wqConfirmAI({ title: "清空全部历史分析？", lines: ["本地保存的分析结果将全部删除"], okText: "清空" })) { localStorage.removeItem(RLOG); rlogRender(); const out = $("aiOut"); if (out) { out.hidden = true; out.textContent = ""; delete out.dataset.rawmd; } } });
 }
 rlogRender();
-/* ================= 设置（与 wenqu/tools.html 共用 localStorage 键） ================= */
+/* ================= 设置（界面统一在 ai.html；这里只读配置） ================= */
 const AI_DEF = { base: "https://api.yingcompute.com/api/v1", model: "glm-5.3-flash" };
-/* v1.5.4：服务商预设——选一个就带出地址、接口格式与常用模型，只需再填 Key（对齐 Trae 的配置方式） */
-const AI_PROVIDERS = [
-  { id: "yanmo", name: "研墨（默认 · 新人送额度）", base: "https://api.yingcompute.com/api/v1",
-    models: ["glm-5.3-flash", "glm-5.3", "deepseek-flash", "deepseek-v4-pro", "kimi-k3", "claude-sonnet-5-5", "claude-haiku-5-5"],
-    format: "openai", hint: "按 token 计费、无套餐；检索类功能不需要 Key。" },
-  /* v1.5.7：桌面版里 TokenHub 一律走本机中转（直连会被跨域预检拦掉） */
-  { id: "tokenhub", name: "腾讯 TokenHub（DeepSeek 等）",
-    base: window.__YM_DESKTOP__ ? "/__ai/v1" : "https://tokenhub.tencentmaas.com/v1",
-    models: ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"],
-    format: "openai",
-    hint: window.__YM_DESKTOP__
-      ? "桌面版经本机中转（同源转发），不需要处理跨域，保存后可直接用。"
-      : "网页直连常被跨域预检拦下（OPTIONS 405），失败请改用桌面版 exe。" },
-  { id: "deepseek", name: "DeepSeek 官方", base: "https://api.deepseek.com/v1",
-    models: ["deepseek-chat", "deepseek-reasoner"], format: "auto" },
-  { id: "kimi", name: "Kimi（Moonshot）", base: "https://api.moonshot.cn/v1",
-    models: ["kimi-k2-turbo-preview", "kimi-k2-0905-preview", "moonshot-v1-32k"], format: "auto" },
-  { id: "zhipu", name: "智谱 GLM", base: "https://open.bigmodel.cn/api/paas/v4",
-    models: ["glm-4.6", "glm-4-plus", "glm-4-flash"], format: "thinking" },
-  { id: "qwen", name: "通义千问（DashScope）", base: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    models: ["qwen-plus", "qwen-max", "qwen-turbo"], format: "enable_thinking" },
-  { id: "siliconflow", name: "硅基流动", base: "https://api.siliconflow.cn/v1",
-    models: ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct"], format: "openai" },
-  { id: "openai", name: "OpenAI", base: "https://api.openai.com/v1",
-    models: ["gpt-4o-mini", "gpt-4.1-mini", "gpt-4o"], format: "openai" },
-  { id: "anthropic", name: "Anthropic（Claude）", base: "https://api.anthropic.com",
-    models: ["claude-sonnet-4-5", "claude-haiku-4-5"], format: "anthropic" }
-];
-const aiNorm = (b) => String(b || "").trim().replace(/\/+$/, "");
-/* v1.5.5：按服务商分别记住 Key——切到哪家就带出哪家的 Key，默认服务商仍是研墨 */
-const AI_KEYMAP = "wenqu_ai_keys";
-function aiKeyMap() { try { return JSON.parse(localStorage.getItem(AI_KEYMAP) || "{}") || {}; } catch (e) { return {}; } }
-function aiKeyFor(pid) { return (pid && pid !== "custom" && aiKeyMap()[pid]) || ""; }
-function aiKeySave(pid, key) {
-  if (!pid || pid === "custom") return;
-  const m = aiKeyMap();
-  if (key) m[pid] = key; else delete m[pid];
-  try { localStorage.setItem(AI_KEYMAP, JSON.stringify(m)); } catch (e) {}
-}
-function aiCurProvider() {
-  const sel = $("aiProvider"); return sel ? sel.value : "";
-}
-/* 桌面版：TokenHub 直连地址统一折算成本机中转（否则浏览器预检会被拒） */
-function aiEffectiveBase(b) {
-  const s = String(b || "").trim();
-  return (window.__YM_DESKTOP__ && /tokenhub\.tencentmaas\.com/i.test(s)) ? "/__ai/v1" : s;
-}
-function aiProviderList() {
-  return AI_PROVIDERS.filter(p => !p.desktopOnly || window.__YM_DESKTOP__);
-}
-function aiProviderOf(base) {
-  const b = aiNorm(aiEffectiveBase(base));
-  return aiProviderList().find(p => aiNorm(aiEffectiveBase(p.base)) === b) || null;
-}
-function aiFillProviders() {
-  const sel = $("aiProvider"); if (!sel) return;
-  sel.innerHTML = aiProviderList().map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")
-    + '<option value="custom">自定义（自己填地址与模型）</option>';
-}
-function aiFillModels(p) {
-  const dl = $("aiModelList"); if (!dl) return;
-  dl.innerHTML = ((p && p.models) || []).map(m => `<option value="${esc(m)}"></option>`).join("");
-}
-function aiShowProv(p) {
-  const box = $("aiProvHint"); if (!box) return;
-  box.textContent = (p && p.hint) || "自定义：直接填 API 地址、模型名与 Key；不确定接口格式时选「自动识别」。";
-}
-function aiApplyProvider(id, keep) {
-  const p = aiProviderList().find(x => x.id === id);
-  if (!p) { aiFillModels(null); aiShowProv(null); return; }
-  if (!keep) {
-    $("aiBase").value = p.base;
-    $("aiModel").value = (p.models && p.models[0]) || "";
-    if ($("aiFormat")) $("aiFormat").value = p.format || "auto";
-  }
-  aiFillModels(p); aiShowProv(p);
-  renderBaseWarn(); renderFmtHint();
-}
-function aiSyncProviderFromBase() {
-  const p = aiProviderOf($("aiBase").value);
-  if ($("aiProvider")) $("aiProvider").value = p ? p.id : "custom";
-  aiFillModels(p); aiShowProv(p);
-}
-if ($("aiProvider")) {
-  $("aiProvider").addEventListener("change", () => {
-    const id = $("aiProvider").value;
-    aiApplyProvider(id, false);
-    /* 切换服务商时带出该服务商之前存的 Key（没有就留空，避免拿 A 家的 Key 去调 B 家） */
-    if ($("aiKey")) $("aiKey").value = aiKeyFor(id);
-    if ($("aiTestMsg")) $("aiTestMsg").textContent = "";
-  });
-}
-async function aiTestConn() {
-  const msg = $("aiTestMsg"), btn = $("aiTest");
-  const base = aiEffectiveBase($("aiBase").value.trim() || AI_DEF.base), key = $("aiKey").value.trim();
-  if (!key) { msg.textContent = "先填 Key"; $("aiKey").focus(); return; }
-  msg.textContent = "测试中…"; if (btn) btn.disabled = true;
-  try {
-    const pr = await WQCore.ai.probeModels(base, key);
-    const n = (pr.list || []).length;
-    msg.textContent = "✓ 连接正常" + (n ? "，可用模型 " + n + " 个" : "");
-    if (n) {
-      aiFillModels({ models: pr.list.slice(0, 60) });
-      if (!$("aiModel").value.trim() && pr.pick) $("aiModel").value = pr.pick;
-    }
-  } catch (e) {
-    const m = String((e && e.message) || e || "");
-    msg.textContent = "✗ " + (/Failed to fetch|NetworkError|Load failed/i.test(m)
-      ? "浏览器被跨域预检拦下（服务商未放行 OPTIONS），可换桌面版或改用其他服务商"
-      : m);
-  } finally { if (btn) btn.disabled = false; }
-}
-if ($("aiTest")) $("aiTest").addEventListener("click", aiTestConn);
-/* v1.1.0：读写统一走 WQCore（Key 可选只存本次会话；API 地址非 HTTPS 时提醒） */
 function readAIConf() {
   if (window.WQCore && WQCore.ai && WQCore.ai.conf) return WQCore.ai.conf();
   try { return { ...AI_DEF, ...JSON.parse(localStorage.getItem("wenqu_ai") || "{}") }; } catch { return { ...AI_DEF }; }
-}
-function loadAI() {
-  const s = readAIConf();
-  $("aiBase").value = s.base || AI_DEF.base;
-  $("aiKey").value = s.key || "";
-  $("aiModel").value = s.model || AI_DEF.model;
-  if ($("aiConfirmChk")) $("aiConfirmChk").checked = s.confirm !== false;
-  if ($("aiKeySession")) $("aiKeySession").checked = !!s.sessionKey;
-  /* v1.3.0：接口格式 / 思考模式 / 上下文上限 */
-  const fs = $("aiFormat");
-  if (fs && window.WQCore && WQCore.ai.formats) {
-    if (!fs.options.length) fs.innerHTML = WQCore.ai.formats().map(f => `<option value="${f.id}">${esc(f.name)}</option>`).join("");
-    fs.value = s.format || "auto";
-    if (!fs.value) fs.value = "auto";
-  }
-  if ($("aiThinking")) $("aiThinking").checked = !!s.thinking;
-  if ($("aiCtx")) $("aiCtx").value = s.ctxK || "";
-  /* v1.5.4：把当前地址映射到服务商下拉，并带出该服务商的常用模型 */
-  aiFillProviders();
-  /* v1.5.7：旧版的「本机中转」Key 迁移到合并后的 tokenhub 条目 */
-  try {
-    const m = aiKeyMap();
-    if (m.desktop && !m.tokenhub) { m.tokenhub = m.desktop; localStorage.setItem(AI_KEYMAP, JSON.stringify(m)); }
-  } catch (e) {}
-  aiSyncProviderFromBase();
-  /* 桌面版：输入框里若还是 TokenHub 直连地址，显示成本机中转（实际请求也会这样走） */
-  if (window.__YM_DESKTOP__ && /tokenhub\.tencentmaas\.com/i.test($("aiBase").value)) $("aiBase").value = "/__ai/v1";
-  /* v1.5.5：当前服务商有单独保存的 Key 时优先用它（旧配置回落到全局 Key） */
-  const pid0 = aiCurProvider();
-  const k0 = aiKeyFor(pid0);
-  if (k0 && $("aiKey")) $("aiKey").value = k0;
-  renderBaseWarn();
-}
-/* 「自动」时告诉用户实际按哪种格式发、思考开关会发什么参数 */
-function renderFmtHint() {
-  const box = $("aiFmtHint"); if (!box || !(window.WQCore && WQCore.ai.format)) return;
-  const c = { base: $("aiBase").value.trim() || AI_DEF.base, format: $("aiFormat") ? $("aiFormat").value : "auto", thinking: $("aiThinking") && $("aiThinking").checked, ctxK: $("aiCtx") ? $("aiCtx").value.trim() : "", model: $("aiModel").value.trim() };
-  const f = WQCore.ai.format(c);
-  const sent = { thinking: c.thinking ? "thinking: enabled" : "thinking: disabled", enable_thinking: "enable_thinking: " + !!c.thinking, openai_reasoning: c.thinking ? "reasoning_effort 用默认" : "reasoning_effort: low", anthropic: c.thinking ? "thinking: enabled" : "thinking: disabled" }[f];
-  box.textContent = (c.format === "auto" ? "实际使用：" + WQCore.ai.formatName(f) : "") + (sent ? (c.format === "auto" ? "；" : "") + "思考参数 " + sent : (c.format === "auto" ? "；不加思考参数" : "不加思考参数")) + "；上下文按 " + Math.round(WQCore.ai.ctxWindow(c) / 1000) + "K token";
 }
 function getAI() {
   const s = readAIConf();
   return { base: String(s.base || AI_DEF.base).replace(/\/+$/, ""), key: s.key || "", model: s.model || AI_DEF.model };
 }
-function renderBaseWarn() {
-  const box = $("aiBaseWarn"); if (!box) return;
-  const w = (window.WQCore && WQCore.ai.baseWarning) ? WQCore.ai.baseWarning($("aiBase").value) : "";
-  box.hidden = !w; box.textContent = w ? "⚠ " + w : "";
-}
-$("aiBase").addEventListener("input", () => { aiSyncProviderFromBase(); renderBaseWarn(); renderFmtHint(); });
-["aiFormat", "aiThinking", "aiCtx", "aiModel"].forEach(id => { const el = $(id); if (el) el.addEventListener(el.tagName === "INPUT" && el.type === "text" ? "input" : "change", renderFmtHint); });
-$("aiSave").addEventListener("click", () => {
-  /* v1.0 合并式保存：保留扩展字段（priceIn/priceOut 等由 wq-ui 写入），避免被整体覆写 */
-  const sessionOnly = $("aiKeySession") ? $("aiKeySession").checked : false;
-  let ok = true;
-  if (window.WQCore && WQCore.ai.setConf) {
-    const prev = readAIConf();
-    const ctxK = $("aiCtx") ? parseFloat($("aiCtx").value) : NaN;
-    ok = WQCore.ai.setConf({
-      base: aiEffectiveBase($("aiBase").value.trim() || AI_DEF.base),
-      model: $("aiModel").value.trim() || prev.model || AI_DEF.model,
-      confirm: $("aiConfirmChk") ? $("aiConfirmChk").checked : true,
-      format: $("aiFormat") ? ($("aiFormat").value || "auto") : (prev.format || "auto"),
-      thinking: $("aiThinking") ? $("aiThinking").checked : !!prev.thinking,
-      ctxK: isFinite(ctxK) && ctxK > 0 ? String(ctxK) : "",
-    }) && WQCore.ai.setKey($("aiKey").value.trim(), sessionOnly);
-  } else {
-    let prev = {};
-    try { prev = JSON.parse(localStorage.getItem("wenqu_ai") || "{}") || {}; } catch (e) { prev = {}; }
-    ok = lsSet("wenqu_ai", JSON.stringify(Object.assign({}, prev, {
-      base: aiEffectiveBase($("aiBase").value.trim() || AI_DEF.base), key: $("aiKey").value.trim(),
-      model: $("aiModel").value.trim() || prev.model || AI_DEF.model, confirm: $("aiConfirmChk") ? $("aiConfirmChk").checked : true,
-    })));
-  }
-  if (!ok) toast("浏览器存储不可用（隐私模式或配额已满），设置没有保存");
-  /* v1.5.5：按服务商记 Key（「仅本次会话」时不落到 localStorage） */
-  if (!sessionOnly) aiKeySave(aiCurProvider(), $("aiKey").value.trim());
-  lsSet("wenqu_email", $("upEmail").value.trim());
-  lsSet("wenqu_grobid", $("grobidUrl").value.trim());
-  oaMail = $("upEmail").value.trim(); // 立即生效，不必刷新页面
-  renderBaseWarn(); renderFmtHint();
-  $("aiSave").textContent = sessionOnly ? "已保存 ✓（Key 仅本次会话）" : "已保存 ✓"; setTimeout(() => $("aiSave").textContent = "保存设置", 1800);
-  if (typeof refreshAIButtons === "function") refreshAIButtons(); // 合并平台：保存后即时解除 AI 按钮置灰
-  if (typeof window.wqSyncAiNeed === "function") window.wqSyncAiNeed();
-});
-$("btnSet").addEventListener("click", () => { $("setPanel").hidden = !$("setPanel").hidden; });
-loadAI(); renderFmtHint();
-if (/[?&]set=ai(&|$)/.test(location.search)) $("setPanel").hidden = false;   // v1.3.0：试用页「调整 AI 设置」直达
-$("upEmail").value = localStorage.getItem("wenqu_email") || "";
-$("grobidUrl").value = localStorage.getItem("wenqu_grobid") || "";
 /* Unpaywall 条款要求真实邮箱：默认不发 mailto，用户填了真实邮箱才附 */
 let oaMail = localStorage.getItem("wenqu_email") || "";
 const mto = () => oaMail ? "&mailto=" + encodeURIComponent(oaMail) : "";
@@ -473,7 +273,7 @@ const mto = () => oaMail ? "&mailto=" + encodeURIComponent(oaMail) : "";
 /* v1.3.0：统一走 WQCore.ai.complete（接口格式、思考开关、上下文压缩、计量、调试日志都在那里） */
 async function callAI(userMsg, opts = {}) {
   const { key } = getAI();
-  if (!key) throw new Error("未配置 API Key：页头「AI / 接口设置」里填入并保存");
+  if (!key) throw new Error("未配置 API Key：页头「AI 设置」里填入并保存");
   const r = await WQCore.ai.complete(Array.isArray(userMsg) ? userMsg : [{ role: "user", content: userMsg }], {
     temperature: opts.temperature ?? 0.3, max_tokens: opts.max_tokens ?? 4096, timeout: opts.timeout ?? 180000,
   });
@@ -1216,7 +1016,7 @@ $("qaQ").addEventListener("keydown", e => { if (e.key === "Enter") $("btnQA").cl
 $("btnGrobid").addEventListener("click", async () => {
   const gb = ($("grobidUrl").value || localStorage.getItem("wenqu_grobid") || "").replace(/\/+$/, "");
   const prog = $("gbProg");
-  if (!gb) { prog.textContent = "未配置：页头「AI / 接口设置」里填 GROBID 地址（如 http://localhost:8070）"; return; }
+  if (!gb) { prog.textContent = "未配置：页头「AI 设置」里填 GROBID 地址（如 http://localhost:8070）"; return; }
   const f = $("file").files[0] || lastFile;
   if (!f || !f.name.toLowerCase().endsWith(".pdf")) { prog.textContent = "请先导入 PDF（支持拖拽或点击选择，GROBID 需要原始文件）"; return; }
   prog.textContent = "上传解析中…（首次调用 GROBID 模型加载可能要 30 秒+）";

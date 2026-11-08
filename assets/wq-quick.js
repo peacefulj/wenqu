@@ -50,52 +50,14 @@
     $("qGo").title = hasKey() ? "" : "先配置 API Key：见页面上方的提示";
   }
   (function initSettings() {
-    var jump = $("qkJump");
-    if (jump) jump.addEventListener("click", function () {
-      var k = $("qkKey"); if (!k) return;
-      if (k.scrollIntoView) k.scrollIntoView({ behavior: "smooth", block: "center" });
-      setTimeout(function () { k.focus(); k.select(); }, 260);
-    });
-    var c = WQCore.ai.conf();
-    $("qkBase").value = c.base || ""; $("qkKey").value = c.key || ""; $("qkModel").value = c.model || "";
-    $("qkPriceIn").value = c.priceIn || ""; $("qkPriceOut").value = c.priceOut || "";
-    /* v1.0.2：自愈——配了非研墨服务商但模型还是默认 glm-5.3-flash（会 503 无渠道），自动探测并修正 */
-    (async function autoHeal() {
-      try {
-        if (!c.key || !c.base) return;
-        if (/yingcompute/.test(c.base)) return;
-        if (c.model && c.model !== "glm-5.3-flash") return;
-        var pr = await WQCore.ai.probeModels(c.base, c.key);
-        if (pr.pick && pr.pick !== c.model) {
-          WQCore.ai.setConf({ model: pr.pick });
-          $("qkModel").value = pr.pick;
-          $("qkSaveMsg").textContent = "检测到原模型在该服务商不可用，已自动切换为：" + pr.pick;
-          setTimeout(function () { $("qkSaveMsg").textContent = ""; }, 6000);
-        }
-      } catch (e) { /* 静默 */ }
-    })();
-    $("qkSave").addEventListener("click", async function () {
-      var b = $("qkBase").value.trim() || "https://api.yingcompute.com/api/v1";
-      var k = $("qkKey").value.trim();
-      var m = $("qkModel").value.trim();
-      /* v1.0.2：模型名留空 → 自动探测该服务商可用模型（只填 Key 就能用） */
-      if (!m) {
-        $("qkSaveMsg").textContent = "模型名留空——正在探测可用模型…";
-        try {
-          var pr = await WQCore.ai.probeModels(b, k);
-          m = pr.pick || WQCore.ai.conf().model || "glm-5.3-flash";
-          $("qkModel").value = m;
-          $("qkSaveMsg").textContent = "已自动选择该服务商可用模型：" + m;
-        } catch (e) {
-          m = WQCore.ai.conf().model || "glm-5.3-flash";
-          $("qkSaveMsg").textContent = "探测失败（" + e.message.slice(0, 40) + "），沿用原模型：" + m;
-        }
-      }
-      WQCore.ai.setConf({ base: b, key: k, model: m, priceIn: $("qkPriceIn").value.trim(), priceOut: $("qkPriceOut").value.trim() });
-      if (!($("qkSaveMsg").textContent || "").indexOf("已自动")) $("qkSaveMsg").textContent = "已保存 ✓";
-      renderKeyState(); updateEst();
-      setTimeout(function () { $("qkSaveMsg").textContent = ""; }, 5000);
-    });
+    /* v1.5.9：AI 配置统一到 ai.html（全站一份），这里只显示当前状态与入口 */
+    var st = $("qkKeyState");
+    if (st) {
+      var c = WQCore.ai.conf();
+      st.innerHTML = c.key
+        ? "AI：" + esc(c.model || "") + " · <a href=\"ai.html\">修改</a>"
+        : "还没有配置 AI · <a href=\"ai.html\">去 AI 设置 →</a>";
+    }
   })();
 
   (function initSelects() {

@@ -122,7 +122,7 @@ function aiConf() {
 /* v1.3.0：统一走 WQCore.ai.complete（接口格式、思考开关、上下文压缩、计量、调试日志都在那里） */
 async function callAI(userMsg, maxTokens = 4096) {
   const c = aiConf();
-  if (!c.key) throw new Error("未配置 API Key（页头「AI / 接口设置」里填好并保存）");
+  if (!c.key) throw new Error("未配置 API Key（页头「AI 设置」里填好并保存）");
   const r = await WQCore.ai.complete([{ role: "user", content: userMsg }], { max_tokens: maxTokens, temperature: 0.3, timeout: 180000 });
   return r.text;
 }
@@ -1325,7 +1325,7 @@ $("projStatus").addEventListener("change", () => { const p = cur(); if (p) { p.s
 function keyOK() { return !!aiConf().key; }
 function refreshAIButtons() {
   const ok = keyOK();
-  document.querySelectorAll("[data-ai]").forEach(b => { b.disabled = !ok; b.title = ok ? "" : "需先在页头「AI / 接口设置」配置 Key"; });
+  document.querySelectorAll("[data-ai]").forEach(b => { b.disabled = !ok; b.title = ok ? "" : "需先在页头「AI 设置」配置 Key"; });
   renderSecBtns(); renderDefense(); // 动态按钮的置灰状态同步
 }
 function backupInfo() {
@@ -1803,7 +1803,7 @@ function renderOnboard() {
   const el = $("onboard"); if (!el) return;
   if (localStorage.getItem("wenqu_onboarded")) { el.hidden = true; return; }
   el.hidden = false;
-  el.innerHTML = "<b>👋 三步开始：</b>① 配置 AI（<b>可跳过</b>——检索/趋势/引用格式化免费可用）→ ② 新建项目，选研究范式与层级 → ③ 跟随每阶段顶部的「目标与产出」推进。 <button class=\"btn2 btn-sm\" onclick=\"document.getElementById('setPanel').hidden=false;document.getElementById('btnSet').scrollIntoView({behavior:'smooth'})\">① 打开 AI 设置</button> <button class=\"btn2 btn-sm ghost\" id=\"obDismiss\">知道了，不再提示</button>";
+  el.innerHTML = "<b>👋 三步开始：</b>① 配置 AI（<b>可跳过</b>——检索/趋势/引用格式化免费可用）→ ② 新建项目，选研究范式与层级 → ③ 跟随每阶段顶部的「目标与产出」推进。 <button class=\"btn2 btn-sm\" onclick=\"location.href='ai.html'\">① 打开 AI 设置</button> <button class=\"btn2 btn-sm ghost\" id=\"obDismiss\">知道了，不再提示</button>";
   const d = document.getElementById("obDismiss");
   if (d) d.addEventListener("click", () => { try { localStorage.setItem("wenqu_onboarded", "1"); } catch {} el.hidden = true; });
 }
@@ -1927,10 +1927,7 @@ document.addEventListener("DOMContentLoaded", function () { if (window.wqSyncAiN
 (function () {
   const b = $("aiNeedBtn"); if (!b) return;
   b.addEventListener("click", function () {
-    const sp = $("setPanel"); if (sp) sp.hidden = false;
-    const bs = $("btnSet"); if (bs) bs.classList.add("on");
-    if (sp && sp.scrollIntoView) sp.scrollIntoView({ behavior: "smooth", block: "start" });
-    setTimeout(function () { const k = $("aiKey"); if (k) { k.focus(); k.select(); } }, 260);
+    location.href = "ai.html";
   });
 })();
 

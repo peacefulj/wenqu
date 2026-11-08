@@ -33,7 +33,7 @@ npx wrangler deploy --temporary
 
 ## 在研墨里接上
 
-打开 https://peacefulj.github.io/wenqu/studio.html → 「⚙️ AI / 接口设置」：
+打开 https://peacefulj.github.io/wenqu/studio.html → 「⚙️ AI 设置」：
 
 - 服务商：**自定义**
 - API 地址：`https://yanmo-relay.<你的子域>.workers.dev/v1`

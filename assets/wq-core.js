@@ -572,14 +572,14 @@
     if (status === 404 && !/model/i.test(t)) return "HTTP 404：接口地址不存在（" + hostPath(sent.url) + "）——检查「API 地址」和「接口格式」是否匹配";
     /* v1.0.2：模型无渠道是最常见的新手坑，给可执行的指引 */
     if (status === 503 || /model_not_found|无可用渠道|does not exist|not found/i.test(t)) {
-      return "模型「" + sent.model + "」在该服务商没有可用渠道——请到「AI / 接口设置」更换模型名（留空保存可自动探测可用模型）。原始信息：" + t.slice(0, 140);
+      return "模型「" + sent.model + "」在该服务商没有可用渠道——请到「AI 设置」更换模型名（留空保存可自动探测可用模型）。原始信息：" + t.slice(0, 140);
     }
     var hint = AIX().errorHint(status, t);
     return "HTTP " + status + " " + t.slice(0, 180) + (hint ? "——" + hint : "");
   }
   function emptyMsg(r) {
     if (r.error) return "接口返回错误：" + String(r.error).slice(0, 180);
-    if (r.reasoning) return "模型把输出额度都花在了思考上、正文为空——到「AI / 接口设置」关掉「思考模式」，或把「接口格式」选成服务商对应的那一项后重试";
+    if (r.reasoning) return "模型把输出额度都花在了思考上、正文为空——到「AI 设置」关掉「思考模式」，或把「接口格式」选成服务商对应的那一项后重试";
     return "模型返回为空（检查 Key / 模型 / 余额；推理型模型可能把 token 花在思维链上）";
   }
   function usageEst(u, messages, text) {
@@ -597,7 +597,7 @@
   async function streamAI(userMsg, opts, onDelta) {
     opts = opts || {};
     var c = conf();
-    if (!c.key) throw new Error("未配置 API Key（在「AI / 接口设置」里填好并保存）");
+    if (!c.key) throw new Error("未配置 API Key（在「AI 设置」里填好并保存）");
     var messages = opts.messages || [{ role: "user", content: userMsg }];
     var ctl = new AbortController();
     var limitMs = opts.timeout || 240000, timedOut = false;
@@ -694,7 +694,7 @@
   async function completeAI(messages, opts) {
     opts = opts || {};
     var c = conf();
-    if (!c.key) throw new Error("未配置 API Key（在「AI / 接口设置」里填好并保存）");
+    if (!c.key) throw new Error("未配置 API Key（在「AI 设置」里填好并保存）");
     if (!Array.isArray(messages)) messages = [{ role: "user", content: String(messages || "") }];
     var ctl = new AbortController(), timedOut = false;
     var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, opts.timeout || 180000);

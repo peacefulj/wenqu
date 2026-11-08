@@ -22,7 +22,7 @@ if (!version) throw new Error("读不到 assets/version.js 里的版本号");
 rmSync(WEB, { recursive: true, force: true });
 mkdirSync(WEB, { recursive: true });
 
-const pages = ["index.html", "studio.html", "quick.html", "map.html", "try.html", "tools.html", "workbench.html", "manifest.webmanifest", "sw.js"];
+const pages = ["index.html", "studio.html", "quick.html", "map.html", "try.html", "ai.html", "tools.html", "workbench.html", "manifest.webmanifest", "sw.js"];
 for (const f of pages) {
   const src = join(ROOT, f);
   if (!existsSync(src)) throw new Error("缺少文件：" + f);

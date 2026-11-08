@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [1.5.9] - 2026-11-08
+
+- **AI 配置统一到一页**：新增 [ai.html](ai.html)，入口在页头「⚙️ AI 设置」（项目导图右侧）。参考稿页不再单独填地址 / Key，工作台原设置面板也改为跳转该页；三处共用同一份配置，按服务商分存的 Key 一次生效。设置页新增「测试一次对话」，可直接验证 Key 能否真正生成。
+
 ## [1.5.8] - 2026-11-08
 
 - **修桌面版“换了新 exe 还是旧版本”**：旧版 exe 还开着时，新版启动会复用它（原先只认程序标识、不认版本），于是窗口里仍是旧页面。现在版本不一致就另起一个服务并打开新版；窗口标题也带上版本号（如「科研工作台 · v1.5.8」），一眼可辨。
@@ -238,7 +242,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.8...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.5.9...HEAD
+[1.5.9]: https://github.com/peacefulj/wenqu/compare/v1.5.8...v1.5.9
 [1.5.8]: https://github.com/peacefulj/wenqu/compare/v1.5.7...v1.5.8
 [1.5.7]: https://github.com/peacefulj/wenqu/compare/v1.5.6...v1.5.7
 [1.5.6]: https://github.com/peacefulj/wenqu/compare/v1.5.5...v1.5.6

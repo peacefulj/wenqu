@@ -365,7 +365,7 @@
     else box.innerHTML = `<div class="hint" style="line-height:1.8">
         <p><b>存在哪：</b>PDF 原文件只存在当前浏览器（IndexedDB），不上传服务器；「备份全部」不含 PDF 原文件，换电脑需重新上传。批注和 AI 精读结果存在项目里，会随备份、同步文件一起保存。</p>
         <p><b>高亮：</b>选中文字 → 选颜色。跨页选中只记录起始页。扫描版 PDF 没有文字层，无法选中。</p>
-        <p><b>AI 精读：</b>会把这篇 PDF 的文字发给你在「AI / 接口设置」里配置的模型服务；审稿中、涉密、含个人信息的稿件请勿使用。结果可能出错，引用前回原文核对。</p>
+        <p><b>AI 精读：</b>会把这篇 PDF 的文字发给你在「AI 设置」里配置的模型服务；审稿中、涉密、含个人信息的稿件请勿使用。结果可能出错，引用前回原文核对。</p>
         <p><b>快捷键：</b>Esc 关闭阅读器。</p></div>`;
   }
   function renderAITab(box, f) {
@@ -512,7 +512,7 @@
   async function runReading() {
     if (R.busy) return;
     const p0 = liveProj(R.pid); const f0 = curPaper(); if (!p0 || !f0 || !R.doc) return;
-    if (!WQCore.ai.conf().key) return notice("还没有配置 AI Key", ["页头「⚙️ AI / 接口设置」里填好 Key 再用 AI 精读"]);
+    if (!WQCore.ai.conf().key) return notice("还没有配置 AI Key", ["页头「⚙️ AI 设置」里填好 Key 再用 AI 精读"]);
     const msg = () => $("ymrAiMsg"), out = () => $("ymrAiOut");
     const setMsg = (t) => { const m = msg(); if (m) m.textContent = t; };
     R.busy = true;

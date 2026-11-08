@@ -218,7 +218,7 @@
     row(L, navigator.clipboard && navigator.clipboard.writeText ? "ok" : "warn", "剪贴板", navigator.clipboard && navigator.clipboard.writeText ? "可用（复制引用、GB/T 参考文献表）" : "不可用，复制按钮会提示手动复制");
     const c = WQCore.ai.conf();
     if (c.key) row(L, "ok", "AI 接口设置", "已配置 Key" + (c.sessionKey ? "（只在本次会话有效）" : "（保存在本机）") + " · " + hostOf(c.base) + " · 模型 " + (c.model || "默认"));
-    else row(L, "info", "AI 接口设置", "还没配置 Key：检索、导入导出、PDF 批注、Markdown / LaTeX 导出都不需要；AI 精读、参考稿要在工作台页头「⚙️ AI / 接口设置」里填");
+    else row(L, "info", "AI 接口设置", "还没配置 Key：检索、导入导出、PDF 批注、Markdown / LaTeX 导出都不需要；AI 精读、参考稿要在工作台页头「⚙️ AI 设置」里填");
     const bw = WQCore.ai.baseWarning(c.base);
     if (bw) row(L, "warn", "AI 接口地址", bw);
     paint("tryEnv", L);
@@ -247,7 +247,7 @@
   async function aiTest() {
     const btn = $("tryAI"), c = WQCore.ai.conf();
     const L = R.net = R.net.filter(x => !/^AI/.test(x.name));
-    if (!c.key) { row(L, "info", "AI 接口", "还没配置 Key：先到工作台页头「⚙️ AI / 接口设置」填写，再回来测试"); paint("tryNetOut", L); return; }
+    if (!c.key) { row(L, "info", "AI 接口", "还没配置 Key：先到工作台页头「⚙️ AI 设置」填写，再回来测试"); paint("tryNetOut", L); return; }
     btn.disabled = true; $("tryNetMsg").textContent = "正在读取模型列表…";
     const t0 = performance.now();
     try {
