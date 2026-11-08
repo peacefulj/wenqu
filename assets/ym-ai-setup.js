@@ -225,7 +225,13 @@
   function fillPresetSelect() {
     var sel = $("mPreset");
     sel.innerHTML = '<option value="">不填，手动配置</option>' +
-      PRESETS.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + "</option>"; }).join("");
+      PRESETS.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + "</option>"; }).join("") +
+      '<option value="custom">自定义（手动填写地址与模型）</option>';
+  }
+  /* 自定义服务商必须填地址：空着就明确提示，别让人只填个名字就保存 */
+  function updateBaseWarn() {
+    var w = $("mBaseWarn"); if (!w) return;
+    w.style.display = $("mBase").value.trim() ? "none" : "block";
   }
 
   function openDialog(m) {
@@ -251,6 +257,7 @@
     $("mNameCount").textContent = ($("mName").value.length) + "/64";
     msg($("mTestMsg"), "");
     syncPathHint();
+    updateBaseWarn();
     if (!$("mAdv").open && (d.thinking || d.thinkParam || d.ctxOut || d.temperature || d.topP || d.topK)) $("mAdv").open = true;
     if (typeof $("modelDlg").showModal === "function") $("modelDlg").showModal(); else $("modelDlg").setAttribute("open", "");
   }
@@ -304,7 +311,7 @@
   function saveFromForm() {
     var m = formModel();
     if (!m.model) { msg($("mTestMsg"), "请填写模型 ID", "bad"); $("mModel").focus(); return false; }
-    if (!m.base) { msg($("mTestMsg"), "请填写请求地址", "bad"); $("mBase").focus(); return false; }
+    if (!m.base) { msg($("mTestMsg"), "请填写请求地址（自定义服务商必填）", "bad"); updateBaseWarn(); $("mBase").focus(); return false; }
     var list = readModels();
     var i = -1;
     for (var k = 0; k < list.length; k++) if (list[k].id === m.id) i = k;
@@ -334,8 +341,18 @@
       this.textContent = el.type === "password" ? "👁" : "🙈";
     });
     $("mPreset").addEventListener("change", function () {
-      var p = PRESETS.filter(function (x) { return x.id === this.value; }.bind(this))[0];
-      if (!p) return;
+      var id = this.value;
+      if (id === "custom") {
+        $("mBase").value = "";
+        $("mModel").value = "";
+        $("mName").value = "";
+        $("mFormat").value = "openai";
+        $("mBase").focus();
+        updateBaseWarn(); syncPathHint();
+        return;
+      }
+      var p = PRESETS.filter(function (x) { return x.id === id; })[0];
+      if (!p) { updateBaseWarn(); return; }
       $("mBase").value = p.base;
       $("mModel").value = p.model;
       $("mFormat").value = p.format;
@@ -344,8 +361,9 @@
       /* 之前按服务商存过的 Key 直接带出来，免得重新粘贴 */
       var old = legacyKeyFor(p.base);
       if (old && !$("mKey").value) $("mKey").value = old;
-      syncPathHint();
+      updateBaseWarn(); syncPathHint();
     });
+    $("mBase").addEventListener("input", updateBaseWarn);
     $("modelDlg").querySelectorAll(".chips[data-for] .chip").forEach(function (b) {
       b.addEventListener("click", function () { $(b.parentNode.getAttribute("data-for")).value = b.getAttribute("data-v"); });
     });

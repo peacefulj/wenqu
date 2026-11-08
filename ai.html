@@ -87,7 +87,7 @@
   </section>
 
   <dialog id="modelDlg" aria-labelledby="dlgTitle">
-    <form id="modelForm" method="dialog" autocomplete="off">
+    <form id="modelForm" method="dialog" autocomplete="off" novalidate>
       <div class="dlg-h"><b id="dlgTitle">编辑模型</b><button class="dlg-x" type="button" id="dlgClose" aria-label="关闭">×</button></div>
       <div class="dlg-b">
         <div class="fld">
@@ -107,6 +107,7 @@
             <label class="switch" title="开启后不再自动补 /chat/completions，直接请求你填写的完整地址"><input type="checkbox" id="mFullUrl"> 完整 URL</label>
           </div>
           <div class="sub">请填写兼容所选格式的服务端点地址，不要以斜杠结尾。<code id="mPathHint">/chat/completions</code> 将会被补充到你填写的地址末尾。</div>
+          <div id="mBaseWarn" class="hint" style="color:#c62828;display:none;margin-top:4px">自定义服务商必须填写请求地址（例如 https://your-api.com/v1）；只填服务商名称无法调用。</div>
         </div>
 
         <div class="fld">
@@ -210,10 +211,10 @@
 <footer class="site"><div class="container">
   <div class="links"><a href="index.html">首页</a> · <a href="studio.html">科研工作台</a> · <a href="quick.html">参考稿</a> · <a href="map.html">项目导图</a> · <a href="try.html">试用与测试</a> · <a href="https://github.com/peacefulj/wenqu" target="_blank" rel="noopener">GitHub 开源</a></div>
   <div class="disc">AI 相关功能由你配置的模型服务提供；Key 只保存在本机浏览器，调用时直接发往你填写的服务商。</div>
-  <div>© 2026 研墨 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.6.0</span> 更新日志</a></div>
+  <div>© 2026 研墨 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.7.0</span> 更新日志</a></div>
 </div></footer>
 
-<script src="assets/version.js?v=1.6.0"></script>
+<script src="assets/version.js?v=1.7.0"></script>
 <script src="assets/ym-ai.js"></script>
 <script src="assets/wq-core.js"></script>
 <script src="assets/ym-ai-setup.js"></script>

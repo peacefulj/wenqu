@@ -761,17 +761,30 @@ function outlineParse(p) {
 }
 window.outlineParse = outlineParse;
 function outlineSections(p) { return outlineParse(p).list; }
+/* 研究方法：多选（存 p.methods 数组；p.method 仍保留成顿号串，提示词直接可用） */
+function methodArr(p) {
+  if (!p) return [];
+  if (Array.isArray(p.methods)) return p.methods.slice();
+  return String(p.method || "").split(/[、,，;；]/).map(s => s.trim()).filter(Boolean);
+}
+function renderMethodMenu(p) {
+  const menu = $("wMethodMenu"); if (!menu) return;
+  const sel = methodArr(p);
+  const ms = [...new Set(W4_METHODS.concat(w4Custom("wenqu_methods")))];
+  menu.innerHTML = ms.map(m => `<label class="msrow"><input type="checkbox" value="${esc(m)}"${sel.indexOf(m) >= 0 ? " checked" : ""}><span>${esc(m)}</span></label>`).join("")
+    + '<div class="msrow mscustom"><input id="wMethodCustom" type="text" placeholder="自定义方法，回车添加"><button type="button" id="wMethodAdd">添加</button></div>';
+  $("wMethodTxt").textContent = sel.length ? sel.join("、") : "选择方法（可多选）";
+  $("wMethodBtn").title = sel.length ? sel.join("、") : "可多选";
+}
 function fillW4Selects(p) {
-  const disc = $("wDisc"), meth = $("wMethod"), type = $("wType");
-  if (!disc || !meth || !type) return;
+  const disc = $("wDisc"), type = $("wType");
+  if (!disc || !type) return;
   disc.innerHTML = (window.WQ_PARADIGMS || []).map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
-  const ms = W4_METHODS.concat(w4Custom("wenqu_methods"));
-  meth.innerHTML = '<option value="">（不限 / 未指定）</option>' + ms.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("") + '<option value="__custom">＋ 自定义…</option>';
   const ts = W4_TYPES.concat(w4Custom("wenqu_types"));
   type.innerHTML = ts.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("") + '<option value="__custom">＋ 自定义…</option>';
   disc.value = (p && p.paradigm) || "quant";
-  meth.value = (p && p.method) || "";
   type.value = (p && p.type) || "学位论文";
+  renderMethodMenu(p);
 }
 function titleCands(p) {
   const out = [];
@@ -781,6 +794,38 @@ function titleCands(p) {
     if (m) out.push(m[1].trim());
   });
   return [...new Set(out)].filter(Boolean).slice(0, 8);
+}
+let wCustomFor = false;
+function wCustomOpen(label) {
+  wCustomFor = true;
+  $("wCustomLabel").textContent = label || "自定义：";
+  $("wCustomRow").hidden = false;
+  $("wCustomVal").value = "";
+  $("wCustomVal").focus();
+}
+function wCustomClose() {
+  wCustomFor = false;
+  $("wCustomRow").hidden = true;
+  $("wCustomVal").value = "";
+  const p = cur();
+  if (p && $("wType")) $("wType").value = p.type || "学位论文";
+}
+function wCustomApply() {
+  const v = $("wCustomVal").value.trim();
+  const pp = cur();
+  if (!v || !pp) { wCustomClose(); return; }
+  if (W4_TYPES.indexOf(v) < 0) w4AddCustom("wenqu_types", v);
+  pp.type = v; save(); fillW4Selects(pp);
+  if ($("wType")) $("wType").value = v;
+  wCustomClose();
+}
+if (typeof document !== "undefined") {
+  document.addEventListener("DOMContentLoaded", () => {
+    const ok = $("wCustomOk"), cancel = $("wCustomCancel"), val = $("wCustomVal");
+    if (ok) ok.addEventListener("click", wCustomApply);
+    if (cancel) cancel.addEventListener("click", wCustomClose);
+    if (val) val.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); wCustomApply(); } });
+  });
 }
 let w4Inited = false;
 function renderW4() {
@@ -808,17 +853,47 @@ function renderW4() {
       $("wTitleMsg").textContent = "已保存 ✓ 大纲与分节写作都会使用这个题目";
     });
     $("wDisc").addEventListener("change", () => { const pp = cur(); if (pp) { pp.paradigm = $("wDisc").value; save(); renderProjects(); renderStageCards(); renderSecBtns(); } });
-    $("wMethod").addEventListener("change", () => {
-      const pp = cur(); if (!pp) return;
-      let v = $("wMethod").value;
-      if (v === "__custom") { v = (prompt("输入研究方法名称") || "").trim(); if (v) w4AddCustom("wenqu_methods", v); fillW4Selects(pp); }
-      pp.method = v === "__custom" ? "" : v; save(); $("wMethod").value = pp.method || "";
+    /* 方法多选：点按钮展开勾选；菜单内可直接输入自定义方法 */
+    $("wMethodBtn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const menu = $("wMethodMenu");
+      menu.hidden = !menu.hidden;
+      $("wMethodBtn").setAttribute("aria-expanded", String(!menu.hidden));
     });
-    $("wType").addEventListener("change", () => {
+    $("wMethodMenu").addEventListener("change", (e) => {
+      if (e.target.type !== "checkbox") return;
       const pp = cur(); if (!pp) return;
-      let v = $("wType").value;
-      if (v === "__custom") { v = (prompt("输入论文类型名称") || "").trim(); if (v) w4AddCustom("wenqu_types", v); fillW4Selects(pp); }
-      pp.type = v === "__custom" ? "学位论文" : v; save(); $("wType").value = pp.type;
+      const arr = [...$("wMethodMenu").querySelectorAll('input[type="checkbox"]:checked')].map(x => x.value);
+      pp.methods = arr; pp.method = arr.join("、");
+      save(); renderMethodMenu(pp);
+    });
+    $("wMethodMenu").addEventListener("click", (e) => {
+      if (e.target.id !== "wMethodAdd") return;
+      const inp = $("wMethodCustom");
+      const v = (inp.value || "").trim();
+      if (!v) { inp.focus(); return; }
+      const pp = cur(); if (!pp) return;
+      if (W4_METHODS.indexOf(v) < 0) w4AddCustom("wenqu_methods", v);
+      const arr = [...$("wMethodMenu").querySelectorAll('input[type="checkbox"]:checked')].map(x => x.value);
+      if (arr.indexOf(v) < 0) arr.push(v);
+      pp.methods = arr; pp.method = arr.join("、");
+      save(); renderMethodMenu(pp);
+      const again = $("wMethodCustom"); if (again) again.focus();
+    });
+    $("wMethodMenu").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.target.id === "wMethodCustom") { e.preventDefault(); const b = $("wMethodAdd"); if (b) b.click(); }
+    });
+    document.addEventListener("click", (e) => {
+      if (e.target.closest && e.target.closest(".msbox")) return;
+      const menu = $("wMethodMenu"); if (!menu || menu.hidden) return;
+      menu.hidden = true;
+      $("wMethodBtn").setAttribute("aria-expanded", "false");
+    });
+    /* 类型自定义：就在页面里输入，不再用会被拦掉的 prompt() */
+    $("wType").addEventListener("change", () => {
+      if ($("wType").value === "__custom") { wCustomOpen("类型："); return; }
+      const pp = cur(); if (!pp) return;
+      pp.type = $("wType").value; save();
     });
   }
   renderSecBtns();

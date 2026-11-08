@@ -4,6 +4,13 @@
 
 ## [未发布]
 
+## [1.7.0] - 2026-11-08
+
+- **修桌面版换页后 AI 配置被清空**：预置脚本原来每次加载都会把 `/__ai/v1` 或空地址的配置覆盖回「研墨默认 + 空 Key」，表现为每个页面都要重新配置、只有 AI 设置页正常。现在只在完全没配置过时写默认值，已有配置一律不动；旧版默认只在还没有模型列表时迁移一次。
+- **修 TokenHub / DeepSeek 下「AI 评估选题」正文为空**：模型默认开思考，关闭思考时没有发送关闭参数，思考 token 吃光输出额度（实测 6000 额度里 7600–9000 都是思考）。现在对 TokenHub / DeepSeek 在关闭思考时显式发送 `thinking: disabled`。
+- **研究方法改为多选**：② 设计与写作里的方法改成勾选面板，可多选并直接输入自定义方法；旧的单选值自动兼容。论文类型的「自定义」改成页面内输入，不再依赖可能被拦掉的 `prompt()`。
+- **自定义服务商必须填地址**：AI 设置里选「自定义」会清空地址并提示，空地址保存时给中文提示、不再弹浏览器原生英文气泡。
+
 ## [1.6.0] - 2026-11-08
 
 - **AI 设置改为 Trae 式模型管理**：每个模型一份完整配置（API 格式、自定义请求地址 + 完整 URL 开关、模型 ID、展示名称、密钥、上下文输入 / 输出、思考参数、Temperature / Top P / Top K），可以添加多个模型并「设为当前」；参考稿与工作台共用当前模型。旧的单模型配置与按服务商分存的 Key 首次打开会自动迁移成模型记录。
@@ -247,7 +254,8 @@
 
 此前的内部迭代号（提交记录里的 v0.x、v1.0.x、v3.x，以及 Service Worker 缓存号 v21–v42）不再沿用，之后统一按本文件的版本号发布。
 
-[未发布]: https://github.com/peacefulj/wenqu/compare/v1.6.0...HEAD
+[未发布]: https://github.com/peacefulj/wenqu/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/peacefulj/wenqu/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/peacefulj/wenqu/compare/v1.5.9...v1.6.0
 [1.5.9]: https://github.com/peacefulj/wenqu/compare/v1.5.8...v1.5.9
 [1.5.8]: https://github.com/peacefulj/wenqu/compare/v1.5.7...v1.5.8

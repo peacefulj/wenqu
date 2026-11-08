@@ -111,6 +111,10 @@
       /* DeepSeek 的思考 token 计入 max_tokens（上限 393216）：开思考时多留 16K，免得正文被挤掉 */
       if (think && fmt === "thinking" && isDeepSeek(c.base)) o.max_tokens = mt + 16384;
     }
+    /* TokenHub / DeepSeek 默认开思考：关闭思考时必须显式告诉服务商，
+       否则思考 token 会吃光输出额度，正文为空或被截断（AI 评估选题就卡在这里） */
+    var dsHost = /(^https?:\/\/api\.deepseek\.com)|tokenhub\.tencentmaas\.com/i.test(String(c.base || ""));
+    if (!think && dsHost && fmt !== "openai_reasoning" && !o.thinking) o.thinking = { type: "disabled" };
     /* 自定义思考参数（如 reasoning_effort）：用「编辑模型」里填的参数名与第一个可选值 */
     var tp = String(c.thinkParam || "").trim();
     var tv = String((c.thinkValues || [])[0] || "").trim();

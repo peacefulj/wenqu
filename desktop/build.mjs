@@ -62,15 +62,20 @@ window.__YM_DESKTOP__ = true;
 (function () {
   var DEF = ${JSON.stringify({ ...conf, base: (pj.defaultBase || "https://api.yingcompute.com/api/v1"), key: "" })};
   var TESTKEY = ${JSON.stringify(pj.testKey || conf.key || "")};
-  var K = "wenqu_ai", KM = "wenqu_ai_keys";
+  var K = "wenqu_ai", KM = "wenqu_ai_keys", KL = "wenqu_ai_models";
   try {
+    var raw = localStorage.getItem(K);
     var cur = {};
-    try { cur = JSON.parse(localStorage.getItem(K) || "{}") || {}; } catch (e) {}
+    try { cur = JSON.parse(raw || "{}") || {}; } catch (e) { cur = {}; }
     var map = {};
     try { map = JSON.parse(localStorage.getItem(KM) || "{}") || {}; } catch (e) {}
     var b = String(cur.base || "");
-    /* 旧版桌面默认（本机中转）迁到研墨；用户自己填的第三方地址保持不动 */
-    if (!b || b === "/__ai/v1") {
+    /* 只有在「完全没有配置」时才写默认值；已有配置一律不覆盖（否则每次换页都会把用户填的地址和 Key 清掉）。
+       旧版桌面默认地址 /__ai/v1 只迁移一次：仅当还没有模型列表（v1.6 之前的配置）时才迁到研墨。 */
+    if (!raw || !b) {
+      cur = Object.assign({}, DEF, cur, { base: b || DEF.base });
+      if (!cur.model) cur.model = DEF.model;
+    } else if (b === "/__ai/v1" && !localStorage.getItem(KL)) {
       if (cur.key && !map.desktop) map.desktop = cur.key;
       cur = Object.assign({}, cur, DEF);
     }

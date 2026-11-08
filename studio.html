@@ -42,6 +42,17 @@
 #wbMineRich blockquote{border-left:3px solid var(--line);margin:4px 0;padding:2px 10px;color:#5c6675}
 .reftrace{background:#f6f8fc;border-radius:9px;padding:6px 10px;margin-top:5px;width:100%}
 #tplModal h3{margin:10px 0 4px;font-size:13.5px}
+.msbox{position:relative;flex:0 0 240px}
+.msbtn{width:100%;text-align:left;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff;font-size:13px;cursor:pointer;font-family:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msbtn:hover{border-color:#2456e6}
+.msmenu{position:absolute;z-index:30;top:calc(100% + 4px);left:0;width:310px;max-height:300px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 28px rgba(15,23,42,.16);padding:6px}
+.msrow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;font-size:13px;cursor:pointer}
+.msrow:hover{background:#f5f8ff}
+.msrow input{margin:0}
+.mscustom{border-top:1px dashed var(--line);margin-top:4px;padding-top:8px;gap:6px}
+.mscustom input{flex:1;min-width:0;padding:6px 8px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;font-family:inherit}
+.mscustom button{flex:0 0 auto;padding:5px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:12.5px;cursor:pointer}
+#wCustomRow input{flex:1;min-width:220px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-size:13px;font-family:inherit}
 </style>
 </head>
 <body>
@@ -256,8 +267,18 @@
               <div class="wstep-h"><b>第 2 步 · 生成大纲</b><span class="hint">按学科范式、研究方法、论文类型生成章节骨架</span></div>
               <div class="row" style="margin-top:6px">
                 <label class="hint">学科</label><select id="wDisc" style="flex:0 0 210px"></select>
-                <label class="hint">方法</label><select id="wMethod" style="flex:0 0 210px"></select>
+                <label class="hint">方法</label>
+                <div class="msbox">
+                  <button type="button" class="msbtn" id="wMethodBtn" aria-haspopup="true" aria-expanded="false" title="可多选"><span id="wMethodTxt">选择方法（可多选）</span> ▾</button>
+                  <div class="msmenu" id="wMethodMenu" hidden></div>
+                </div>
                 <label class="hint">类型</label><select id="wType" style="flex:0 0 170px"></select>
+              </div>
+              <div class="row" id="wCustomRow" hidden style="margin-top:6px;align-items:center">
+                <span class="hint" id="wCustomLabel" style="flex:0 0 auto"></span>
+                <input id="wCustomVal" type="text" placeholder="输入名称，回车或点「确定」">
+                <button type="button" class="btn2" id="wCustomOk">确定</button>
+                <button type="button" class="btn2 ghost" id="wCustomCancel">取消</button>
               </div>
               <div class="tmpl" style="margin-top:8px">
                 <button id="btnOutline" data-ai class="btn2">🌪️ 生成大纲（多视角）</button>
@@ -723,7 +744,7 @@
 <footer class="site"><div class="container">
   <div class="links"><a href="index.html">首页</a> · <a href="quick.html">参考稿</a> · <a href="try.html">试用与测试</a> · 发现问题？<a href="mailto:info@yingcompute.com">邮件告诉我们</a> · <a href="https://github.com/peacefulj/wenqu/issues" target="_blank" rel="noopener">GitHub Issues</a></div>
   <div class="disc">本平台检索与 OA 链接来自 OpenAlex / Crossref / Unpaywall 官方公开接口，仅指向来源方标注的合法开放版本；不提供文献代下、代写服务。AI 产出（速读、审稿、综述草稿、引用匹配）均可能出错，使用前请人工核对；学术润色仅做语言表达优化，不用于规避 AIGC 检测。项目数据仅存于本机浏览器；上传的 PDF 也只存在本机。</div>
-  <div>© 2026 研墨工作台 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.6.0</span> 更新日志</a> · 数据接口礼貌限速</div>
+  <div>© 2026 研墨工作台 · <a data-ym-changelog href="https://github.com/peacefulj/wenqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener"><span data-ym-version>v1.7.0</span> 更新日志</a> · 数据接口礼貌限速</div>
 </div></footer>
 
 <aside id="verDrawer">
@@ -801,7 +822,7 @@ document.addEventListener("click", e => {
 });
 </script>
 <link rel="stylesheet" href="assets/vendor/katex/katex.min.css">
-<script src="assets/version.js?v=1.6.0"></script>
+<script src="assets/version.js?v=1.7.0"></script>
 <script src="assets/vendor/katex/katex.min.js"></script>
 <script src="assets/ym-ai.js"></script>
 <script src="assets/wq-core.js"></script>

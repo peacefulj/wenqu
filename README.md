@@ -5,7 +5,7 @@
 - 网页版：https://www.yanmo.io/
 - 专业版（可安装到桌面）：https://peacefulj.github.io/wenqu/
 - 不需要后端，不需要数据库，数据默认只存在你的浏览器里。
-- 当前版本：**v1.6.0**（[更新日志](CHANGELOG.md)）
+- 当前版本：**v1.7.0**（[更新日志](CHANGELOG.md)）
 
 ## 在线试用
 
